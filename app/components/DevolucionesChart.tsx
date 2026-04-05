@@ -1,5 +1,6 @@
 "use client";
 
+import type { MesFilter } from "../page";
 import {
   AreaChart,
   Area,
@@ -16,8 +17,8 @@ interface Resumen {
   marzo: { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number };
 }
 
-export default function DevolucionesChart({ resumen }: { resumen: Resumen }) {
-  const chartData = [
+export default function DevolucionesChart({ resumen, mesFilter }: { resumen: Resumen; mesFilter: MesFilter }) {
+  const allData = [
     {
       mes: "Enero",
       Devoluciones: resumen.enero.devoluciones,
@@ -37,6 +38,10 @@ export default function DevolucionesChart({ resumen }: { resumen: Resumen }) {
       "% Entrega": parseFloat(((resumen.marzo.entregados / resumen.marzo.movilizadas) * 100).toFixed(1)),
     },
   ];
+
+  const chartData = mesFilter === "q1"
+    ? allData
+    : allData.filter((d) => d.mes.toLowerCase() === mesFilter);
 
   return (
     <div className="glass-card p-6">
@@ -66,22 +71,8 @@ export default function DevolucionesChart({ resumen }: { resumen: Resumen }) {
             }}
             formatter={(value) => `${value}%`}
           />
-          <Area
-            type="monotone"
-            dataKey="% Entrega"
-            stroke="#10B981"
-            strokeWidth={2}
-            fillOpacity={1}
-            fill="url(#colorEntrega)"
-          />
-          <Area
-            type="monotone"
-            dataKey="% Devolución"
-            stroke="#EF4444"
-            strokeWidth={2}
-            fillOpacity={1}
-            fill="url(#colorDev)"
-          />
+          <Area type="monotone" dataKey="% Entrega" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorEntrega)" />
+          <Area type="monotone" dataKey="% Devolución" stroke="#EF4444" strokeWidth={2} fillOpacity={1} fill="url(#colorDev)" />
         </AreaChart>
       </ResponsiveContainer>
     </div>

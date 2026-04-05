@@ -1,47 +1,54 @@
 "use client";
 
 import { useState } from "react";
+import type { MesFilter } from "../page";
 
 interface Proveedor {
   proveedor: string;
-  enero: { ingresadas: number | null; movilizadas: number | null; entregados: number | null; devoluciones: number | null; pct_entrega: number | null; pct_dev: number | null };
-  febrero: { ingresadas: number | null; movilizadas: number | null; entregados: number | null; devoluciones: number | null; pct_entrega: number | null; pct_dev: number | null };
-  marzo: { ingresadas: number | null; movilizadas: number | null; entregados: number | null; devoluciones: number | null; pct_entrega: number | null; pct_dev: number | null };
+  sellers: number;
+  enero: { ing: number | null; mov: number | null; ent: number | null; dev: number | null; pct_entrega: number | null; pct_dev: number | null };
+  febrero: { ing: number | null; mov: number | null; ent: number | null; dev: number | null; pct_entrega: number | null; pct_dev: number | null };
+  marzo: { ing: number | null; mov: number | null; ent: number | null; dev: number | null; pct_entrega: number | null; pct_dev: number | null };
+  total: { ing: number; mov: number; ent: number; dev: number };
+  growth_pct: number | null;
 }
 
-export default function ProveedoresTable({ proveedores }: { proveedores: Proveedor[] }) {
+function getData(p: Proveedor, mes: MesFilter) {
+  if (mes === "q1") return { ing: p.total.ing, mov: p.total.mov, ent: p.total.ent, dev: p.total.dev };
+  const d = p[mes];
+  return { ing: d.ing || 0, mov: d.mov || 0, ent: d.ent || 0, dev: d.dev || 0 };
+}
+
+export default function ProveedoresTable({ proveedores, mesFilter }: { proveedores: Proveedor[]; mesFilter: MesFilter }) {
   const [sortBy, setSortBy] = useState<string>("total_mov");
   const [search, setSearch] = useState("");
 
   const withTotals = proveedores.map((p) => {
-    const totalIng = (p.enero.ingresadas || 0) + (p.febrero.ingresadas || 0) + (p.marzo.ingresadas || 0);
-    const totalMov = (p.enero.movilizadas || 0) + (p.febrero.movilizadas || 0) + (p.marzo.movilizadas || 0);
-    const totalEnt = (p.enero.entregados || 0) + (p.febrero.entregados || 0) + (p.marzo.entregados || 0);
-    const totalDev = (p.enero.devoluciones || 0) + (p.febrero.devoluciones || 0) + (p.marzo.devoluciones || 0);
-    return { ...p, totalIng, totalMov, totalEnt, totalDev };
+    const d = getData(p, mesFilter);
+    return { ...p, fIng: d.ing, fMov: d.mov, fEnt: d.ent, fDev: d.dev };
   });
 
   const filtered = withTotals
-    .filter((p) => p.proveedor.toLowerCase().includes(search.toLowerCase()))
+    .filter((p) => p.proveedor.toLowerCase().includes(search.toLowerCase()) && p.fMov > 0)
     .sort((a, b) => {
-      if (sortBy === "total_mov") return b.totalMov - a.totalMov;
-      if (sortBy === "total_ing") return b.totalIng - a.totalIng;
-      if (sortBy === "total_ent") return b.totalEnt - a.totalEnt;
-      if (sortBy === "total_dev") return b.totalDev - a.totalDev;
+      if (sortBy === "total_mov") return b.fMov - a.fMov;
+      if (sortBy === "total_ing") return b.fIng - a.fIng;
+      if (sortBy === "total_ent") return b.fEnt - a.fEnt;
+      if (sortBy === "total_dev") return b.fDev - a.fDev;
       if (sortBy === "pct_entrega") {
-        const pctA = a.totalMov > 0 ? a.totalEnt / a.totalMov : 0;
-        const pctB = b.totalMov > 0 ? b.totalEnt / b.totalMov : 0;
+        const pctA = a.fMov > 0 ? a.fEnt / a.fMov : 0;
+        const pctB = b.fMov > 0 ? b.fEnt / b.fMov : 0;
         return pctB - pctA;
       }
-      return b.totalMov - a.totalMov;
+      return b.fMov - a.fMov;
     });
 
   return (
     <div className="glass-card p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Ranking de Proveedores</h2>
-          <p className="text-xs text-gray-400">{filtered.length} proveedores - Datos acumulados Q1 2026</p>
+          <h2 className="text-lg font-semibold text-white">Tabla de Proveedores</h2>
+          <p className="text-xs text-gray-400">{filtered.length} proveedores activos</p>
         </div>
         <div className="flex gap-2">
           <input
@@ -64,40 +71,48 @@ export default function ProveedoresTable({ proveedores }: { proveedores: Proveed
           </select>
         </div>
       </div>
-      <div className="table-container overflow-x-auto">
+      <div className="table-container overflow-x-auto max-h-[500px] overflow-y-auto">
         <table className="w-full text-xs">
-          <thead>
+          <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
             <tr className="border-b border-orange-500/20">
               <th className="text-left py-3 px-2 text-gray-400 font-medium">#</th>
               <th className="text-left py-3 px-2 text-gray-400 font-medium">Proveedor</th>
+              <th className="text-right py-3 px-2 text-gray-400 font-medium">Sellers</th>
               <th className="text-right py-3 px-2 text-gray-400 font-medium">Ingresadas</th>
               <th className="text-right py-3 px-2 text-gray-400 font-medium">Movilizadas</th>
               <th className="text-right py-3 px-2 text-gray-400 font-medium">Entregados</th>
               <th className="text-right py-3 px-2 text-gray-400 font-medium">Devoluciones</th>
               <th className="text-right py-3 px-2 text-gray-400 font-medium">% Entrega</th>
-              <th className="text-right py-3 px-2 text-gray-400 font-medium">% Devolución</th>
+              <th className="text-right py-3 px-2 text-gray-400 font-medium">% Dev</th>
+              <th className="text-right py-3 px-2 text-gray-400 font-medium">Tendencia</th>
             </tr>
           </thead>
           <tbody>
             {filtered.slice(0, 50).map((p, i) => {
-              const pctEntrega = p.totalMov > 0 ? ((p.totalEnt / p.totalMov) * 100).toFixed(1) : "—";
-              const pctDev = p.totalMov > 0 ? ((p.totalDev / p.totalMov) * 100).toFixed(1) : "—";
-              const pctDevNum = p.totalMov > 0 ? (p.totalDev / p.totalMov) * 100 : 0;
+              const pctEntrega = p.fMov > 0 ? ((p.fEnt / p.fMov) * 100).toFixed(1) : "—";
+              const pctDev = p.fMov > 0 ? ((p.fDev / p.fMov) * 100).toFixed(1) : "—";
+              const pctDevNum = p.fMov > 0 ? (p.fDev / p.fMov) * 100 : 0;
               return (
                 <tr key={p.proveedor} className="border-b border-gray-800/50 hover:bg-orange-500/5 transition-colors">
                   <td className="py-2.5 px-2 text-gray-500">{i + 1}</td>
                   <td className="py-2.5 px-2 text-white font-medium max-w-[200px] truncate">{p.proveedor}</td>
-                  <td className="py-2.5 px-2 text-right text-gray-300">{p.totalIng.toLocaleString()}</td>
-                  <td className="py-2.5 px-2 text-right text-blue-400 font-medium">{p.totalMov.toLocaleString()}</td>
-                  <td className="py-2.5 px-2 text-right text-green-400">{p.totalEnt.toLocaleString()}</td>
-                  <td className="py-2.5 px-2 text-right text-red-400">{p.totalDev.toLocaleString()}</td>
-                  <td className="py-2.5 px-2 text-right">
-                    <span className="text-green-400">{pctEntrega}%</span>
-                  </td>
+                  <td className="py-2.5 px-2 text-right text-gray-400">{p.sellers}</td>
+                  <td className="py-2.5 px-2 text-right text-gray-300">{p.fIng.toLocaleString()}</td>
+                  <td className="py-2.5 px-2 text-right text-blue-400 font-medium">{p.fMov.toLocaleString()}</td>
+                  <td className="py-2.5 px-2 text-right text-green-400">{p.fEnt.toLocaleString()}</td>
+                  <td className="py-2.5 px-2 text-right text-red-400">{p.fDev.toLocaleString()}</td>
+                  <td className="py-2.5 px-2 text-right text-green-400">{pctEntrega}%</td>
                   <td className="py-2.5 px-2 text-right">
                     <span className={pctDevNum > 30 ? "text-red-400 font-bold" : pctDevNum > 20 ? "text-yellow-400" : "text-gray-400"}>
                       {pctDev}%
                     </span>
+                  </td>
+                  <td className="py-2.5 px-2 text-right">
+                    {p.growth_pct != null ? (
+                      <span className={p.growth_pct > 0 ? "text-green-400" : "text-red-400"}>
+                        {p.growth_pct > 0 ? "+" : ""}{p.growth_pct}%
+                      </span>
+                    ) : "—"}
                   </td>
                 </tr>
               );

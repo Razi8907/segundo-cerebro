@@ -1,26 +1,34 @@
 "use client";
 
 import { useState } from "react";
+import type { MesFilter } from "../page";
 
 interface Seller {
   email: string;
-  enero: { movilizadas: number | null; pct_entrega: number | null; pct_dev: number | null };
-  febrero: { movilizadas: number | null; pct_entrega: number | null; pct_dev: number | null };
-  marzo: { movilizadas: number | null; pct_entrega: number | null; pct_dev: number | null };
-  total: { movilizadas: number | null; pct_entrega: number | null; pct_dev: number | null };
+  enero: { mov: number | null; pct_entrega: number | null; pct_dev: number | null };
+  febrero: { mov: number | null; pct_entrega: number | null; pct_dev: number | null };
+  marzo: { mov: number | null; pct_entrega: number | null; pct_dev: number | null };
+  total: { mov: number | null; pct_entrega: number | null; pct_dev: number | null };
 }
 
-export default function SellersTable({ sellers }: { sellers: Seller[] }) {
+function getSellerData(s: Seller, mes: MesFilter) {
+  if (mes === "q1") return s.total;
+  return s[mes];
+}
+
+export default function SellersTable({ sellers, mesFilter }: { sellers: Seller[]; mesFilter: MesFilter }) {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState("total_mov");
 
   const filtered = sellers
     .filter((s) => s.email.toLowerCase().includes(search.toLowerCase()))
+    .map((s) => ({ ...s, data: getSellerData(s, mesFilter) }))
+    .filter((s) => (s.data.mov || 0) > 0)
     .sort((a, b) => {
-      if (sortBy === "total_mov") return (b.total.movilizadas || 0) - (a.total.movilizadas || 0);
-      if (sortBy === "pct_entrega") return (b.total.pct_entrega || 0) - (a.total.pct_entrega || 0);
-      if (sortBy === "pct_dev") return (b.total.pct_dev || 0) - (a.total.pct_dev || 0);
-      return (b.total.movilizadas || 0) - (a.total.movilizadas || 0);
+      if (sortBy === "total_mov") return (b.data.mov || 0) - (a.data.mov || 0);
+      if (sortBy === "pct_entrega") return (b.data.pct_entrega || 0) - (a.data.pct_entrega || 0);
+      if (sortBy === "pct_dev") return (b.data.pct_dev || 0) - (a.data.pct_dev || 0);
+      return (b.data.mov || 0) - (a.data.mov || 0);
     });
 
   const formatPct = (v: number | null) => (v != null ? `${(v * 100).toFixed(1)}%` : "—");
@@ -29,8 +37,8 @@ export default function SellersTable({ sellers }: { sellers: Seller[] }) {
     <div className="glass-card p-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-lg font-semibold text-white">Top 100 Sellers por Movilizaciones</h2>
-          <p className="text-xs text-gray-400">Rendimiento individual Q1 2026</p>
+          <h2 className="text-lg font-semibold text-white">Top Sellers por Movilizaciones</h2>
+          <p className="text-xs text-gray-400">Rendimiento individual &middot; {filtered.length} sellers</p>
         </div>
         <div className="flex gap-2">
           <input
@@ -57,35 +65,33 @@ export default function SellersTable({ sellers }: { sellers: Seller[] }) {
             <tr className="border-b border-orange-500/20">
               <th className="text-left py-3 px-2 text-gray-400 font-medium">#</th>
               <th className="text-left py-3 px-2 text-gray-400 font-medium">Email</th>
-              <th className="text-right py-3 px-2 text-gray-400 font-medium">Ene Mov</th>
-              <th className="text-right py-3 px-2 text-gray-400 font-medium">Feb Mov</th>
-              <th className="text-right py-3 px-2 text-gray-400 font-medium">Mar Mov</th>
+              <th className="text-right py-3 px-2 text-gray-400 font-medium">Ene</th>
+              <th className="text-right py-3 px-2 text-gray-400 font-medium">Feb</th>
+              <th className="text-right py-3 px-2 text-gray-400 font-medium">Mar</th>
               <th className="text-right py-3 px-2 text-gray-400 font-medium">Total Mov</th>
               <th className="text-right py-3 px-2 text-gray-400 font-medium">% Entrega</th>
-              <th className="text-right py-3 px-2 text-gray-400 font-medium">% Devolución</th>
+              <th className="text-right py-3 px-2 text-gray-400 font-medium">% Dev</th>
               <th className="text-center py-3 px-2 text-gray-400 font-medium">Estado</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((s, i) => {
-              const pctEnt = s.total.pct_entrega || 0;
-              const pctDev = s.total.pct_dev || 0;
+              const pctDev = s.data.pct_dev || 0;
               let estado = "🟢";
               if (pctDev > 0.3) estado = "🔴";
               else if (pctDev > 0.2) estado = "🟡";
-              else if (pctEnt > 0.8) estado = "🟢";
               return (
                 <tr key={s.email} className="border-b border-gray-800/50 hover:bg-orange-500/5 transition-colors">
                   <td className="py-2.5 px-2 text-gray-500">{i + 1}</td>
                   <td className="py-2.5 px-2 text-white font-medium max-w-[250px] truncate">{s.email}</td>
-                  <td className="py-2.5 px-2 text-right text-gray-300">{s.enero.movilizadas?.toLocaleString() ?? "—"}</td>
-                  <td className="py-2.5 px-2 text-right text-gray-300">{s.febrero.movilizadas?.toLocaleString() ?? "—"}</td>
-                  <td className="py-2.5 px-2 text-right text-gray-300">{s.marzo.movilizadas?.toLocaleString() ?? "—"}</td>
-                  <td className="py-2.5 px-2 text-right text-orange-400 font-bold">{s.total.movilizadas?.toLocaleString() ?? "—"}</td>
-                  <td className="py-2.5 px-2 text-right text-green-400">{formatPct(s.total.pct_entrega)}</td>
+                  <td className="py-2.5 px-2 text-right text-gray-300">{s.enero.mov?.toLocaleString() ?? "—"}</td>
+                  <td className="py-2.5 px-2 text-right text-gray-300">{s.febrero.mov?.toLocaleString() ?? "—"}</td>
+                  <td className="py-2.5 px-2 text-right text-gray-300">{s.marzo.mov?.toLocaleString() ?? "—"}</td>
+                  <td className="py-2.5 px-2 text-right text-orange-400 font-bold">{s.data.mov?.toLocaleString() ?? "—"}</td>
+                  <td className="py-2.5 px-2 text-right text-green-400">{formatPct(s.data.pct_entrega)}</td>
                   <td className="py-2.5 px-2 text-right">
                     <span className={pctDev > 0.3 ? "text-red-400 font-bold" : pctDev > 0.2 ? "text-yellow-400" : "text-gray-400"}>
-                      {formatPct(s.total.pct_dev)}
+                      {formatPct(s.data.pct_dev)}
                     </span>
                   </td>
                   <td className="py-2.5 px-2 text-center">{estado}</td>

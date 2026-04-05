@@ -1,5 +1,6 @@
 "use client";
 
+import type { MesFilter } from "../page";
 import {
   BarChart,
   Bar,
@@ -9,6 +10,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  Cell,
 } from "recharts";
 
 interface Resumen {
@@ -17,32 +19,25 @@ interface Resumen {
   marzo: { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number };
 }
 
-export default function TrendChart({ resumen }: { resumen: Resumen }) {
-  const chartData = [
-    {
-      mes: "Enero",
-      Ingresadas: resumen.enero.ingresadas,
-      Movilizadas: resumen.enero.movilizadas,
-      Entregados: resumen.enero.entregados,
-    },
-    {
-      mes: "Febrero",
-      Ingresadas: resumen.febrero.ingresadas,
-      Movilizadas: resumen.febrero.movilizadas,
-      Entregados: resumen.febrero.entregados,
-    },
-    {
-      mes: "Marzo",
-      Ingresadas: resumen.marzo.ingresadas,
-      Movilizadas: resumen.marzo.movilizadas,
-      Entregados: resumen.marzo.entregados,
-    },
+export default function TrendChart({ resumen, mesFilter }: { resumen: Resumen; mesFilter: MesFilter }) {
+  const allData = [
+    { mes: "Enero", Ingresadas: resumen.enero.ingresadas, Movilizadas: resumen.enero.movilizadas, Entregados: resumen.enero.entregados },
+    { mes: "Febrero", Ingresadas: resumen.febrero.ingresadas, Movilizadas: resumen.febrero.movilizadas, Entregados: resumen.febrero.entregados },
+    { mes: "Marzo", Ingresadas: resumen.marzo.ingresadas, Movilizadas: resumen.marzo.movilizadas, Entregados: resumen.marzo.entregados },
   ];
+
+  const chartData = mesFilter === "q1"
+    ? allData
+    : allData.filter((d) => d.mes.toLowerCase() === mesFilter);
+
+  const highlightMes = mesFilter !== "q1" ? mesFilter.charAt(0).toUpperCase() + mesFilter.slice(1) : null;
 
   return (
     <div className="glass-card p-6">
-      <h2 className="text-lg font-semibold text-white mb-1">Tendencia Mensual Q1</h2>
-      <p className="text-xs text-gray-400 mb-4">Órdenes ingresadas, movilizadas y entregadas</p>
+      <h2 className="text-lg font-semibold text-white mb-1">Tendencia Mensual</h2>
+      <p className="text-xs text-gray-400 mb-4">
+        {mesFilter === "q1" ? "Comparativa Ene-Feb-Mar" : `Detalle ${highlightMes}`} &middot; Órdenes ingresadas, movilizadas y entregadas
+      </p>
       <ResponsiveContainer width="100%" height={320}>
         <BarChart data={chartData} barGap={4}>
           <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
