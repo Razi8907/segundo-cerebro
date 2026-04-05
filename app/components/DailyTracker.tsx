@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Cell,
-  LineChart,
+  ComposedChart,
   Line,
 } from "recharts";
 
@@ -298,26 +298,92 @@ export default function DailyTracker({
         </ResponsiveContainer>
       </div>
 
-      {/* Abril projection chart */}
+      {/* Abril projection chart with semaphore colors */}
       {abrilData.length > 0 && (
         <div className="mb-6">
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Abril 2026 &mdash; Real vs Proyección</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <LineChart data={analysis.abrilProjected}>
+          <h3 className="text-sm font-medium text-gray-300 mb-3">
+            Abril 2026 &mdash; Real vs Meta Necesaria
+            <span className="text-[10px] text-gray-500 ml-2">
+              🟢 &ge;{META_DIARIA.toLocaleString()} &middot; 🟡 &ge;{Math.round(META_DIARIA * 0.8).toLocaleString()} &middot; 🔴 &lt;{Math.round(META_DIARIA * 0.8).toLocaleString()}
+            </span>
+          </h3>
+          <ResponsiveContainer width="100%" height={320}>
+            <ComposedChart data={analysis.abrilProjected.map((d) => {
+              const isReal = d.ordenes != null;
+              const realColor = isReal
+                ? d.ordenes! >= META_DIARIA ? "#10B981" : d.ordenes! >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444"
+                : "transparent";
+              return {
+                ...d,
+                real: d.ordenes,
+                necesario: isReal ? null : analysis.necesarioPorDiaRestante,
+                realColor,
+              };
+            })}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="fecha" tick={{ fill: "#9ca3af", fontSize: 10 }} />
               <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
               <Tooltip
-                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
+                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 12 }}
                 itemStyle={{ color: "#F97316" }}
                 labelStyle={{ color: "#e5e7eb" }}
-                formatter={(value) => value != null ? Number(value).toLocaleString() : "—"}
+                formatter={(value, name) => {
+                  if (value == null) return ["—", name];
+                  const label = name === "necesario" ? "Necesario/día" : name === "real" ? "Real" : String(name);
+                  return [Number(value).toLocaleString(), label];
+                }}
+                labelFormatter={(label) => {
+                  const d = analysis.abrilProjected.find((p) => p.fecha === label);
+                  return d ? `Día ${label} (${d.dia_semana})` : `Día ${label}`;
+                }}
               />
-              <ReferenceLine y={META_DIARIA} stroke="#F97316" strokeDasharray="4 4" label={{ value: "Meta diaria", fill: "#F97316", fontSize: 10 }} />
-              <Line type="monotone" dataKey="proyectado" stroke="#6B7280" strokeWidth={1} strokeDasharray="6 3" dot={false} name="Proyección" />
-              <Line type="monotone" dataKey="ordenes" stroke="#F97316" strokeWidth={2.5} dot={{ r: 4, fill: "#F97316" }} name="Real" connectNulls={false} />
-            </LineChart>
+              <ReferenceLine y={META_DIARIA} stroke="#F97316" strokeDasharray="4 4" label={{ value: `Meta: ${META_DIARIA.toLocaleString()}`, fill: "#F97316", fontSize: 10, position: "right" }} />
+              {analysis.necesarioPorDiaRestante > 0 && analysis.necesarioPorDiaRestante !== META_DIARIA && (
+                <ReferenceLine y={analysis.necesarioPorDiaRestante} stroke="#8B5CF6" strokeDasharray="4 4" label={{ value: `Necesario: ${analysis.necesarioPorDiaRestante.toLocaleString()}`, fill: "#8B5CF6", fontSize: 10, position: "left" }} />
+              )}
+              {/* Real data bars with semaphore colors */}
+              <Bar dataKey="real" name="real" radius={[4, 4, 0, 0]} barSize={16}>
+                {analysis.abrilProjected.map((d, i) => {
+                  const isReal = d.ordenes != null;
+                  const color = isReal
+                    ? d.ordenes! >= META_DIARIA ? "#10B981" : d.ordenes! >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444"
+                    : "transparent";
+                  return <Cell key={i} fill={color} />;
+                })}
+              </Bar>
+              {/* Needed per day for remaining days */}
+              <Bar dataKey="necesario" name="necesario" radius={[4, 4, 0, 0]} barSize={16} opacity={0.35}>
+                {analysis.abrilProjected.map((d, i) => (
+                  <Cell key={i} fill={d.ordenes != null ? "transparent" : "#8B5CF6"} />
+                ))}
+              </Bar>
+              {/* Trend line for projection */}
+              <Line type="monotone" dataKey="proyectado" stroke="#6B7280" strokeWidth={1} strokeDasharray="6 3" dot={false} name="Proyección base" />
+            </ComposedChart>
           </ResponsiveContainer>
+          {/* Legend */}
+          <div className="flex gap-4 mt-2 justify-center flex-wrap">
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="w-3 h-3 rounded" style={{ background: "#10B981" }} />
+              <span className="text-gray-400">Cumple meta ({">="}{META_DIARIA.toLocaleString()})</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="w-3 h-3 rounded" style={{ background: "#F59E0B" }} />
+              <span className="text-gray-400">Aceptable ({">="}{Math.round(META_DIARIA * 0.8).toLocaleString()})</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="w-3 h-3 rounded" style={{ background: "#EF4444" }} />
+              <span className="text-gray-400">Bajo meta ({"<"}{Math.round(META_DIARIA * 0.8).toLocaleString()})</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="w-3 h-3 rounded" style={{ background: "#8B5CF6", opacity: 0.35 }} />
+              <span className="text-gray-400">Necesario/día restante ({analysis.necesarioPorDiaRestante.toLocaleString()})</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <span className="w-8 border-t border-dashed border-gray-500" />
+              <span className="text-gray-400">Proyección base (Marzo)</span>
+            </div>
+          </div>
         </div>
       )}
 
