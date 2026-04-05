@@ -269,12 +269,12 @@ export default function DailyTracker({
         )}
       </div>
 
-      {/* Marzo Chart */}
+      {/* Marzo Chart - mes cerrado, sin meta */}
       <div className="mb-6">
         <h3 className="text-sm font-medium text-gray-300 mb-3">
           Histórico Marzo 2026 &mdash; Día a día
           <span className="text-[10px] text-gray-500 ml-2">
-            🟢 &ge;{META_DIARIA.toLocaleString()} &middot; 🟡 &ge;{Math.round(META_DIARIA * 0.8).toLocaleString()} &middot; 🔴 &lt;{Math.round(META_DIARIA * 0.8).toLocaleString()}
+            Total: {metaInfo.marzo_total_ordenes.toLocaleString()} órdenes &middot; Prom: {metaInfo.marzo_promedio_diario.toLocaleString()}/día
           </span>
         </h3>
         <ResponsiveContainer width="100%" height={280}>
@@ -288,12 +288,8 @@ export default function DailyTracker({
               labelStyle={{ color: "#e5e7eb" }}
               formatter={(value) => `${Number(value).toLocaleString()} órdenes`}
             />
-            <ReferenceLine y={META_DIARIA} stroke="#F97316" strokeDasharray="4 4" label={{ value: `Meta: ${META_DIARIA.toLocaleString()}`, fill: "#F97316", fontSize: 10, position: "right" }} />
-            <Bar dataKey="Órdenes" radius={[4, 4, 0, 0]}>
-              {marzoChartData.map((entry, i) => (
-                <Cell key={i} fill={entry.color} />
-              ))}
-            </Bar>
+            <ReferenceLine y={metaInfo.marzo_promedio_diario} stroke="#6B7280" strokeDasharray="4 4" label={{ value: `Prom: ${metaInfo.marzo_promedio_diario.toLocaleString()}`, fill: "#6B7280", fontSize: 10, position: "right" }} />
+            <Bar dataKey="Órdenes" radius={[4, 4, 0, 0]} fill="#F97316" />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -393,13 +389,11 @@ export default function DailyTracker({
         <div className="grid grid-cols-7 gap-2">
           {["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"].map((dow) => {
             const avg = analysis.dowAvg[dow] || 0;
-            const pctMeta = (avg / META_DIARIA) * 100;
-            const color = pctMeta >= 100 ? "#10B981" : pctMeta >= 80 ? "#F59E0B" : "#EF4444";
             return (
               <div key={dow} className="text-center p-2 rounded-xl border border-gray-800" style={{ background: "rgba(15,52,96,0.15)" }}>
                 <p className="text-[10px] text-gray-400">{dow.slice(0, 3)}</p>
-                <p className="text-lg font-bold" style={{ color }}>{avg.toLocaleString()}</p>
-                <p className="text-[10px]" style={{ color }}>{pctMeta.toFixed(0)}%</p>
+                <p className="text-lg font-bold text-orange-400">{avg.toLocaleString()}</p>
+                <p className="text-[10px] text-gray-500">prom/día</p>
               </div>
             );
           })}
