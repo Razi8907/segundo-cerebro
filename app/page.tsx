@@ -12,6 +12,8 @@ import EfficiencyChart from "./components/EfficiencyChart";
 import ProveedoresRanking from "./components/ProveedoresRanking";
 import StrategicSimulator from "./components/StrategicSimulator";
 import ProductGoalPlanner from "./components/ProductGoalPlanner";
+import DailyTracker from "./components/DailyTracker";
+import ProductsAnalysis from "./components/ProductsAnalysis";
 
 export type MesFilter = "q1" | "enero" | "febrero" | "marzo";
 
@@ -30,7 +32,7 @@ function getResumenByMes(mes: MesFilter) {
 
 export default function Home() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
-  const { resumen, proveedores, sellers_top } = data;
+  const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info } = data as typeof data & { seguimiento_diario: any[]; productos: any[]; productos_total: number; meta_info: any };
   const kpis = getResumenByMes(mesFilter);
 
   const mesLabels: Record<MesFilter, string> = {
@@ -98,6 +100,12 @@ export default function Home() {
 
         {/* Strategic Simulator - Goal 40K */}
         <StrategicSimulator proveedores={proveedores} resumen={resumen} />
+
+        {/* Daily Tracker */}
+        <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} />
+
+        {/* Products Analysis */}
+        <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} />
 
         {/* Product Goal Planner */}
         <ProductGoalPlanner proveedores={proveedores} />

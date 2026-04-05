@@ -1,0 +1,340 @@
+"use client";
+
+import { useState, useMemo } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  ReferenceLine,
+  Cell,
+  LineChart,
+  Line,
+} from "recharts";
+
+interface DailyData {
+  dia_semana: string;
+  fecha: number;
+  ordenes: number;
+  nota: string | null;
+}
+
+interface MetaInfo {
+  meta_movilizadas_abril: number;
+  tasa_movilizacion: number;
+  meta_ingresadas_abril: number;
+  dias_abril: number;
+  promedio_diario_necesario: number;
+  marzo_total_ordenes: number;
+  marzo_promedio_diario: number;
+}
+
+const DIAS_SEMANA_ABRIL = [
+  "MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES",
+  "MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES",
+  "MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES",
+  "MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES",
+  "MARTES","MIÉRCOLES",
+];
+
+export default function DailyTracker({
+  marzoData,
+  metaInfo,
+}: {
+  marzoData: DailyData[];
+  metaInfo: MetaInfo;
+}) {
+  const META_DIARIA = metaInfo.promedio_diario_necesario;
+  const META_TOTAL = metaInfo.meta_ingresadas_abril;
+
+  // Abril tracking state - initialize empty
+  const [abrilData, setAbrilData] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>([]);
+  const [inputDay, setInputDay] = useState("");
+  const [inputOrdenes, setInputOrdenes] = useState("");
+
+  const addDay = () => {
+    const day = parseInt(inputDay);
+    const ordenes = parseInt(inputOrdenes);
+    if (isNaN(day) || isNaN(ordenes) || day < 1 || day > 30) return;
+
+    setAbrilData((prev) => {
+      const filtered = prev.filter((d) => d.fecha !== day);
+      return [...filtered, { fecha: day, ordenes, dia_semana: DIAS_SEMANA_ABRIL[day - 1] }].sort(
+        (a, b) => a.fecha - b.fecha
+      );
+    });
+    setInputDay(String(day + 1));
+    setInputOrdenes("");
+  };
+
+  const analysis = useMemo(() => {
+    // Marzo analysis
+    const marzoByDow: Record<string, number[]> = {};
+    marzoData.forEach((d) => {
+      if (!marzoByDow[d.dia_semana]) marzoByDow[d.dia_semana] = [];
+      marzoByDow[d.dia_semana].push(d.ordenes);
+    });
+    const dowAvg: Record<string, number> = {};
+    Object.entries(marzoByDow).forEach(([dow, vals]) => {
+      dowAvg[dow] = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    });
+
+    // Abril progress
+    const abrilTotal = abrilData.reduce((s, d) => s + d.ordenes, 0);
+    const diasCargados = abrilData.length;
+    const diasRestantes = 30 - diasCargados;
+    const promedioAbril = diasCargados > 0 ? abrilTotal / diasCargados : 0;
+
+    // Projection based on loaded days
+    const proyeccionFinal = diasCargados > 0 ? Math.round(promedioAbril * 30) : 0;
+    const pctMeta = diasCargados > 0 ? (proyeccionFinal / META_TOTAL) * 100 : 0;
+
+    // How much per day remaining to hit goal
+    const necesarioPorDiaRestante = diasRestantes > 0 ? Math.round((META_TOTAL - abrilTotal) / diasRestantes) : 0;
+
+    // Color each day
+    const coloredMarzo = marzoData.map((d) => {
+      let color: "verde" | "amarillo" | "rojo";
+      if (d.ordenes >= META_DIARIA) color = "verde";
+      else if (d.ordenes >= META_DIARIA * 0.8) color = "amarillo";
+      else color = "rojo";
+      return { ...d, color };
+    });
+
+    const coloredAbril = abrilData.map((d) => {
+      let color: "verde" | "amarillo" | "rojo";
+      if (d.ordenes >= META_DIARIA) color = "verde";
+      else if (d.ordenes >= META_DIARIA * 0.8) color = "amarillo";
+      else color = "rojo";
+      return { ...d, color };
+    });
+
+    // Day-of-week pattern for projection
+    const abrilProjected: { fecha: number; ordenes: number | null; proyectado: number; dia_semana: string }[] = [];
+    for (let i = 1; i <= 30; i++) {
+      const existing = abrilData.find((d) => d.fecha === i);
+      const dow = DIAS_SEMANA_ABRIL[i - 1];
+      const projected = dowAvg[dow] || metaInfo.marzo_promedio_diario;
+      abrilProjected.push({
+        fecha: i,
+        ordenes: existing ? existing.ordenes : null,
+        proyectado: existing ? existing.ordenes : Math.round(projected * (META_TOTAL / metaInfo.marzo_total_ordenes)),
+        dia_semana: dow,
+      });
+    }
+
+    return {
+      dowAvg,
+      abrilTotal,
+      diasCargados,
+      diasRestantes,
+      promedioAbril,
+      proyeccionFinal,
+      pctMeta,
+      necesarioPorDiaRestante,
+      coloredMarzo,
+      coloredAbril,
+      abrilProjected,
+    };
+  }, [marzoData, abrilData, META_DIARIA, META_TOTAL, metaInfo]);
+
+  const colorMap = { verde: "#10B981", amarillo: "#F59E0B", rojo: "#EF4444" };
+
+  const marzoChartData = analysis.coloredMarzo.map((d) => ({
+    name: `${d.fecha}`,
+    Órdenes: d.ordenes,
+    color: colorMap[d.color],
+    dia: d.dia_semana,
+  }));
+
+  return (
+    <div className="glass-card p-6 border-orange-500/30">
+      <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
+        📅 Seguimiento Diario &mdash; Meta Abril: {META_TOTAL.toLocaleString()} ingresadas
+      </h2>
+      <p className="text-xs text-gray-400 mb-6">
+        Histórico Marzo + Carga diaria de Abril &middot; Meta diaria: {META_DIARIA.toLocaleString()} órdenes
+      </p>
+
+      {/* KPIs row */}
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
+        <div className="rounded-xl p-3 border border-gray-700" style={{ background: "rgba(15,52,96,0.2)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Marzo Total</p>
+          <p className="text-lg font-bold text-gray-300">{metaInfo.marzo_total_ordenes.toLocaleString()}</p>
+          <p className="text-[10px] text-gray-500">Prom: {metaInfo.marzo_promedio_diario.toLocaleString()}/día</p>
+        </div>
+        <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Meta Diaria</p>
+          <p className="text-lg font-bold text-orange-400">{META_DIARIA.toLocaleString()}</p>
+          <p className="text-[10px] text-gray-500">Para 40K mov.</p>
+        </div>
+        <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Abril Acum.</p>
+          <p className="text-lg font-bold text-blue-400">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</p>
+          <p className="text-[10px] text-gray-500">{analysis.diasCargados} días cargados</p>
+        </div>
+        <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Proy. Final Abril</p>
+          <p className={`text-lg font-bold ${analysis.pctMeta >= 90 ? "text-green-400" : analysis.pctMeta >= 70 ? "text-yellow-400" : "text-red-400"}`}>
+            {analysis.proyeccionFinal > 0 ? analysis.proyeccionFinal.toLocaleString() : "—"}
+          </p>
+          <p className="text-[10px] text-gray-500">{analysis.pctMeta > 0 ? `${analysis.pctMeta.toFixed(1)}% de meta` : "Sin datos"}</p>
+        </div>
+        <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Necesario/día rest.</p>
+          <p className="text-lg font-bold text-red-400">
+            {analysis.necesarioPorDiaRestante > 0 ? analysis.necesarioPorDiaRestante.toLocaleString() : META_DIARIA.toLocaleString()}
+          </p>
+          <p className="text-[10px] text-gray-500">{analysis.diasRestantes} días restantes</p>
+        </div>
+        <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Gap vs Meta</p>
+          <p className="text-lg font-bold text-purple-400">
+            +{(META_DIARIA - metaInfo.marzo_promedio_diario).toLocaleString()}
+          </p>
+          <p className="text-[10px] text-gray-500">/día vs prom. Marzo</p>
+        </div>
+      </div>
+
+      {/* Input form for Abril */}
+      <div className="mb-6 p-4 rounded-xl border border-orange-500/20" style={{ background: "rgba(249,115,22,0.03)" }}>
+        <h3 className="text-sm font-medium text-orange-400 mb-3">Cargar datos de Abril</h3>
+        <div className="flex gap-3 items-end flex-wrap">
+          <div>
+            <label className="text-[10px] text-gray-400 block mb-1">Día (1-30)</label>
+            <input
+              type="number"
+              min="1"
+              max="30"
+              value={inputDay}
+              onChange={(e) => setInputDay(e.target.value)}
+              placeholder="Día"
+              className="w-20 text-sm px-3 py-2 rounded-lg bg-[#16213e] border border-orange-500/30 text-white focus:outline-none focus:border-orange-500"
+            />
+          </div>
+          <div>
+            <label className="text-[10px] text-gray-400 block mb-1">Órdenes ingresadas</label>
+            <input
+              type="number"
+              value={inputOrdenes}
+              onChange={(e) => setInputOrdenes(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && addDay()}
+              placeholder="Ej: 1500"
+              className="w-32 text-sm px-3 py-2 rounded-lg bg-[#16213e] border border-orange-500/30 text-white focus:outline-none focus:border-orange-500"
+            />
+          </div>
+          <button
+            onClick={addDay}
+            className="px-4 py-2 text-sm rounded-lg dropi-gradient text-white font-medium hover:opacity-90 transition-opacity"
+          >
+            Agregar
+          </button>
+          {abrilData.length > 0 && (
+            <button
+              onClick={() => setAbrilData([])}
+              className="px-3 py-2 text-xs rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10"
+            >
+              Limpiar Abril
+            </button>
+          )}
+        </div>
+
+        {/* Abril loaded days */}
+        {abrilData.length > 0 && (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            {analysis.coloredAbril.map((d) => (
+              <div
+                key={d.fecha}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs border"
+                style={{
+                  borderColor: colorMap[d.color] + "40",
+                  background: colorMap[d.color] + "10",
+                }}
+              >
+                <span className="w-2 h-2 rounded-full" style={{ background: colorMap[d.color] }} />
+                <span className="text-gray-300">Día {d.fecha}:</span>
+                <span className="font-bold" style={{ color: colorMap[d.color] }}>
+                  {d.ordenes.toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Marzo Chart */}
+      <div className="mb-6">
+        <h3 className="text-sm font-medium text-gray-300 mb-3">
+          Histórico Marzo 2026 &mdash; Día a día
+          <span className="text-[10px] text-gray-500 ml-2">
+            🟢 &ge;{META_DIARIA.toLocaleString()} &middot; 🟡 &ge;{Math.round(META_DIARIA * 0.8).toLocaleString()} &middot; 🔴 &lt;{Math.round(META_DIARIA * 0.8).toLocaleString()}
+          </span>
+        </h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={marzoChartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+            <XAxis dataKey="name" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+            <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+            <Tooltip
+              contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
+              itemStyle={{ color: "#F97316" }}
+              labelStyle={{ color: "#e5e7eb" }}
+              formatter={(value) => `${Number(value).toLocaleString()} órdenes`}
+            />
+            <ReferenceLine y={META_DIARIA} stroke="#F97316" strokeDasharray="4 4" label={{ value: `Meta: ${META_DIARIA.toLocaleString()}`, fill: "#F97316", fontSize: 10, position: "right" }} />
+            <Bar dataKey="Órdenes" radius={[4, 4, 0, 0]}>
+              {marzoChartData.map((entry, i) => (
+                <Cell key={i} fill={entry.color} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Abril projection chart */}
+      {abrilData.length > 0 && (
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-gray-300 mb-3">Abril 2026 &mdash; Real vs Proyección</h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={analysis.abrilProjected}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+              <XAxis dataKey="fecha" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
+                itemStyle={{ color: "#F97316" }}
+                labelStyle={{ color: "#e5e7eb" }}
+                formatter={(value) => value != null ? Number(value).toLocaleString() : "—"}
+              />
+              <ReferenceLine y={META_DIARIA} stroke="#F97316" strokeDasharray="4 4" label={{ value: "Meta diaria", fill: "#F97316", fontSize: 10 }} />
+              <Line type="monotone" dataKey="proyectado" stroke="#6B7280" strokeWidth={1} strokeDasharray="6 3" dot={false} name="Proyección" />
+              <Line type="monotone" dataKey="ordenes" stroke="#F97316" strokeWidth={2.5} dot={{ r: 4, fill: "#F97316" }} name="Real" connectNulls={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Day-of-week pattern */}
+      <div>
+        <h3 className="text-sm font-medium text-gray-300 mb-3">Patrón por Día de Semana (Marzo)</h3>
+        <div className="grid grid-cols-7 gap-2">
+          {["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"].map((dow) => {
+            const avg = analysis.dowAvg[dow] || 0;
+            const pctMeta = (avg / META_DIARIA) * 100;
+            const color = pctMeta >= 100 ? "#10B981" : pctMeta >= 80 ? "#F59E0B" : "#EF4444";
+            return (
+              <div key={dow} className="text-center p-2 rounded-xl border border-gray-800" style={{ background: "rgba(15,52,96,0.15)" }}>
+                <p className="text-[10px] text-gray-400">{dow.slice(0, 3)}</p>
+                <p className="text-lg font-bold" style={{ color }}>{avg.toLocaleString()}</p>
+                <p className="text-[10px]" style={{ color }}>{pctMeta.toFixed(0)}%</p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
