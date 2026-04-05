@@ -11,6 +11,7 @@ import DevolucionesChart from "./components/DevolucionesChart";
 import EfficiencyChart from "./components/EfficiencyChart";
 import ProveedoresRanking from "./components/ProveedoresRanking";
 import StrategicSimulator from "./components/StrategicSimulator";
+import ProductGoalPlanner from "./components/ProductGoalPlanner";
 
 export type MesFilter = "q1" | "enero" | "febrero" | "marzo";
 
@@ -97,6 +98,9 @@ export default function Home() {
 
         {/* Strategic Simulator - Goal 40K */}
         <StrategicSimulator proveedores={proveedores} resumen={resumen} />
+
+        {/* Product Goal Planner */}
+        <ProductGoalPlanner proveedores={proveedores} />
 
         {/* Charts Row 1 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
