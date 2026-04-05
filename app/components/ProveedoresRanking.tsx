@@ -102,9 +102,11 @@ export default function ProveedoresRanking({
               backgroundColor: "#16213e",
               border: "1px solid rgba(249,115,22,0.3)",
               borderRadius: "12px",
-              color: "#e5e7eb",
+              color: "#F97316",
               fontSize: 12,
             }}
+            itemStyle={{ color: "#F97316" }}
+            labelStyle={{ color: "#e5e7eb" }}
             formatter={(value) => Number(value).toLocaleString()}
           />
           <Bar dataKey="Movilizadas" fill="#F97316" radius={[0, 6, 6, 0]} barSize={12} />

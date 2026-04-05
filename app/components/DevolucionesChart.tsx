@@ -67,8 +67,10 @@ export default function DevolucionesChart({ resumen, mesFilter }: { resumen: Res
               backgroundColor: "#16213e",
               border: "1px solid rgba(249,115,22,0.3)",
               borderRadius: "12px",
-              color: "#e5e7eb",
+              color: "#F97316",
             }}
+            itemStyle={{ color: "#F97316" }}
+            labelStyle={{ color: "#e5e7eb" }}
             formatter={(value) => `${value}%`}
           />
           <Area type="monotone" dataKey="% Entrega" stroke="#10B981" strokeWidth={2} fillOpacity={1} fill="url(#colorEntrega)" />

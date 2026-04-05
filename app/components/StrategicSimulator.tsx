@@ -208,9 +208,11 @@ export default function StrategicSimulator({
                 backgroundColor: "#16213e",
                 border: "1px solid rgba(249,115,22,0.3)",
                 borderRadius: "12px",
-                color: "#e5e7eb",
+                color: "#F97316",
                 fontSize: 12,
               }}
+              itemStyle={{ color: "#F97316" }}
+              labelStyle={{ color: "#e5e7eb" }}
               formatter={(value) => Number(value).toLocaleString()}
             />
             <ReferenceLine x={GOAL_MOVILIZADAS / 20} stroke="#10B981" strokeDasharray="3 3" label={{ value: "Meta promedio", fill: "#10B981", fontSize: 10 }} />

@@ -81,8 +81,10 @@ export default function ProjectionChart({ resumen }: { resumen: Resumen }) {
               backgroundColor: "#16213e",
               border: "1px solid rgba(249,115,22,0.3)",
               borderRadius: "12px",
-              color: "#e5e7eb",
+              color: "#F97316",
             }}
+            itemStyle={{ color: "#F97316" }}
+            labelStyle={{ color: "#e5e7eb" }}
             formatter={(value) => Number(value).toLocaleString()}
           />
           <Legend wrapperStyle={{ color: "#9ca3af", fontSize: 11 }} />
