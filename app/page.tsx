@@ -130,7 +130,7 @@ export default function Home() {
         {isAbril ? (
           <>
             {/* Daily Tracker */}
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} />
+            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
 
             {/* Dropshipper Manager */}
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} />
@@ -150,7 +150,7 @@ export default function Home() {
             <StrategicSimulator proveedores={proveedores} resumen={resumen} />
 
             {/* Daily Tracker */}
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} />
+            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
 
             {/* Dropshipper Manager */}
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} />

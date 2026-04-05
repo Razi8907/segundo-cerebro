@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import type { MesFilter } from "../page";
 import {
   BarChart,
   Bar,
@@ -44,15 +45,18 @@ export default function DailyTracker({
   marzoData,
   metaInfo,
   abrilRealData,
+  mesFilter,
 }: {
   marzoData: DailyData[];
   metaInfo: MetaInfo;
   abrilRealData?: DailyData[];
+  mesFilter: MesFilter;
 }) {
   const META_DIARIA = metaInfo.promedio_diario_necesario;
   const META_TOTAL = metaInfo.meta_ingresadas_abril;
+  const isAbril = mesFilter === "abril";
 
-  // Abril tracking state - initialize with real data from CSV if available
+  // Abril tracking state
   const [abrilData, setAbrilData] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>(
     () => (abrilRealData || []).map((d) => ({ fecha: d.fecha, ordenes: d.ordenes, dia_semana: d.dia_semana }))
   );
@@ -91,22 +95,9 @@ export default function DailyTracker({
     const diasCargados = abrilData.length;
     const diasRestantes = 30 - diasCargados;
     const promedioAbril = diasCargados > 0 ? abrilTotal / diasCargados : 0;
-
-    // Projection based on loaded days
     const proyeccionFinal = diasCargados > 0 ? Math.round(promedioAbril * 30) : 0;
     const pctMeta = diasCargados > 0 ? (proyeccionFinal / META_TOTAL) * 100 : 0;
-
-    // How much per day remaining to hit goal
     const necesarioPorDiaRestante = diasRestantes > 0 ? Math.round((META_TOTAL - abrilTotal) / diasRestantes) : 0;
-
-    // Color each day
-    const coloredMarzo = marzoData.map((d) => {
-      let color: "verde" | "amarillo" | "rojo";
-      if (d.ordenes >= META_DIARIA) color = "verde";
-      else if (d.ordenes >= META_DIARIA * 0.8) color = "amarillo";
-      else color = "rojo";
-      return { ...d, color };
-    });
 
     const coloredAbril = abrilData.map((d) => {
       let color: "verde" | "amarillo" | "rojo";
@@ -139,7 +130,6 @@ export default function DailyTracker({
       proyeccionFinal,
       pctMeta,
       necesarioPorDiaRestante,
-      coloredMarzo,
       coloredAbril,
       abrilProjected,
     };
@@ -147,29 +137,101 @@ export default function DailyTracker({
 
   const colorMap = { verde: "#10B981", amarillo: "#F59E0B", rojo: "#EF4444" };
 
-  const marzoChartData = analysis.coloredMarzo.map((d) => ({
+  const marzoChartData = marzoData.map((d) => ({
     name: `${d.fecha}`,
     Órdenes: d.ordenes,
-    color: colorMap[d.color],
     dia: d.dia_semana,
   }));
 
+  // ─── Q1 / Ene / Feb / Mar view: solo histórico, sin metas ───
+  if (!isAbril) {
+    return (
+      <div className="glass-card p-6 border-orange-500/30">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
+          📅 Seguimiento Diario &mdash; Histórico Q1
+        </h2>
+        <p className="text-xs text-gray-400 mb-6">
+          Órdenes ingresadas día a día &middot; Meses cerrados
+        </p>
+
+        {/* KPIs histórico */}
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">
+          <div className="rounded-xl p-3 border border-gray-700" style={{ background: "rgba(15,52,96,0.2)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Marzo Total</p>
+            <p className="text-lg font-bold text-gray-300">{metaInfo.marzo_total_ordenes.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500">31 días</p>
+          </div>
+          <div className="rounded-xl p-3 border border-gray-700" style={{ background: "rgba(15,52,96,0.2)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Promedio Diario</p>
+            <p className="text-lg font-bold text-orange-400">{metaInfo.marzo_promedio_diario.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500">órdenes/día</p>
+          </div>
+          <div className="rounded-xl p-3 border border-gray-700" style={{ background: "rgba(15,52,96,0.2)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Mejor Día</p>
+            <p className="text-lg font-bold text-green-400">
+              {Math.max(...marzoData.map((d) => d.ordenes)).toLocaleString()}
+            </p>
+            <p className="text-[10px] text-gray-500">máximo registrado</p>
+          </div>
+        </div>
+
+        {/* Marzo Chart */}
+        <div className="mb-6">
+          <h3 className="text-sm font-medium text-gray-300 mb-3">
+            Marzo 2026 &mdash; Día a día
+            <span className="text-[10px] text-gray-500 ml-2">
+              Total: {metaInfo.marzo_total_ordenes.toLocaleString()} &middot; Prom: {metaInfo.marzo_promedio_diario.toLocaleString()}/día
+            </span>
+          </h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={marzoChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+              <XAxis dataKey="name" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+              <Tooltip
+                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
+                itemStyle={{ color: "#F97316" }}
+                labelStyle={{ color: "#e5e7eb" }}
+                formatter={(value) => `${Number(value).toLocaleString()} órdenes`}
+              />
+              <ReferenceLine y={metaInfo.marzo_promedio_diario} stroke="#6B7280" strokeDasharray="4 4" label={{ value: `Prom: ${metaInfo.marzo_promedio_diario.toLocaleString()}`, fill: "#6B7280", fontSize: 10, position: "right" }} />
+              <Bar dataKey="Órdenes" radius={[4, 4, 0, 0]} fill="#F97316" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Day-of-week pattern */}
+        <div>
+          <h3 className="text-sm font-medium text-gray-300 mb-3">Patrón por Día de Semana (Marzo)</h3>
+          <div className="grid grid-cols-7 gap-2">
+            {["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"].map((dow) => {
+              const avg = analysis.dowAvg[dow] || 0;
+              return (
+                <div key={dow} className="text-center p-2 rounded-xl border border-gray-800" style={{ background: "rgba(15,52,96,0.15)" }}>
+                  <p className="text-[10px] text-gray-400">{dow.slice(0, 3)}</p>
+                  <p className="text-lg font-bold text-orange-400">{avg.toLocaleString()}</p>
+                  <p className="text-[10px] text-gray-500">prom/día</p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── ABRIL view: meta, semáforo, carga diaria, proyección ───
   return (
-    <div className="glass-card p-6 border-orange-500/30">
+    <div className="glass-card p-6 border-green-500/30">
       <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
-        📅 Seguimiento Diario &mdash; Meta Abril: {META_TOTAL.toLocaleString()} ingresadas
+        🎯 Seguimiento Diario &mdash; Meta Abril: {META_TOTAL.toLocaleString()} ingresadas
       </h2>
       <p className="text-xs text-gray-400 mb-6">
-        Histórico Marzo + Carga diaria de Abril &middot; Meta diaria: {META_DIARIA.toLocaleString()} órdenes
+        Carga diaria de Abril &middot; Meta diaria: {META_DIARIA.toLocaleString()} órdenes &middot; Objetivo: 40,000 movilizadas
       </p>
 
-      {/* KPIs row */}
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
-        <div className="rounded-xl p-3 border border-gray-700" style={{ background: "rgba(15,52,96,0.2)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Marzo Total</p>
-          <p className="text-lg font-bold text-gray-300">{metaInfo.marzo_total_ordenes.toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">Prom: {metaInfo.marzo_promedio_diario.toLocaleString()}/día</p>
-        </div>
+      {/* KPIs row - solo Abril */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Meta Diaria</p>
           <p className="text-lg font-bold text-orange-400">{META_DIARIA.toLocaleString()}</p>
@@ -195,7 +257,7 @@ export default function DailyTracker({
           <p className="text-[10px] text-gray-500">{analysis.diasRestantes} días restantes</p>
         </div>
         <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Gap vs Meta</p>
+          <p className="text-[10px] text-gray-400 uppercase">Gap vs Marzo</p>
           <p className="text-lg font-bold text-purple-400">
             +{(META_DIARIA - metaInfo.marzo_promedio_diario).toLocaleString()}
           </p>
@@ -204,8 +266,8 @@ export default function DailyTracker({
       </div>
 
       {/* Input form for Abril */}
-      <div className="mb-6 p-4 rounded-xl border border-orange-500/20" style={{ background: "rgba(249,115,22,0.03)" }}>
-        <h3 className="text-sm font-medium text-orange-400 mb-3">Cargar datos de Abril</h3>
+      <div className="mb-6 p-4 rounded-xl border border-green-500/20" style={{ background: "rgba(16,185,129,0.03)" }}>
+        <h3 className="text-sm font-medium text-green-400 mb-3">Cargar datos de Abril</h3>
         <div className="flex gap-3 items-end flex-wrap">
           <div>
             <label className="text-[10px] text-gray-400 block mb-1">Día (1-30)</label>
@@ -216,7 +278,7 @@ export default function DailyTracker({
               value={inputDay}
               onChange={(e) => setInputDay(e.target.value)}
               placeholder="Día"
-              className="w-20 text-sm px-3 py-2 rounded-lg bg-[#16213e] border border-orange-500/30 text-white focus:outline-none focus:border-orange-500"
+              className="w-20 text-sm px-3 py-2 rounded-lg bg-[#16213e] border border-green-500/30 text-white focus:outline-none focus:border-green-500"
             />
           </div>
           <div>
@@ -227,12 +289,12 @@ export default function DailyTracker({
               onChange={(e) => setInputOrdenes(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && addDay()}
               placeholder="Ej: 1500"
-              className="w-32 text-sm px-3 py-2 rounded-lg bg-[#16213e] border border-orange-500/30 text-white focus:outline-none focus:border-orange-500"
+              className="w-32 text-sm px-3 py-2 rounded-lg bg-[#16213e] border border-green-500/30 text-white focus:outline-none focus:border-green-500"
             />
           </div>
           <button
             onClick={addDay}
-            className="px-4 py-2 text-sm rounded-lg dropi-gradient text-white font-medium hover:opacity-90 transition-opacity"
+            className="px-4 py-2 text-sm rounded-lg bg-green-600 text-white font-medium hover:bg-green-500 transition-colors"
           >
             Agregar
           </button>
@@ -241,12 +303,12 @@ export default function DailyTracker({
               onClick={() => setAbrilData([])}
               className="px-3 py-2 text-xs rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10"
             >
-              Limpiar Abril
+              Limpiar
             </button>
           )}
         </div>
 
-        {/* Abril loaded days */}
+        {/* Abril loaded days with semaphore */}
         {abrilData.length > 0 && (
           <div className="flex gap-2 mt-3 flex-wrap">
             {analysis.coloredAbril.map((d) => (
@@ -269,31 +331,6 @@ export default function DailyTracker({
         )}
       </div>
 
-      {/* Marzo Chart - mes cerrado, sin meta */}
-      <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">
-          Histórico Marzo 2026 &mdash; Día a día
-          <span className="text-[10px] text-gray-500 ml-2">
-            Total: {metaInfo.marzo_total_ordenes.toLocaleString()} órdenes &middot; Prom: {metaInfo.marzo_promedio_diario.toLocaleString()}/día
-          </span>
-        </h3>
-        <ResponsiveContainer width="100%" height={280}>
-          <BarChart data={marzoChartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-            <XAxis dataKey="name" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-            <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
-            <Tooltip
-              contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
-              itemStyle={{ color: "#F97316" }}
-              labelStyle={{ color: "#e5e7eb" }}
-              formatter={(value) => `${Number(value).toLocaleString()} órdenes`}
-            />
-            <ReferenceLine y={metaInfo.marzo_promedio_diario} stroke="#6B7280" strokeDasharray="4 4" label={{ value: `Prom: ${metaInfo.marzo_promedio_diario.toLocaleString()}`, fill: "#6B7280", fontSize: 10, position: "right" }} />
-            <Bar dataKey="Órdenes" radius={[4, 4, 0, 0]} fill="#F97316" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
       {/* Abril projection chart with semaphore colors */}
       {abrilData.length > 0 && (
         <div className="mb-6">
@@ -304,23 +341,16 @@ export default function DailyTracker({
             </span>
           </h3>
           <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={analysis.abrilProjected.map((d) => {
-              const isReal = d.ordenes != null;
-              const realColor = isReal
-                ? d.ordenes! >= META_DIARIA ? "#10B981" : d.ordenes! >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444"
-                : "transparent";
-              return {
-                ...d,
-                real: d.ordenes,
-                necesario: isReal ? null : analysis.necesarioPorDiaRestante,
-                realColor,
-              };
-            })}>
+            <ComposedChart data={analysis.abrilProjected.map((d) => ({
+              ...d,
+              real: d.ordenes,
+              necesario: d.ordenes != null ? null : analysis.necesarioPorDiaRestante,
+            }))}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="fecha" tick={{ fill: "#9ca3af", fontSize: 10 }} />
               <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
               <Tooltip
-                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 12 }}
+                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 12 }}
                 itemStyle={{ color: "#F97316" }}
                 labelStyle={{ color: "#e5e7eb" }}
                 formatter={(value, name) => {
@@ -337,23 +367,19 @@ export default function DailyTracker({
               {analysis.necesarioPorDiaRestante > 0 && analysis.necesarioPorDiaRestante !== META_DIARIA && (
                 <ReferenceLine y={analysis.necesarioPorDiaRestante} stroke="#8B5CF6" strokeDasharray="4 4" label={{ value: `Necesario: ${analysis.necesarioPorDiaRestante.toLocaleString()}`, fill: "#8B5CF6", fontSize: 10, position: "left" }} />
               )}
-              {/* Real data bars with semaphore colors */}
               <Bar dataKey="real" name="real" radius={[4, 4, 0, 0]} barSize={16}>
                 {analysis.abrilProjected.map((d, i) => {
-                  const isReal = d.ordenes != null;
-                  const color = isReal
-                    ? d.ordenes! >= META_DIARIA ? "#10B981" : d.ordenes! >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444"
+                  const color = d.ordenes != null
+                    ? d.ordenes >= META_DIARIA ? "#10B981" : d.ordenes >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444"
                     : "transparent";
                   return <Cell key={i} fill={color} />;
                 })}
               </Bar>
-              {/* Needed per day for remaining days */}
               <Bar dataKey="necesario" name="necesario" radius={[4, 4, 0, 0]} barSize={16} opacity={0.35}>
                 {analysis.abrilProjected.map((d, i) => (
                   <Cell key={i} fill={d.ordenes != null ? "transparent" : "#8B5CF6"} />
                 ))}
               </Bar>
-              {/* Trend line for projection */}
               <Line type="monotone" dataKey="proyectado" stroke="#6B7280" strokeWidth={1} strokeDasharray="6 3" dot={false} name="Proyección base" />
             </ComposedChart>
           </ResponsiveContainer>
@@ -382,6 +408,31 @@ export default function DailyTracker({
           </div>
         </div>
       )}
+
+      {/* Marzo reference chart */}
+      <div className="mb-6">
+        <h3 className="text-sm font-medium text-gray-300 mb-3">
+          Referencia Marzo 2026
+          <span className="text-[10px] text-gray-500 ml-2">
+            Total: {metaInfo.marzo_total_ordenes.toLocaleString()} &middot; Prom: {metaInfo.marzo_promedio_diario.toLocaleString()}/día
+          </span>
+        </h3>
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={marzoChartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+            <XAxis dataKey="name" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+            <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+            <Tooltip
+              contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
+              itemStyle={{ color: "#F97316" }}
+              labelStyle={{ color: "#e5e7eb" }}
+              formatter={(value) => `${Number(value).toLocaleString()} órdenes`}
+            />
+            <ReferenceLine y={metaInfo.marzo_promedio_diario} stroke="#6B7280" strokeDasharray="4 4" label={{ value: `Prom: ${metaInfo.marzo_promedio_diario.toLocaleString()}`, fill: "#6B7280", fontSize: 10, position: "right" }} />
+            <Bar dataKey="Órdenes" radius={[4, 4, 0, 0]} fill="#F97316" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
 
       {/* Day-of-week pattern */}
       <div>
