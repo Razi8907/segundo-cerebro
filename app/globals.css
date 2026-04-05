@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --dropi-orange: #F97316;
+  --dropi-dark: #1a1a2e;
+  --dropi-card: #16213e;
+  --dropi-surface: #0f3460;
+  --background: #1a1a2e;
+  --foreground: #e5e7eb;
 }
 
 @theme inline {
@@ -12,15 +16,59 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--dropi-dark);
+  color: #e5e7eb;
+  font-family: 'Inter', system-ui, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+.glass-card {
+  background: rgba(22, 33, 62, 0.8);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(249, 115, 22, 0.15);
+  border-radius: 16px;
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(249, 115, 22, 0.35);
+  box-shadow: 0 0 20px rgba(249, 115, 22, 0.08);
+}
+
+.kpi-card {
+  background: linear-gradient(135deg, rgba(22, 33, 62, 0.9) 0%, rgba(15, 52, 96, 0.6) 100%);
+  border: 1px solid rgba(249, 115, 22, 0.2);
+  border-radius: 16px;
+  padding: 1.5rem;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #FB923C, #F97316, #EA580C);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dropi-gradient {
+  background: linear-gradient(135deg, #F97316 0%, #EA580C 50%, #C2410C 100%);
+}
+
+.table-container {
+  scrollbar-width: thin;
+  scrollbar-color: #F97316 #1a1a2e;
+}
+
+.table-container::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: #1a1a2e;
+  border-radius: 3px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: #F97316;
+  border-radius: 3px;
 }

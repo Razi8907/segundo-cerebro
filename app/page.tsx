@@ -1,64 +1,83 @@
-import Image from "next/image";
+"use client";
+
+import data from "../data/dashboard_data.json";
+import KPICards from "./components/KPICards";
+import TrendChart from "./components/TrendChart";
+import ProveedoresTable from "./components/ProveedoresTable";
+import SellersTable from "./components/SellersTable";
+import ProjectionChart from "./components/ProjectionChart";
+import DevolucionesChart from "./components/DevolucionesChart";
+import EfficiencyChart from "./components/EfficiencyChart";
 
 export default function Home() {
+  const { resumen, proveedores, sellers_top } = data;
+
+  const totalQ1Ingresadas =
+    resumen.enero.ingresadas + resumen.febrero.ingresadas + resumen.marzo.ingresadas;
+  const totalQ1Movilizadas =
+    resumen.enero.movilizadas + resumen.febrero.movilizadas + resumen.marzo.movilizadas;
+  const totalQ1Entregados =
+    resumen.enero.entregados + resumen.febrero.entregados + resumen.marzo.entregados;
+  const totalQ1Devoluciones =
+    resumen.enero.devoluciones + resumen.febrero.devoluciones + resumen.marzo.devoluciones;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="min-h-screen" style={{ background: "#1a1a2e" }}>
+      {/* Header */}
+      <header className="sticky top-0 z-50 backdrop-blur-md border-b border-orange-500/20" style={{ background: "rgba(26,26,46,0.9)" }}>
+        <div className="max-w-[1600px] mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl dropi-gradient flex items-center justify-center font-bold text-white text-lg">
+              D
+            </div>
+            <div>
+              <h1 className="text-xl font-bold gradient-text">Dropi Paraguay</h1>
+              <p className="text-xs text-gray-400">Dashboard Operativo Q1 2026</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className="text-xs px-3 py-1.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">
+              Enero - Marzo 2026
+            </span>
+            <span className="text-xs px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+              {resumen.total_proveedores} Proveedores
+            </span>
+            <span className="text-xs px-3 py-1.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              {resumen.total_sellers.toLocaleString()} Sellers
+            </span>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-[1600px] mx-auto px-6 py-8 space-y-8">
+        {/* KPI Cards */}
+        <KPICards
+          ingresadas={totalQ1Ingresadas}
+          movilizadas={totalQ1Movilizadas}
+          entregados={totalQ1Entregados}
+          devoluciones={totalQ1Devoluciones}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+
+        {/* Charts Row 1 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <TrendChart resumen={resumen} />
+          <DevolucionesChart resumen={resumen} />
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Charts Row 2 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <ProjectionChart resumen={resumen} />
+          <EfficiencyChart resumen={resumen} />
         </div>
+
+        {/* Tables */}
+        <ProveedoresTable proveedores={proveedores} />
+        <SellersTable sellers={sellers_top} />
+
+        {/* Footer */}
+        <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
+          Dropi Paraguay - Segundo Cerebro Dashboard - Datos Q1 2026
+        </footer>
       </main>
     </div>
   );
