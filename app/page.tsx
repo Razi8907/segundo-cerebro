@@ -133,10 +133,10 @@ export default function Home() {
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
 
             {/* Dropshipper Manager */}
-            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} />
+            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
 
             {/* Products Analysis */}
-            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} />
+            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
 
             {/* Strategic Simulator */}
             <StrategicSimulator proveedores={proveedores} resumen={resumen} />
@@ -146,20 +146,14 @@ export default function Home() {
           </>
         ) : (
           <>
-            {/* Strategic Simulator - Goal 40K */}
-            <StrategicSimulator proveedores={proveedores} resumen={resumen} />
-
             {/* Daily Tracker */}
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
 
-            {/* Dropshipper Manager */}
-            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} />
+            {/* Dropshipper Manager - Q1 mode (no April goals) */}
+            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
 
-            {/* Products Analysis */}
-            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} />
-
-            {/* Product Goal Planner */}
-            <ProductGoalPlanner proveedores={proveedores} />
+            {/* Products Analysis - Q1 mode (no April stock goals) */}
+            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
 
             {/* Charts Row 1 */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

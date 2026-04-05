@@ -45,13 +45,18 @@ const TOP_PROVIDERS = [
   "BELOLARBELOLAR", "NaturalCaps", "DouglasGomez",
 ];
 
+import type { MesFilter } from "../page";
+
 export default function DropshipperManager({
   dropshippers,
   proveedores,
+  mesFilter = "abril",
 }: {
   dropshippers: Dropshipper[];
   proveedores: ProveedorData[];
+  mesFilter?: MesFilter;
 }) {
+  const isAbril = mesFilter === "abril";
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "escalar" | "reactivar" | "nuevos_provs" | "alto_dev">("all");
   const [selectedDS, setSelectedDS] = useState<string | null>(null);
@@ -175,17 +180,17 @@ export default function DropshipperManager({
   const chartData = analysis.scored.slice(0, 20).map((d) => ({
     name: d.email.split("@")[0].slice(0, 16),
     "Marzo Mov": d.marMov,
-    "Meta Abril": d.goalAbrilMov,
+    ...(isAbril ? { "Meta Abril": d.goalAbrilMov } : {}),
     category: d.category,
   }));
 
   return (
     <div className="glass-card p-6 border-orange-500/30">
       <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
-        👥 Gestión de Dropshippers &mdash; Plan de Seguimiento Abril
+        👥 Gestión de Dropshippers {isAbril ? "— Plan de Seguimiento Abril" : "— Rendimiento Q1"}
       </h2>
       <p className="text-xs text-gray-400 mb-6">
-        {dropshippers.length} dropshippers activos &middot; Seguimiento, proveedores y metas individuales
+        {dropshippers.length} dropshippers activos &middot; {isAbril ? "Seguimiento, proveedores y metas individuales" : "Análisis de rendimiento y categorización"}
       </p>
 
       {/* Summary */}
@@ -210,7 +215,7 @@ export default function DropshipperManager({
 
       {/* Chart */}
       <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Top 20 Dropshippers: Marzo vs Meta Abril</h3>
+        <h3 className="text-sm font-medium text-gray-300 mb-3">{isAbril ? "Top 20 Dropshippers: Marzo vs Meta Abril" : "Top 20 Dropshippers: Movilizaciones por Mes"}</h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartData} layout="vertical" margin={{ left: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
@@ -222,12 +227,14 @@ export default function DropshipperManager({
               labelStyle={{ color: "#e5e7eb" }}
               formatter={(value) => Number(value).toLocaleString()}
             />
-            <Bar dataKey="Marzo Mov" fill="#6B7280" radius={[0, 4, 4, 0]} barSize={10} />
-            <Bar dataKey="Meta Abril" radius={[0, 4, 4, 0]} barSize={10}>
-              {chartData.map((entry, i) => (
-                <Cell key={i} fill={catColors[entry.category]} />
-              ))}
-            </Bar>
+            <Bar dataKey="Marzo Mov" fill={isAbril ? "#6B7280" : "#F97316"} radius={[0, 4, 4, 0]} barSize={10} />
+            {isAbril && (
+              <Bar dataKey="Meta Abril" radius={[0, 4, 4, 0]} barSize={10}>
+                {chartData.map((entry, i) => (
+                  <Cell key={i} fill={catColors[entry.category]} />
+                ))}
+              </Bar>
+            )}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -271,24 +278,42 @@ export default function DropshipperManager({
             <h3 className="text-sm font-bold text-orange-400">{selected.email}</h3>
             <button onClick={() => setSelectedDS(null)} className="text-xs text-gray-500 hover:text-gray-300">Cerrar</button>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-            <div className="text-center">
-              <p className="text-[10px] text-gray-400">Meta Abril Mov</p>
-              <p className="text-lg font-bold text-orange-400">{selected.goalAbrilMov.toLocaleString()}</p>
+          {isAbril && (
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">Meta Abril Mov</p>
+                <p className="text-lg font-bold text-orange-400">{selected.goalAbrilMov.toLocaleString()}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">Meta Abril Ing</p>
+                <p className="text-lg font-bold text-blue-400">{selected.goalAbrilIng.toLocaleString()}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">Incremento necesario</p>
+                <p className={`text-lg font-bold ${selected.incrementNeeded > 50 ? "text-red-400" : "text-green-400"}`}>+{selected.incrementNeeded}%</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">% Meta total</p>
+                <p className="text-lg font-bold text-purple-400">{selected.share}%</p>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-[10px] text-gray-400">Meta Abril Ing</p>
-              <p className="text-lg font-bold text-blue-400">{selected.goalAbrilIng.toLocaleString()}</p>
+          )}
+          {!isAbril && (
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">Total Mov Q1</p>
+                <p className="text-lg font-bold text-orange-400">{selected.total.mov.toLocaleString()}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">% Entrega</p>
+                <p className="text-lg font-bold text-green-400">{selected.pct_ent}%</p>
+              </div>
+              <div className="text-center">
+                <p className="text-[10px] text-gray-400">% Devolución</p>
+                <p className={`text-lg font-bold ${selected.pct_dev > 30 ? "text-red-400" : "text-gray-300"}`}>{selected.pct_dev}%</p>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-[10px] text-gray-400">Incremento necesario</p>
-              <p className={`text-lg font-bold ${selected.incrementNeeded > 50 ? "text-red-400" : "text-green-400"}`}>+{selected.incrementNeeded}%</p>
-            </div>
-            <div className="text-center">
-              <p className="text-[10px] text-gray-400">% Meta total</p>
-              <p className="text-lg font-bold text-purple-400">{selected.share}%</p>
-            </div>
-          </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <div>
@@ -335,8 +360,8 @@ export default function DropshipperManager({
               <th className="text-right py-2 px-2 text-gray-400">Ene</th>
               <th className="text-right py-2 px-2 text-gray-400">Feb</th>
               <th className="text-right py-2 px-2 text-gray-400">Mar</th>
-              <th className="text-right py-2 px-2 text-orange-400 font-bold">Meta Abr</th>
-              <th className="text-right py-2 px-2 text-gray-400">Incr.</th>
+              {isAbril && <th className="text-right py-2 px-2 text-orange-400 font-bold">Meta Abr</th>}
+              {isAbril && <th className="text-right py-2 px-2 text-gray-400">Incr.</th>}
               <th className="text-right py-2 px-2 text-gray-400">% Ent</th>
               <th className="text-right py-2 px-2 text-gray-400">% Dev</th>
               <th className="text-right py-2 px-2 text-gray-400">Trend</th>
@@ -353,12 +378,14 @@ export default function DropshipperManager({
                 <td className="py-2 px-2 text-right text-gray-400">{d.ene.mov > 0 ? d.ene.mov.toLocaleString() : "—"}</td>
                 <td className="py-2 px-2 text-right text-gray-400">{d.feb.mov > 0 ? d.feb.mov.toLocaleString() : "—"}</td>
                 <td className="py-2 px-2 text-right text-blue-400">{d.marMov > 0 ? d.marMov.toLocaleString() : "—"}</td>
-                <td className="py-2 px-2 text-right text-orange-400 font-bold">{d.goalAbrilMov.toLocaleString()}</td>
-                <td className="py-2 px-2 text-right">
-                  <span className={d.incrementNeeded > 50 ? "text-red-400" : d.incrementNeeded > 20 ? "text-yellow-400" : "text-green-400"}>
-                    +{d.incrementNeeded}%
-                  </span>
-                </td>
+                {isAbril && <td className="py-2 px-2 text-right text-orange-400 font-bold">{d.goalAbrilMov.toLocaleString()}</td>}
+                {isAbril && (
+                  <td className="py-2 px-2 text-right">
+                    <span className={d.incrementNeeded > 50 ? "text-red-400" : d.incrementNeeded > 20 ? "text-yellow-400" : "text-green-400"}>
+                      +{d.incrementNeeded}%
+                    </span>
+                  </td>
+                )}
                 <td className="py-2 px-2 text-right text-green-400">{d.pct_ent}%</td>
                 <td className="py-2 px-2 text-right">
                   <span className={d.pct_dev > 30 ? "text-red-400 font-bold" : d.pct_dev > 20 ? "text-yellow-400" : "text-gray-400"}>{d.pct_dev}%</span>
@@ -389,8 +416,8 @@ export default function DropshipperManager({
         </table>
       </div>
 
-      {/* Bottom strategies */}
-      <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
+      {/* Bottom strategies - only for Abril */}
+      {isAbril && <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
         <h3 className="text-sm font-bold text-orange-400 mb-3">📋 Estrategia de Seguimiento por Categoría</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-gray-300">
           <div>
@@ -432,7 +459,7 @@ export default function DropshipperManager({
             </ul>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

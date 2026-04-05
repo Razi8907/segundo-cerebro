@@ -33,15 +33,20 @@ const COLORS = [
   "#84CC16", "#D946EF", "#FB7185", "#22D3EE", "#A3E635",
 ];
 
+import type { MesFilter } from "../page";
+
 export default function ProductsAnalysis({
   productos,
   proveedores,
   productosTotal,
+  mesFilter = "abril",
 }: {
   productos: Product[];
   proveedores: ProveedorData[];
   productosTotal: number;
+  mesFilter?: MesFilter;
 }) {
+  const isAbril = mesFilter === "abril";
   const [search, setSearch] = useState("");
   const [showCount, setShowCount] = useState(30);
 
@@ -107,7 +112,7 @@ export default function ProductsAnalysis({
       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            🏷️ Productos Más Vendidos Q1 &mdash; Stock Necesario Abril
+            🏷️ Productos Más Vendidos Q1 {isAbril ? "— Stock Necesario Abril" : ""}
           </h2>
           <p className="text-xs text-gray-400 mt-1">
             {productosTotal.toLocaleString()} productos &middot; {analysis.totalUnidades.toLocaleString()} unidades vendidas Q1
@@ -137,11 +142,13 @@ export default function ProductsAnalysis({
           <p className="text-lg font-bold text-purple-400">{(analysis.top50Share * 100).toFixed(1)}%</p>
           <p className="text-[10px] text-gray-500">del volumen total</p>
         </div>
-        <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Factor Crecimiento</p>
-          <p className="text-lg font-bold text-red-400">x{(META_INGRESADAS / (analysis.totalUnidades / 3)).toFixed(2)}</p>
-          <p className="text-[10px] text-gray-500">vs promedio Q1 mensual</p>
-        </div>
+        {isAbril && (
+          <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Factor Crecimiento</p>
+            <p className="text-lg font-bold text-red-400">x{(META_INGRESADAS / (analysis.totalUnidades / 3)).toFixed(2)}</p>
+            <p className="text-[10px] text-gray-500">vs promedio Q1 mensual</p>
+          </div>
+        )}
       </div>
 
       {/* Charts */}
@@ -176,7 +183,7 @@ export default function ProductsAnalysis({
 
         {/* Bar: Q1 monthly vs April goal */}
         <div>
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Top 15: Stock Mensual Q1 vs Meta Abril</h3>
+          <h3 className="text-sm font-medium text-gray-300 mb-3">{isAbril ? "Top 15: Stock Mensual Q1 vs Meta Abril" : "Top 15: Volumen Mensual Promedio Q1"}</h3>
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={barData} layout="vertical" margin={{ left: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
@@ -188,8 +195,8 @@ export default function ProductsAnalysis({
                 labelStyle={{ color: "#e5e7eb" }}
                 formatter={(value) => Number(value).toLocaleString()}
               />
-              <Bar dataKey="Q1 Mensual" fill="#6B7280" radius={[0, 4, 4, 0]} barSize={10} />
-              <Bar dataKey="Meta Abril" fill="#F97316" radius={[0, 4, 4, 0]} barSize={10} />
+              <Bar dataKey="Q1 Mensual" fill="#F97316" radius={[0, 4, 4, 0]} barSize={10} />
+              {isAbril && <Bar dataKey="Meta Abril" fill="#10B981" radius={[0, 4, 4, 0]} barSize={10} />}
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -197,7 +204,7 @@ export default function ProductsAnalysis({
 
       {/* Products table */}
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-gray-300">Listado de Productos &mdash; Stock Necesario para Abril</h3>
+        <h3 className="text-sm font-medium text-gray-300">{isAbril ? "Listado de Productos — Stock Necesario para Abril" : "Listado de Productos — Rendimiento Q1"}</h3>
         <input
           type="text"
           placeholder="Buscar producto..."
@@ -215,8 +222,8 @@ export default function ProductsAnalysis({
               <th className="text-right py-2 px-2 text-gray-400">Vendidos Q1</th>
               <th className="text-right py-2 px-2 text-gray-400">% Total</th>
               <th className="text-right py-2 px-2 text-gray-400">Prom/Mes Q1</th>
-              <th className="text-right py-2 px-2 text-orange-400 font-bold">Stock Meta Abril</th>
-              <th className="text-right py-2 px-2 text-gray-400">Incremento</th>
+              {isAbril && <th className="text-right py-2 px-2 text-orange-400 font-bold">Stock Meta Abril</th>}
+              {isAbril && <th className="text-right py-2 px-2 text-gray-400">Incremento</th>}
               <th className="text-center py-2 px-2 text-gray-400">Prioridad</th>
             </tr>
           </thead>
@@ -231,12 +238,14 @@ export default function ProductsAnalysis({
                   <td className="py-2 px-2 text-right text-gray-300">{p.cantidad.toLocaleString()}</td>
                   <td className="py-2 px-2 text-right text-gray-400">{(p.share * 100).toFixed(2)}%</td>
                   <td className="py-2 px-2 text-right text-blue-400">{p.stockQ1Monthly.toLocaleString()}</td>
-                  <td className="py-2 px-2 text-right text-orange-400 font-bold">{p.stockNeededAbril.toLocaleString()}</td>
-                  <td className="py-2 px-2 text-right">
-                    <span className={p.increment > 50 ? "text-red-400" : "text-green-400"}>
-                      +{p.increment}%
-                    </span>
-                  </td>
+                  {isAbril && <td className="py-2 px-2 text-right text-orange-400 font-bold">{p.stockNeededAbril.toLocaleString()}</td>}
+                  {isAbril && (
+                    <td className="py-2 px-2 text-right">
+                      <span className={p.increment > 50 ? "text-red-400" : "text-green-400"}>
+                        +{p.increment}%
+                      </span>
+                    </td>
+                  )}
                   <td className={`py-2 px-2 text-center text-[10px] font-medium ${prioColor}`}>{prioridad}</td>
                 </tr>
               );
@@ -253,8 +262,8 @@ export default function ProductsAnalysis({
         </button>
       )}
 
-      {/* Dropshipper + Product recommendations */}
-      <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
+      {/* Dropshipper + Product recommendations - only for Abril */}
+      {isAbril && <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
         <h3 className="text-sm font-bold text-orange-400 mb-3">🎯 Recomendaciones: Productos + Dropshippers para Abril</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <div>
@@ -304,7 +313,7 @@ export default function ProductsAnalysis({
             </ul>
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }
