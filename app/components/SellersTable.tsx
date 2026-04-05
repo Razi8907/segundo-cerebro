@@ -12,7 +12,7 @@ interface Seller {
 }
 
 function getSellerData(s: Seller, mes: MesFilter) {
-  if (mes === "q1") return s.total;
+  if (mes === "q1" || mes === "abril") return s.total;
   return s[mes];
 }
 

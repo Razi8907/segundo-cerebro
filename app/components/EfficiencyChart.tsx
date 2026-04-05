@@ -17,7 +17,7 @@ interface Resumen {
 export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resumen; mesFilter: MesFilter }) {
   let totalIng: number, totalMov: number, totalEnt: number, totalDev: number;
 
-  if (mesFilter === "q1") {
+  if (mesFilter === "q1" || mesFilter === "abril") {
     totalIng = resumen.enero.ingresadas + resumen.febrero.ingresadas + resumen.marzo.ingresadas;
     totalMov = resumen.enero.movilizadas + resumen.febrero.movilizadas + resumen.marzo.movilizadas;
     totalEnt = resumen.enero.entregados + resumen.febrero.entregados + resumen.marzo.entregados;

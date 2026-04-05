@@ -26,7 +26,7 @@ export default function TrendChart({ resumen, mesFilter }: { resumen: Resumen; m
     { mes: "Marzo", Ingresadas: resumen.marzo.ingresadas, Movilizadas: resumen.marzo.movilizadas, Entregados: resumen.marzo.entregados },
   ];
 
-  const chartData = mesFilter === "q1"
+  const chartData = (mesFilter === "q1" || mesFilter === "abril")
     ? allData
     : allData.filter((d) => d.mes.toLowerCase() === mesFilter);
 

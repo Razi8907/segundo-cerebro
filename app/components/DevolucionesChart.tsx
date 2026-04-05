@@ -39,7 +39,7 @@ export default function DevolucionesChart({ resumen, mesFilter }: { resumen: Res
     },
   ];
 
-  const chartData = mesFilter === "q1"
+  const chartData = (mesFilter === "q1" || mesFilter === "abril")
     ? allData
     : allData.filter((d) => d.mes.toLowerCase() === mesFilter);
 
