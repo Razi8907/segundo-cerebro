@@ -25,6 +25,7 @@ const allData = data as typeof data & {
   meta_info: any;
   dropshippers: any[];
   dropshippers_total: number;
+  seguimiento_abril: any[];
 };
 
 function getResumenByMes(mes: MesFilter) {
@@ -51,7 +52,7 @@ function getResumenByMes(mes: MesFilter) {
 
 export default function Home() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
-  const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers } = allData;
+  const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers, seguimiento_abril } = allData;
   const kpis = getResumenByMes(mesFilter);
 
   const mesLabels: Record<MesFilter, string> = {
@@ -129,7 +130,7 @@ export default function Home() {
         {isAbril ? (
           <>
             {/* Daily Tracker */}
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} />
+            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} />
 
             {/* Dropshipper Manager */}
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} />
@@ -149,7 +150,7 @@ export default function Home() {
             <StrategicSimulator proveedores={proveedores} resumen={resumen} />
 
             {/* Daily Tracker */}
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} />
+            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} />
 
             {/* Dropshipper Manager */}
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} />

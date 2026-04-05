@@ -43,15 +43,19 @@ const DIAS_SEMANA_ABRIL = [
 export default function DailyTracker({
   marzoData,
   metaInfo,
+  abrilRealData,
 }: {
   marzoData: DailyData[];
   metaInfo: MetaInfo;
+  abrilRealData?: DailyData[];
 }) {
   const META_DIARIA = metaInfo.promedio_diario_necesario;
   const META_TOTAL = metaInfo.meta_ingresadas_abril;
 
-  // Abril tracking state - initialize empty
-  const [abrilData, setAbrilData] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>([]);
+  // Abril tracking state - initialize with real data from CSV if available
+  const [abrilData, setAbrilData] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>(
+    () => (abrilRealData || []).map((d) => ({ fecha: d.fecha, ordenes: d.ordenes, dia_semana: d.dia_semana }))
+  );
   const [inputDay, setInputDay] = useState("");
   const [inputOrdenes, setInputOrdenes] = useState("");
 
