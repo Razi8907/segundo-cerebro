@@ -45,7 +45,7 @@ const TOP_PROVIDERS = [
   "BELOLARBELOLAR", "NaturalCaps", "DouglasGomez",
 ];
 
-import type { MesFilter } from "../page";
+import type { MesFilter } from "../types";
 
 export default function DropshipperManager({
   dropshippers,

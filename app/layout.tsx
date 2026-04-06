@@ -8,8 +8,8 @@ const geistSans = Geist({
 });
 
 export const metadata: Metadata = {
-  title: "Dropi Paraguay - Dashboard Q1 2026",
-  description: "Panel de control y análisis de operaciones Dropi Paraguay - Primer trimestre 2026",
+  title: "Dashboard de Seguimiento Country - Raziel Busto Domaniczky",
+  description: "Dashboard operativo Dropi - Paraguay y Argentina - Segundo Cerebro",
 };
 
 export default function RootLayout({

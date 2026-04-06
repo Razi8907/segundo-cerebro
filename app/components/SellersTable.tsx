@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { MesFilter } from "../page";
+import type { MesFilter } from "../types";
 
 interface Seller {
   email: string;

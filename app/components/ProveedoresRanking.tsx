@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import type { MesFilter } from "../page";
+import type { MesFilter } from "../types";
 import {
   BarChart,
   Bar,

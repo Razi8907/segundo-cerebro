@@ -1,6 +1,6 @@
 "use client";
 
-import type { MesFilter } from "../page";
+import type { MesFilter } from "../types";
 import {
   AreaChart,
   Area,

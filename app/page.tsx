@@ -1,186 +1,389 @@
 "use client";
 
-import { useState } from "react";
-import data from "../data/dashboard_data.json";
-import KPICards from "./components/KPICards";
-import TrendChart from "./components/TrendChart";
-import ProveedoresTable from "./components/ProveedoresTable";
-import SellersTable from "./components/SellersTable";
-import ProjectionChart from "./components/ProjectionChart";
-import DevolucionesChart from "./components/DevolucionesChart";
-import EfficiencyChart from "./components/EfficiencyChart";
-import ProveedoresRanking from "./components/ProveedoresRanking";
-import StrategicSimulator from "./components/StrategicSimulator";
-import ProductGoalPlanner from "./components/ProductGoalPlanner";
-import DailyTracker from "./components/DailyTracker";
-import ProductsAnalysis from "./components/ProductsAnalysis";
-import DropshipperManager from "./components/DropshipperManager";
-
-export type MesFilter = "q1" | "enero" | "febrero" | "marzo" | "abril";
-
-const allData = data as typeof data & {
-  seguimiento_diario: any[];
-  productos: any[];
-  productos_total: number;
-  meta_info: any;
-  dropshippers: any[];
-  dropshippers_total: number;
-  seguimiento_abril: any[];
-};
-
-function getResumenByMes(mes: MesFilter) {
-  const r = allData.resumen;
-  if (mes === "q1") {
-    return {
-      ingresadas: r.enero.ingresadas + r.febrero.ingresadas + r.marzo.ingresadas,
-      movilizadas: r.enero.movilizadas + r.febrero.movilizadas + r.marzo.movilizadas,
-      entregados: r.enero.entregados + r.febrero.entregados + r.marzo.entregados,
-      devoluciones: r.enero.devoluciones + r.febrero.devoluciones + r.marzo.devoluciones,
-    };
-  }
-  if (mes === "abril") {
-    // April targets / projections
-    return {
-      ingresadas: allData.meta_info.meta_ingresadas_abril,
-      movilizadas: allData.meta_info.meta_movilizadas_abril,
-      entregados: Math.round(allData.meta_info.meta_movilizadas_abril * 0.67), // based on Q1 avg
-      devoluciones: Math.round(allData.meta_info.meta_movilizadas_abril * 0.20),
-    };
-  }
-  return r[mes];
-}
+import Link from "next/link";
 
 export default function Home() {
-  const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
-  const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers, seguimiento_abril } = allData;
-  const kpis = getResumenByMes(mesFilter);
-
-  const mesLabels: Record<MesFilter, string> = {
-    q1: "Q1 2026 (Ene-Mar)",
-    enero: "Enero 2026",
-    febrero: "Febrero 2026",
-    marzo: "Marzo 2026",
-    abril: "Abril 2026 (Meta)",
-  };
-
-  const isAbril = mesFilter === "abril";
-
   return (
-    <div className="min-h-screen" style={{ background: "#1a1a2e" }}>
-      {/* Header */}
-      <header
-        className="sticky top-0 z-50 backdrop-blur-md border-b border-orange-500/20"
-        style={{ background: "rgba(26,26,46,0.95)" }}
-      >
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl dropi-gradient flex items-center justify-center font-bold text-white text-lg shrink-0">
-              D
-            </div>
-            <div>
-              <h1 className="text-xl font-bold gradient-text">Dropi Paraguay</h1>
-              <p className="text-xs text-gray-400">Dashboard Operativo &middot; Segundo Cerebro</p>
-            </div>
+    <div
+      style={{
+        fontFamily: "'DM Sans', sans-serif",
+        background: "#ffffff",
+        color: "#1a1a1a",
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {/* Google Fonts */}
+      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
+      <link
+        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap"
+        rel="stylesheet"
+      />
+
+      <div style={{ width: "100%", maxWidth: 640, padding: "2rem 1rem" }}>
+        {/* Hero */}
+        <div
+          style={{
+            position: "relative",
+            padding: "3.5rem 2rem 2.5rem",
+            textAlign: "center",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              position: "absolute",
+              inset: 0,
+              background: "linear-gradient(135deg, #d4001a08, #003f8a08)",
+              pointerEvents: "none",
+            }}
+          />
+
+          <div
+            style={{
+              fontSize: 11,
+              letterSpacing: "0.18em",
+              textTransform: "uppercase",
+              color: "#888",
+              fontWeight: 500,
+              marginBottom: "0.75rem",
+            }}
+          >
+            Regional Commercial Operations
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {(["q1", "enero", "febrero", "marzo", "abril"] as MesFilter[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMesFilter(m)}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
-                  mesFilter === m
-                    ? m === "abril"
-                      ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20"
-                      : "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
-                    : "bg-transparent text-gray-400 border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
-                }`}
+
+          {/* Flags */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              alignItems: "center",
+              gap: 0,
+              marginBottom: "2rem",
+            }}
+          >
+            {/* Paraguay flag */}
+            <div style={{ transform: "rotate(-4deg) translateX(16px)", zIndex: 1 }}>
+              <div
+                style={{
+                  width: 88,
+                  height: 58,
+                  borderRadius: 4,
+                  overflow: "hidden",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+                  display: "flex",
+                  flexDirection: "column",
+                  border: "0.5px solid rgba(0,0,0,0.1)",
+                }}
               >
-                {m === "q1" ? "Q1 Completo" : m === "abril" ? "🎯 Abril (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
-              </button>
-            ))}
-            <span className="text-xs px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 ml-2">
-              {resumen.total_proveedores} Proveedores
-            </span>
-            <span className="text-xs px-3 py-1.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
-              {resumen.total_sellers.toLocaleString()} Sellers
-            </span>
+                <div style={{ flex: 1, background: "#D52B1E" }} />
+                <div
+                  style={{
+                    flex: 1,
+                    background: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <span style={{ fontSize: 11, color: "#009B3A" }}>&#9733;</span>
+                </div>
+                <div style={{ flex: 1, background: "#0038A8" }} />
+              </div>
+            </div>
+
+            {/* Divider */}
+            <div
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: "#cccccc",
+                margin: "0 1.5rem",
+                flexShrink: 0,
+                zIndex: 2,
+              }}
+            />
+
+            {/* Argentina flag */}
+            <div style={{ transform: "rotate(4deg) translateX(-16px)", zIndex: 1 }}>
+              <div
+                style={{
+                  width: 88,
+                  height: 58,
+                  borderRadius: 4,
+                  overflow: "hidden",
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+                  display: "flex",
+                  flexDirection: "column",
+                  border: "0.5px solid rgba(0,0,0,0.1)",
+                }}
+              >
+                <div style={{ flex: 1, background: "#74ACDF" }} />
+                <div
+                  style={{
+                    flex: 1,
+                    background: "#FFFFFF",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 14 14">
+                    <circle cx="7" cy="7" r="3" fill="#F6B40E" />
+                    <g stroke="#F6B40E" strokeWidth="1">
+                      <line x1="7" y1="0" x2="7" y2="4" />
+                      <line x1="7" y1="10" x2="7" y2="14" />
+                      <line x1="0" y1="7" x2="4" y2="7" />
+                      <line x1="10" y1="7" x2="14" y2="7" />
+                      <line x1="2" y1="2" x2="4.8" y2="4.8" />
+                      <line x1="9.2" y1="9.2" x2="12" y2="12" />
+                      <line x1="12" y1="2" x2="9.2" y2="4.8" />
+                      <line x1="4.8" y1="9.2" x2="2" y2="12" />
+                    </g>
+                  </svg>
+                </div>
+                <div style={{ flex: 1, background: "#74ACDF" }} />
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              fontFamily: "'Playfair Display', serif",
+              fontSize: "clamp(1.6rem, 5vw, 2.4rem)",
+              fontWeight: 700,
+              color: "#1a1a1a",
+              lineHeight: 1.2,
+              marginBottom: "0.4rem",
+            }}
+          >
+            Dashboard de Seguimiento
+            <br />
+            Country
+          </div>
+          <div
+            style={{
+              fontSize: "1rem",
+              fontWeight: 300,
+              color: "#555",
+              letterSpacing: "0.06em",
+              marginBottom: "2rem",
+            }}
+          >
+            Raziel Busto Domaniczky
+          </div>
+
+          {/* Metrics */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: "2rem",
+            }}
+          >
+            <div
+              style={{
+                background: "#f5f5f3",
+                borderRadius: 8,
+                padding: "0.75rem 1.25rem",
+                minWidth: 100,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#999",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                }}
+              >
+                Paraguay
+              </div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 500, color: "#0038A8" }}>PY</div>
+            </div>
+            <div
+              style={{
+                background: "#f5f5f3",
+                borderRadius: 8,
+                padding: "0.75rem 1.25rem",
+                minWidth: 100,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#999",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                }}
+              >
+                Argentina
+              </div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 500, color: "#D52B1E" }}>AR</div>
+            </div>
+            <div
+              style={{
+                background: "#f5f5f3",
+                borderRadius: 8,
+                padding: "0.75rem 1.25rem",
+                minWidth: 100,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "#999",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: 4,
+                }}
+              >
+                Mercados
+              </div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 500, color: "#1a1a1a" }}>2</div>
+            </div>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {/* Period indicator */}
-        <div className="text-center">
-          <span className={`text-sm font-medium ${isAbril ? "text-green-400" : "text-orange-400"}`}>
-            {mesLabels[mesFilter]}
-            {isAbril && " — 40,000 movilizadas / 51,283 ingresadas"}
-          </span>
+        {/* Navigation Cards */}
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            justifyContent: "center",
+            flexWrap: "wrap",
+            padding: "0 1rem 2rem",
+          }}
+        >
+          <Link
+            href="/paraguay"
+            style={{
+              flex: "1 1 140px",
+              maxWidth: 180,
+              background: "#ffffff",
+              border: "0.5px solid #e0e0e0",
+              borderRadius: 12,
+              padding: "1rem",
+              cursor: "pointer",
+              textAlign: "left",
+              textDecoration: "none",
+              display: "block",
+              transition: "border-color 0.15s, background 0.15s",
+            }}
+            className="landing-card"
+          >
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 10,
+                fontSize: 13,
+                fontWeight: 500,
+                background: "#EEF2FF",
+                color: "#0038A8",
+              }}
+            >
+              PY
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>
+              Paraguay
+            </div>
+            <div style={{ fontSize: 11, color: "#999" }}>Seguimiento comercial</div>
+          </Link>
+
+          <Link
+            href="/argentina"
+            style={{
+              flex: "1 1 140px",
+              maxWidth: 180,
+              background: "#ffffff",
+              border: "0.5px solid #e0e0e0",
+              borderRadius: 12,
+              padding: "1rem",
+              cursor: "pointer",
+              textAlign: "left",
+              textDecoration: "none",
+              display: "block",
+              transition: "border-color 0.15s, background 0.15s",
+            }}
+            className="landing-card"
+          >
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: 10,
+                fontSize: 13,
+                fontWeight: 500,
+                background: "#FFF0F0",
+                color: "#D52B1E",
+              }}
+            >
+              AR
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>
+              Argentina
+            </div>
+            <div style={{ fontSize: 11, color: "#999" }}>Seguimiento comercial</div>
+          </Link>
         </div>
 
-        {/* KPI Cards */}
-        <KPICards
-          ingresadas={kpis.ingresadas}
-          movilizadas={kpis.movilizadas}
-          entregados={kpis.entregados}
-          devoluciones={kpis.devoluciones}
-          periodo={mesLabels[mesFilter]}
-        />
+        {/* Status bar */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 6,
+            fontSize: 11,
+            color: "#aaa",
+            paddingBottom: "1rem",
+          }}
+        >
+          <span
+            className="dot-live-landing"
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: "#3B6D11",
+            }}
+          />
+          <span>Activo &middot; Q2 2026</span>
+        </div>
+      </div>
 
-        {/* Show Abril-specific content when Abril is selected */}
-        {isAbril ? (
-          <>
-            {/* Daily Tracker */}
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
-
-            {/* Dropshipper Manager */}
-            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
-
-            {/* Products Analysis */}
-            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
-
-            {/* Strategic Simulator */}
-            <StrategicSimulator proveedores={proveedores} resumen={resumen} />
-
-            {/* Product Goal Planner */}
-            <ProductGoalPlanner proveedores={proveedores} />
-          </>
-        ) : (
-          <>
-            {/* Daily Tracker */}
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
-
-            {/* Dropshipper Manager - Q1 mode (no April goals) */}
-            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
-
-            {/* Products Analysis - Q1 mode (no April stock goals) */}
-            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
-
-            {/* Charts Row 1 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <TrendChart resumen={resumen} mesFilter={mesFilter} />
-              <DevolucionesChart resumen={resumen} mesFilter={mesFilter} />
-            </div>
-
-            {/* Charts Row 2 */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <ProjectionChart resumen={resumen} />
-              <EfficiencyChart resumen={resumen} mesFilter={mesFilter} />
-            </div>
-
-            {/* Proveedores Ranking (as products) */}
-            <ProveedoresRanking proveedores={proveedores} mesFilter={mesFilter} />
-
-            {/* Tables */}
-            <ProveedoresTable proveedores={proveedores} mesFilter={mesFilter} />
-            <SellersTable sellers={sellers_top} mesFilter={mesFilter} />
-          </>
-        )}
-
-        {/* Footer */}
-        <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
-          Dropi Paraguay &middot; Segundo Cerebro Dashboard &middot; Datos Q1 2026
-        </footer>
-      </main>
+      <style jsx>{`
+        .landing-card:hover {
+          border-color: #aaaaaa !important;
+          background: #f9f9f7 !important;
+        }
+        .dot-live-landing {
+          animation: pulse-landing 2s infinite;
+        }
+        @keyframes pulse-landing {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+      `}</style>
     </div>
   );
 }

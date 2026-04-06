@@ -33,7 +33,7 @@ const COLORS = [
   "#84CC16", "#D946EF", "#FB7185", "#22D3EE", "#A3E635",
 ];
 
-import type { MesFilter } from "../page";
+import type { MesFilter } from "../types";
 
 export default function ProductsAnalysis({
   productos,
