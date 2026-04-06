@@ -4,386 +4,158 @@ import Link from "next/link";
 
 export default function Home() {
   return (
-    <div
-      style={{
-        fontFamily: "'DM Sans', sans-serif",
-        background: "#ffffff",
-        color: "#1a1a1a",
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
-      {/* Google Fonts */}
-      {/* eslint-disable-next-line @next/next/no-page-custom-font */}
-      <link
-        href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=DM+Sans:wght@300;400;500&display=swap"
-        rel="stylesheet"
-      />
-
-      <div style={{ width: "100%", maxWidth: 640, padding: "2rem 1rem" }}>
-        {/* Hero */}
-        <div
-          style={{
-            position: "relative",
-            padding: "3.5rem 2rem 2.5rem",
-            textAlign: "center",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              background: "linear-gradient(135deg, #d4001a08, #003f8a08)",
-              pointerEvents: "none",
-            }}
-          />
-
-          <div
-            style={{
-              fontSize: 11,
-              letterSpacing: "0.18em",
-              textTransform: "uppercase",
-              color: "#888",
-              fontWeight: 500,
-              marginBottom: "0.75rem",
-            }}
-          >
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "#1a1a2e" }}>
+      <div className="w-full max-w-2xl py-12">
+        {/* Dropi Logo + Title */}
+        <div className="text-center mb-10">
+          <div className="w-16 h-16 rounded-2xl dropi-gradient flex items-center justify-center text-3xl font-bold text-white mx-auto mb-5 shadow-lg shadow-orange-500/20">
+            D
+          </div>
+          <p className="text-xs tracking-[0.2em] uppercase text-orange-400/70 font-medium mb-3">
             Regional Commercial Operations
-          </div>
-
-          {/* Flags */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 0,
-              marginBottom: "2rem",
-            }}
-          >
-            {/* Paraguay flag */}
-            <div style={{ transform: "rotate(-4deg) translateX(16px)", zIndex: 1 }}>
-              <div
-                style={{
-                  width: 88,
-                  height: 58,
-                  borderRadius: 4,
-                  overflow: "hidden",
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-                  display: "flex",
-                  flexDirection: "column",
-                  border: "0.5px solid rgba(0,0,0,0.1)",
-                }}
-              >
-                <div style={{ flex: 1, background: "#D52B1E" }} />
-                <div
-                  style={{
-                    flex: 1,
-                    background: "#FFFFFF",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <span style={{ fontSize: 11, color: "#009B3A" }}>&#9733;</span>
-                </div>
-                <div style={{ flex: 1, background: "#0038A8" }} />
-              </div>
-            </div>
-
-            {/* Divider */}
-            <div
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: "50%",
-                background: "#cccccc",
-                margin: "0 1.5rem",
-                flexShrink: 0,
-                zIndex: 2,
-              }}
-            />
-
-            {/* Argentina flag */}
-            <div style={{ transform: "rotate(4deg) translateX(-16px)", zIndex: 1 }}>
-              <div
-                style={{
-                  width: 88,
-                  height: 58,
-                  borderRadius: 4,
-                  overflow: "hidden",
-                  boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
-                  display: "flex",
-                  flexDirection: "column",
-                  border: "0.5px solid rgba(0,0,0,0.1)",
-                }}
-              >
-                <div style={{ flex: 1, background: "#74ACDF" }} />
-                <div
-                  style={{
-                    flex: 1,
-                    background: "#FFFFFF",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 14 14">
-                    <circle cx="7" cy="7" r="3" fill="#F6B40E" />
-                    <g stroke="#F6B40E" strokeWidth="1">
-                      <line x1="7" y1="0" x2="7" y2="4" />
-                      <line x1="7" y1="10" x2="7" y2="14" />
-                      <line x1="0" y1="7" x2="4" y2="7" />
-                      <line x1="10" y1="7" x2="14" y2="7" />
-                      <line x1="2" y1="2" x2="4.8" y2="4.8" />
-                      <line x1="9.2" y1="9.2" x2="12" y2="12" />
-                      <line x1="12" y1="2" x2="9.2" y2="4.8" />
-                      <line x1="4.8" y1="9.2" x2="2" y2="12" />
-                    </g>
-                  </svg>
-                </div>
-                <div style={{ flex: 1, background: "#74ACDF" }} />
-              </div>
-            </div>
-          </div>
-
-          <div
-            style={{
-              fontFamily: "'Playfair Display', serif",
-              fontSize: "clamp(1.6rem, 5vw, 2.4rem)",
-              fontWeight: 700,
-              color: "#1a1a1a",
-              lineHeight: 1.2,
-              marginBottom: "0.4rem",
-            }}
-          >
+          </p>
+          <h1 className="text-3xl sm:text-4xl font-bold text-white leading-tight mb-2">
             Dashboard de Seguimiento
             <br />
-            Country
-          </div>
-          <div
-            style={{
-              fontSize: "1rem",
-              fontWeight: 300,
-              color: "#555",
-              letterSpacing: "0.06em",
-              marginBottom: "2rem",
-            }}
-          >
+            <span className="gradient-text">Country</span>
+          </h1>
+          <p className="text-base text-gray-400 font-light tracking-wide">
             Raziel Busto Domaniczky
-          </div>
+          </p>
+        </div>
 
-          {/* Metrics */}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginBottom: "2rem",
-            }}
-          >
-            <div
-              style={{
-                background: "#f5f5f3",
-                borderRadius: 8,
-                padding: "0.75rem 1.25rem",
-                minWidth: 100,
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#999",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  marginBottom: 4,
-                }}
-              >
-                Paraguay
-              </div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 500, color: "#0038A8" }}>PY</div>
+        {/* Flags Row */}
+        <div className="flex items-center justify-center gap-6 mb-10">
+          <div className="text-center">
+            <div className="text-6xl mb-1 drop-shadow-lg" style={{ filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))" }}>
+              &#127477;&#127486;
             </div>
-            <div
-              style={{
-                background: "#f5f5f3",
-                borderRadius: 8,
-                padding: "0.75rem 1.25rem",
-                minWidth: 100,
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#999",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  marginBottom: 4,
-                }}
-              >
-                Argentina
-              </div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 500, color: "#D52B1E" }}>AR</div>
+            <span className="text-[10px] text-gray-500 uppercase tracking-wider">Paraguay</span>
+          </div>
+          <div className="w-px h-12 bg-gray-700" />
+          <div className="text-center">
+            <div className="text-6xl mb-1 drop-shadow-lg" style={{ filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))" }}>
+              &#127462;&#127479;
             </div>
-            <div
-              style={{
-                background: "#f5f5f3",
-                borderRadius: 8,
-                padding: "0.75rem 1.25rem",
-                minWidth: 100,
-                textAlign: "center",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: 11,
-                  color: "#999",
-                  letterSpacing: "0.08em",
-                  textTransform: "uppercase",
-                  marginBottom: 4,
-                }}
-              >
-                Mercados
-              </div>
-              <div style={{ fontSize: "1.4rem", fontWeight: 500, color: "#1a1a1a" }}>2</div>
-            </div>
+            <span className="text-[10px] text-gray-500 uppercase tracking-wider">Argentina</span>
           </div>
         </div>
 
-        {/* Navigation Cards */}
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            justifyContent: "center",
-            flexWrap: "wrap",
-            padding: "0 1rem 2rem",
-          }}
-        >
+        {/* Metrics */}
+        <div className="flex justify-center gap-3 mb-10 flex-wrap">
+          <div className="rounded-xl px-5 py-3 text-center border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Mercados</p>
+            <p className="text-2xl font-bold text-orange-400">2</p>
+          </div>
+          <div className="rounded-xl px-5 py-3 text-center border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Proveedores</p>
+            <p className="text-2xl font-bold text-blue-400">270</p>
+          </div>
+          <div className="rounded-xl px-5 py-3 text-center border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Dropshippers</p>
+            <p className="text-2xl font-bold text-green-400">611</p>
+          </div>
+          <div className="rounded-xl px-5 py-3 text-center border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
+            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Periodo</p>
+            <p className="text-2xl font-bold text-purple-400">Q2</p>
+          </div>
+        </div>
+
+        {/* Country Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
+          {/* Paraguay */}
           <Link
             href="/paraguay"
-            style={{
-              flex: "1 1 140px",
-              maxWidth: 180,
-              background: "#ffffff",
-              border: "0.5px solid #e0e0e0",
-              borderRadius: 12,
-              padding: "1rem",
-              cursor: "pointer",
-              textAlign: "left",
-              textDecoration: "none",
-              display: "block",
-              transition: "border-color 0.15s, background 0.15s",
-            }}
-            className="landing-card"
+            className="group relative rounded-2xl p-6 border border-orange-500/20 transition-all hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/10 overflow-hidden"
+            style={{ background: "rgba(22,33,62,0.8)" }}
           >
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 10,
-                fontSize: 13,
-                fontWeight: 500,
-                background: "#EEF2FF",
-                color: "#0038A8",
-              }}
-            >
-              PY
+            <div className="absolute top-0 right-0 w-32 h-32 opacity-10 text-8xl leading-none" style={{ transform: "translate(10px, -10px)" }}>
+              &#127477;&#127486;
             </div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>
-              Paraguay
+            <div className="relative">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-4xl">&#127477;&#127486;</div>
+                <div>
+                  <h2 className="text-lg font-bold text-white group-hover:text-orange-400 transition-colors">Paraguay</h2>
+                  <p className="text-xs text-gray-500">Dropi PY</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(249,115,22,0.08)" }}>
+                  <p className="text-[10px] text-gray-500">Proveedores</p>
+                  <p className="text-sm font-bold text-orange-400">226</p>
+                </div>
+                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(249,115,22,0.08)" }}>
+                  <p className="text-[10px] text-gray-500">Dropshippers</p>
+                  <p className="text-sm font-bold text-orange-400">299</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                  Meta: 40K mov
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                  Q1 + Abril
+                </span>
+              </div>
+              <div className="mt-4 flex items-center text-xs text-gray-500 group-hover:text-orange-400 transition-colors">
+                Ir al dashboard
+                <svg className="ml-1 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: "#999" }}>Seguimiento comercial</div>
           </Link>
 
+          {/* Argentina */}
           <Link
             href="/argentina"
-            style={{
-              flex: "1 1 140px",
-              maxWidth: 180,
-              background: "#ffffff",
-              border: "0.5px solid #e0e0e0",
-              borderRadius: 12,
-              padding: "1rem",
-              cursor: "pointer",
-              textAlign: "left",
-              textDecoration: "none",
-              display: "block",
-              transition: "border-color 0.15s, background 0.15s",
-            }}
-            className="landing-card"
+            className="group relative rounded-2xl p-6 border border-sky-500/20 transition-all hover:border-sky-500/50 hover:shadow-lg hover:shadow-sky-500/10 overflow-hidden"
+            style={{ background: "rgba(22,33,62,0.8)" }}
           >
-            <div
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 8,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                marginBottom: 10,
-                fontSize: 13,
-                fontWeight: 500,
-                background: "#FFF0F0",
-                color: "#D52B1E",
-              }}
-            >
-              AR
+            <div className="absolute top-0 right-0 w-32 h-32 opacity-10 text-8xl leading-none" style={{ transform: "translate(10px, -10px)" }}>
+              &#127462;&#127479;
             </div>
-            <div style={{ fontSize: 13, fontWeight: 500, color: "#1a1a1a", marginBottom: 2 }}>
-              Argentina
+            <div className="relative">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="text-4xl">&#127462;&#127479;</div>
+                <div>
+                  <h2 className="text-lg font-bold text-white group-hover:text-sky-400 transition-colors">Argentina</h2>
+                  <p className="text-xs text-gray-500">Dropi AR</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(116,172,223,0.08)" }}>
+                  <p className="text-[10px] text-gray-500">Proveedores</p>
+                  <p className="text-sm font-bold text-sky-400">44</p>
+                </div>
+                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(116,172,223,0.08)" }}>
+                  <p className="text-[10px] text-gray-500">Dropshippers</p>
+                  <p className="text-sm font-bold text-sky-400">312</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                  Meta: 12K mov
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                  Q1 + Abril
+                </span>
+              </div>
+              <div className="mt-4 flex items-center text-xs text-gray-500 group-hover:text-sky-400 transition-colors">
+                Ir al dashboard
+                <svg className="ml-1 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: "#999" }}>Seguimiento comercial</div>
           </Link>
         </div>
 
-        {/* Status bar */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 6,
-            fontSize: 11,
-            color: "#aaa",
-            paddingBottom: "1rem",
-          }}
-        >
-          <span
-            className="dot-live-landing"
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: "50%",
-              background: "#3B6D11",
-            }}
-          />
+        {/* Status */}
+        <div className="flex items-center justify-center gap-2 text-xs text-gray-600">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
           <span>Activo &middot; Q2 2026</span>
+          <span className="mx-2 text-gray-700">|</span>
+          <span className="text-orange-500/50">Powered by Dropi</span>
         </div>
       </div>
-
-      <style jsx>{`
-        .landing-card:hover {
-          border-color: #aaaaaa !important;
-          background: #f9f9f7 !important;
-        }
-        .dot-live-landing {
-          animation: pulse-landing 2s infinite;
-        }
-        @keyframes pulse-landing {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
-      `}</style>
     </div>
   );
 }
