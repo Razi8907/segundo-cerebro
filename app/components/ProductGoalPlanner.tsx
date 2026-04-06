@@ -10,10 +10,8 @@ import {
   Tooltip,
   ResponsiveContainer,
   Cell,
-  ReferenceLine,
   PieChart,
   Pie,
-  Legend,
 } from "recharts";
 
 interface ProveedorData {
@@ -26,22 +24,16 @@ interface ProveedorData {
   growth_pct: number | null;
 }
 
-const GOAL_MOVILIZADAS = 40000;
-const TASA_MOVILIZACION = 0.78;
-const GOAL_INGRESADAS = Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION); // 51,283
-
 const COLORS = [
   "#F97316", "#3B82F6", "#10B981", "#EF4444", "#8B5CF6",
   "#EC4899", "#14B8A6", "#F59E0B", "#6366F1", "#06B6D4",
   "#84CC16", "#D946EF", "#FB7185", "#22D3EE", "#A3E635",
-  "#C084FC", "#FCD34D", "#34D399", "#F87171", "#60A5FA",
 ];
 
 export default function ProductGoalPlanner({ proveedores }: { proveedores: ProveedorData[] }) {
-  const [tab, setTab] = useState<"distribution" | "plan">("distribution");
+  const [tab, setTab] = useState<"plan" | "acciones">("plan");
 
   const analysis = useMemo(() => {
-    // Prepare provider data with trends
     const prepared = proveedores
       .map((p) => {
         const eneMov = p.enero.mov || 0;
@@ -55,149 +47,108 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
         const avgMov = q1Mov / 3;
         const avgIng = q1Ing / 3;
 
-        // Growth rate based on linear trend
+        // Monthly trend
         const movValues = [eneMov, febMov, marMov].filter((v) => v > 0);
-        let monthlyGrowthRate = 0;
+        let trend = 0;
         if (movValues.length >= 2) {
-          const first = movValues[0];
-          const last = movValues[movValues.length - 1];
-          monthlyGrowthRate = first > 0 ? (last - first) / first / (movValues.length - 1) : 0;
+          trend = movValues[0] > 0 ? (movValues[movValues.length - 1] - movValues[0]) / movValues[0] : 0;
         }
 
-        // Efficiency (movilizacion rate)
         const movRate = q1Ing > 0 ? q1Mov / q1Ing : 0;
         const devRate = q1Mov > 0 ? p.total.dev / q1Mov : 0;
         const entRate = q1Mov > 0 ? p.total.ent / q1Mov : 0;
 
-        // Projected April (organic growth from March)
-        const projAbrilMov = Math.round(marMov * (1 + Math.max(monthlyGrowthRate, 0)));
-        const projAbrilIng = Math.round(marIng * (1 + Math.max(monthlyGrowthRate, 0)));
+        // Realistic April projection: based on March + realistic growth cap
+        // Cap growth at 30% max over March for "realistic" projection
+        const realisticGrowth = Math.min(Math.max(trend * 0.4, 0), 0.30);
+        const projAbrilIng = Math.round(marIng * (1 + realisticGrowth));
+        const projAbrilMov = Math.round(marMov * (1 + realisticGrowth));
 
-        // Market share of March
-        const totalMarzoIng = proveedores.reduce((s, pp) => s + (pp.marzo.ing || 0), 0);
-        const shareMarzo = totalMarzoIng > 0 ? marIng / totalMarzoIng : 0;
+        // Stretch target: what if we push harder (extra sellers, better conversion)
+        const stretchGrowth = Math.min(Math.max(trend * 0.7, 0.05), 0.50);
+        const stretchAbrilIng = Math.round(marIng * (1 + stretchGrowth));
+        const stretchAbrilMov = Math.round(marMov * (1 + stretchGrowth));
+
+        // What can actually help this provider grow
+        const actions: string[] = [];
+        if (devRate > 0.3) actions.push("Reducir devoluciones (actualmente " + Math.round(devRate * 100) + "%)");
+        if (trend < 0) actions.push("Reactivar: en caida " + Math.round(trend * 100) + "% Q1");
+        if (p.sellers <= 3) actions.push("Reclutar mas sellers (solo tiene " + p.sellers + ")");
+        if (p.sellers > 3 && trend > 0.1) actions.push("Escalar sellers activos (tendencia +" + Math.round(trend * 100) + "%)");
+        if (movRate < 0.7) actions.push("Mejorar tasa movilizacion (" + Math.round(movRate * 100) + "% actual)");
+        if (entRate > 0.6 && devRate < 0.2) actions.push("Proveedor eficiente: ampliar catalogo");
+        if (actions.length === 0) actions.push("Mantener ritmo actual");
 
         return {
           ...p,
           eneMov, febMov, marMov, eneIng, febIng, marIng,
-          q1Mov, q1Ing, avgMov, avgIng,
-          monthlyGrowthRate,
-          movRate, devRate, entRate,
-          projAbrilMov, projAbrilIng,
-          shareMarzo,
+          q1Mov, q1Ing, avgMov: Math.round(avgMov), avgIng: Math.round(avgIng),
+          trend, movRate, devRate, entRate,
+          projAbrilIng, projAbrilMov,
+          stretchAbrilIng, stretchAbrilMov,
+          realisticGrowth, stretchGrowth,
+          actions,
         };
       })
       .filter((p) => p.q1Mov > 0)
       .sort((a, b) => b.marIng - a.marIng);
 
-    // === GOAL ALLOCATION ===
-    // Strategy: Distribute 51,283 based on March share + growth potential
-    const totalProjectedIng = prepared.reduce((s, p) => s + p.projAbrilIng, 0);
-    const gapIng = Math.max(0, GOAL_INGRESADAS - totalProjectedIng);
+    // Totals
+    const totalProjIng = prepared.reduce((s, p) => s + p.projAbrilIng, 0);
+    const totalProjMov = prepared.reduce((s, p) => s + p.projAbrilMov, 0);
+    const totalStretchIng = prepared.reduce((s, p) => s + p.stretchAbrilIng, 0);
+    const totalStretchMov = prepared.reduce((s, p) => s + p.stretchAbrilMov, 0);
+    const totalMarzoIng = prepared.reduce((s, p) => s + p.marIng, 0);
+    const totalMarzoMov = prepared.reduce((s, p) => s + p.marMov, 0);
 
-    // Allocate goal proportionally using weighted score:
-    // - 50% based on March ingresadas (proven capacity)
-    // - 30% based on growth trend (momentum)
-    // - 20% based on efficiency (low dev, high mov rate)
-    const totalMarIng = prepared.reduce((s, p) => s + p.marIng, 0);
-    const maxGrowth = Math.max(...prepared.map((p) => p.monthlyGrowthRate), 0.01);
-
-    const withGoals = prepared.map((p) => {
-      const capacityScore = totalMarIng > 0 ? p.marIng / totalMarIng : 0;
-      const growthScore = maxGrowth > 0 ? Math.max(p.monthlyGrowthRate, 0) / maxGrowth : 0;
-      const efficiencyScore = p.movRate * (1 - p.devRate);
-      const weight = capacityScore * 0.5 + growthScore * 0.3 + efficiencyScore * 0.2;
-      return { ...p, weight };
-    });
-
-    const totalWeight = withGoals.reduce((s, p) => s + p.weight, 0);
-
-    const goalAllocated = withGoals.map((p) => {
-      const share = totalWeight > 0 ? p.weight / totalWeight : 0;
-      const goalIng = Math.round(GOAL_INGRESADAS * share);
-      const goalMov = Math.round(goalIng * TASA_MOVILIZACION);
-      const incrementVsMarzo = p.marIng > 0 ? ((goalIng - p.marIng) / p.marIng) * 100 : 0;
-      const extraNeeded = Math.max(0, goalIng - p.projAbrilIng);
-      const extraSellersNeeded = p.sellers > 0 && p.avgIng > 0
-        ? Math.ceil(extraNeeded / (p.avgIng / p.sellers))
-        : 0;
-
-      return {
-        ...p,
-        goalIng,
-        goalMov,
-        share,
-        incrementVsMarzo,
-        extraNeeded,
-        extraSellersNeeded,
-        feasibility: incrementVsMarzo <= 30 ? "alta" : incrementVsMarzo <= 60 ? "media" : "baja",
-      };
-    });
-
-    goalAllocated.sort((a, b) => b.goalIng - a.goalIng);
-
-    // Pie chart data for market distribution
-    const topForPie = goalAllocated.slice(0, 12);
-    const othersGoal = goalAllocated.slice(12).reduce((s, p) => s + p.goalIng, 0);
+    // Top 12 for pie
+    const topForPie = prepared.slice(0, 12);
+    const othersProjIng = prepared.slice(12).reduce((s, p) => s + p.projAbrilIng, 0);
     const pieData = [
       ...topForPie.map((p, i) => ({
-        name: p.proveedor.length > 20 ? p.proveedor.slice(0, 20) + "…" : p.proveedor,
-        value: p.goalIng,
+        name: p.proveedor.length > 18 ? p.proveedor.slice(0, 18) + "..." : p.proveedor,
+        value: p.projAbrilIng,
         fill: COLORS[i % COLORS.length],
       })),
-      ...(othersGoal > 0 ? [{ name: `Otros (${goalAllocated.length - 12})`, value: othersGoal, fill: "#4B5563" }] : []),
+      ...(othersProjIng > 0 ? [{ name: `Otros (${prepared.length - 12})`, value: othersProjIng, fill: "#4B5563" }] : []),
     ];
 
-    // Summary stats
-    const totalAllocated = goalAllocated.reduce((s, p) => s + p.goalIng, 0);
-    const highFeasibility = goalAllocated.filter((p) => p.feasibility === "alta" && p.goalIng > 100);
-    const medFeasibility = goalAllocated.filter((p) => p.feasibility === "media" && p.goalIng > 100);
-    const lowFeasibility = goalAllocated.filter((p) => p.feasibility === "baja" && p.goalIng > 100);
+    // Categories
+    const creciendo = prepared.filter((p) => p.trend > 0.1 && p.marMov > 50);
+    const estables = prepared.filter((p) => p.trend >= -0.1 && p.trend <= 0.1 && p.marMov > 20);
+    const cayendo = prepared.filter((p) => p.trend < -0.1 && p.q1Mov > 100);
+    const altoDev = prepared.filter((p) => p.devRate > 0.3 && p.marMov > 20);
 
     return {
-      goalAllocated,
+      prepared,
+      totalProjIng, totalProjMov,
+      totalStretchIng, totalStretchMov,
+      totalMarzoIng, totalMarzoMov,
       pieData,
-      totalAllocated,
-      totalProjectedIng,
-      gapIng,
-      highFeasibility,
-      medFeasibility,
-      lowFeasibility,
+      creciendo, estables, cayendo, altoDev,
     };
   }, [proveedores]);
 
-  const barData = analysis.goalAllocated.slice(0, 20).map((p) => ({
-    name: p.proveedor.length > 16 ? p.proveedor.slice(0, 16) + "…" : p.proveedor,
-    "Marzo Real": p.marIng,
-    "Meta Abril": p.goalIng,
-    feasibility: p.feasibility,
+  const barData = analysis.prepared.slice(0, 20).map((p) => ({
+    name: p.proveedor.length > 14 ? p.proveedor.slice(0, 14) + "..." : p.proveedor,
+    "Marzo": p.marIng,
+    "Proy. Realista": p.projAbrilIng,
+    "Proy. Stretch": p.stretchAbrilIng,
+    trend: p.trend,
   }));
-
-  const feasColors: Record<string, string> = { alta: "#10B981", media: "#F59E0B", baja: "#EF4444" };
 
   return (
     <div className="glass-card p-6 border-orange-500/30">
-      {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            📦 Productos (Proveedores) &mdash; Plan de Metas Abril
+            📦 Proveedores &mdash; Proyeccion Realista Abril
           </h2>
           <p className="text-xs text-gray-400 mt-1">
-            Distribución de {GOAL_INGRESADAS.toLocaleString()} órdenes ingresadas necesarias entre proveedores para alcanzar 40,000 movilizadas
+            Proyeccion basada en tendencia Q1 + acciones concretas por proveedor
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={() => setTab("distribution")}
-            className={`text-xs px-4 py-2 rounded-lg transition-all ${
-              tab === "distribution"
-                ? "bg-orange-500 text-white"
-                : "bg-transparent text-gray-400 border border-gray-700 hover:border-orange-500/40"
-            }`}
-          >
-            Distribución Actual
-          </button>
           <button
             onClick={() => setTab("plan")}
             className={`text-xs px-4 py-2 rounded-lg transition-all ${
@@ -206,48 +157,84 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                 : "bg-transparent text-gray-400 border border-gray-700 hover:border-orange-500/40"
             }`}
           >
-            Plan por Proveedor
+            Proyeccion
+          </button>
+          <button
+            onClick={() => setTab("acciones")}
+            className={`text-xs px-4 py-2 rounded-lg transition-all ${
+              tab === "acciones"
+                ? "bg-orange-500 text-white"
+                : "bg-transparent text-gray-400 border border-gray-700 hover:border-orange-500/40"
+            }`}
+          >
+            Acciones por Proveedor
           </button>
         </div>
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-        <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Meta Ingresadas</p>
-          <p className="text-xl font-bold text-orange-400">{GOAL_INGRESADAS.toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">→ 40,000 mov (78%)</p>
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
+        <div className="rounded-xl p-3 border border-gray-700" style={{ background: "rgba(15,52,96,0.2)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Marzo Real</p>
+          <p className="text-lg font-bold text-gray-300">{analysis.totalMarzoIng.toLocaleString()}</p>
+          <p className="text-[10px] text-gray-500">ingresadas</p>
         </div>
         <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Proy. Orgánica</p>
-          <p className="text-xl font-bold text-blue-400">{analysis.totalProjectedIng.toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">Por tendencia</p>
+          <p className="text-[10px] text-gray-400 uppercase">Proy. Realista</p>
+          <p className="text-lg font-bold text-blue-400">{analysis.totalProjIng.toLocaleString()}</p>
+          <p className="text-[10px] text-gray-500">{analysis.totalProjMov.toLocaleString()} mov</p>
+        </div>
+        <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Proy. Stretch</p>
+          <p className="text-lg font-bold text-orange-400">{analysis.totalStretchIng.toLocaleString()}</p>
+          <p className="text-[10px] text-gray-500">{analysis.totalStretchMov.toLocaleString()} mov</p>
         </div>
         <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Factibilidad Alta</p>
-          <p className="text-xl font-bold text-green-400">{analysis.highFeasibility.length}</p>
-          <p className="text-[10px] text-gray-500">Proveedores (&le;30% incr.)</p>
+          <p className="text-[10px] text-gray-400 uppercase">En Crecimiento</p>
+          <p className="text-lg font-bold text-green-400">{analysis.creciendo.length}</p>
+          <p className="text-[10px] text-gray-500">proveedores</p>
         </div>
         <div className="rounded-xl p-3 border border-yellow-500/20" style={{ background: "rgba(245,158,11,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Factibilidad Media</p>
-          <p className="text-xl font-bold text-yellow-400">{analysis.medFeasibility.length}</p>
-          <p className="text-[10px] text-gray-500">Proveedores (30-60%)</p>
+          <p className="text-[10px] text-gray-400 uppercase">En Caida</p>
+          <p className="text-lg font-bold text-yellow-400">{analysis.cayendo.length}</p>
+          <p className="text-[10px] text-gray-500">requieren accion</p>
         </div>
         <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Gap a cubrir</p>
-          <p className="text-xl font-bold text-red-400">{analysis.gapIng > 0 ? `+${analysis.gapIng.toLocaleString()}` : "Cubierto"}</p>
-          <p className="text-[10px] text-gray-500">Órdenes extra vs proy.</p>
+          <p className="text-[10px] text-gray-400 uppercase">Alta Devolucion</p>
+          <p className="text-lg font-bold text-red-400">{analysis.altoDev.length}</p>
+          <p className="text-[10px] text-gray-500">&gt;30% dev</p>
         </div>
       </div>
 
-      {tab === "distribution" ? (
+      {tab === "plan" ? (
         <>
-          {/* PIE CHART + BAR CHART */}
+          {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Pie: Goal distribution */}
+            {/* Bar chart */}
             <div>
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Distribución de Meta por Proveedor</h3>
-              <ResponsiveContainer width="100%" height={350}>
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Top 20: Marzo vs Proyecciones Abril</h3>
+              <ResponsiveContainer width="100%" height={380}>
+                <BarChart data={barData} layout="vertical" margin={{ left: 5 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+                  <XAxis type="number" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+                  <YAxis dataKey="name" type="category" tick={{ fill: "#9ca3af", fontSize: 9 }} width={120} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
+                    itemStyle={{ color: "#F97316" }}
+                    labelStyle={{ color: "#e5e7eb" }}
+                    formatter={(value) => Number(value).toLocaleString()}
+                  />
+                  <Bar dataKey="Marzo" fill="#6B7280" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar dataKey="Proy. Realista" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar dataKey="Proy. Stretch" fill="#F97316" radius={[0, 4, 4, 0]} barSize={8} opacity={0.5} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Pie chart */}
+            <div>
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Distribucion Proyectada Abril (Realista)</h3>
+              <ResponsiveContainer width="100%" height={380}>
                 <PieChart>
                   <Pie
                     data={analysis.pieData}
@@ -261,123 +248,76 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                     label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                     labelLine={{ stroke: "#6B7280" }}
                   >
-                    {analysis.pieData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    {analysis.pieData.map((entry, i) => (
+                      <Cell key={i} fill={entry.fill} />
                     ))}
                   </Pie>
                   <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#16213e",
-                      border: "1px solid rgba(249,115,22,0.3)",
-                      borderRadius: "12px",
-                      color: "#F97316",
-                    }}
+                    contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316" }}
                     itemStyle={{ color: "#F97316" }}
-                    labelStyle={{ color: "#e5e7eb" }}
-                    formatter={(value) => `${Number(value).toLocaleString()} órdenes`}
+                    formatter={(value) => `${Number(value).toLocaleString()} ord.`}
                   />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-
-            {/* Bar: March real vs April goal */}
-            <div>
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Top 20: Marzo Real vs Meta Abril (Ingresadas)</h3>
-              <ResponsiveContainer width="100%" height={350}>
-                <BarChart data={barData} layout="vertical" margin={{ left: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-                  <XAxis type="number" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-                  <YAxis dataKey="name" type="category" tick={{ fill: "#9ca3af", fontSize: 9 }} width={130} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#16213e",
-                      border: "1px solid rgba(249,115,22,0.3)",
-                      borderRadius: "12px",
-                      color: "#F97316",
-                    }}
-                    itemStyle={{ color: "#F97316" }}
-                    labelStyle={{ color: "#e5e7eb" }}
-                    formatter={(value) => Number(value).toLocaleString()}
-                  />
-                  <Bar dataKey="Marzo Real" fill="#6B7280" radius={[0, 4, 4, 0]} barSize={10} />
-                  <Bar dataKey="Meta Abril" radius={[0, 4, 4, 0]} barSize={10}>
-                    {barData.map((entry, i) => (
-                      <Cell key={`cell-${i}`} fill={feasColors[entry.feasibility]} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
           </div>
 
-          {/* Top products cards */}
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Top 12 Proveedores que más mueven el negocio</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-            {analysis.goalAllocated.slice(0, 12).map((p, i) => {
-              const pctOfGoal = ((p.goalIng / GOAL_INGRESADAS) * 100).toFixed(1);
+          {/* Provider cards */}
+          <h3 className="text-sm font-medium text-gray-300 mb-3">Top 12 Proveedores &mdash; Proyeccion y Palancas</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {analysis.prepared.slice(0, 12).map((p, i) => {
+              const crecPct = p.marIng > 0 ? Math.round(((p.projAbrilIng - p.marIng) / p.marIng) * 100) : 0;
+              const trendColor = p.trend > 0.1 ? "text-green-400" : p.trend < -0.1 ? "text-red-400" : "text-gray-400";
+              const trendLabel = p.trend > 0.1 ? "Creciendo" : p.trend < -0.1 ? "Cayendo" : "Estable";
               return (
                 <div
                   key={p.proveedor}
                   className="p-4 rounded-xl border border-gray-800/50 hover:border-orange-500/30 transition-all"
                   style={{ background: "rgba(15,52,96,0.2)" }}
                 >
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <div
-                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${
-                          i < 3 ? "dropi-gradient text-white" : "bg-gray-800 text-gray-400"
-                        }`}
-                      >
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold ${i < 3 ? "dropi-gradient text-white" : "bg-gray-800 text-gray-400"}`}>
                         {i + 1}
                       </div>
-                      <span className="text-sm font-medium text-white truncate max-w-[160px]">{p.proveedor}</span>
+                      <div>
+                        <span className="text-sm font-medium text-white truncate block max-w-[140px]">{p.proveedor}</span>
+                        <span className="text-[10px] text-gray-500">{p.sellers} sellers</span>
+                      </div>
                     </div>
-                    <span
-                      className={`text-[10px] px-2 py-0.5 rounded-full ${
-                        p.feasibility === "alta"
-                          ? "bg-green-500/10 text-green-400"
-                          : p.feasibility === "media"
-                          ? "bg-yellow-500/10 text-yellow-400"
-                          : "bg-red-500/10 text-red-400"
-                      }`}
-                    >
-                      {p.feasibility === "alta" ? "Alcanzable" : p.feasibility === "media" ? "Esfuerzo" : "Desafiante"}
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
+                      p.trend > 0.1 ? "bg-green-500/10 text-green-400 border-green-500/20" :
+                      p.trend < -0.1 ? "bg-red-500/10 text-red-400 border-red-500/20" :
+                      "bg-gray-500/10 text-gray-400 border-gray-500/20"
+                    }`}>
+                      {trendLabel}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="grid grid-cols-3 gap-2 text-center mb-3">
                     <div>
                       <p className="text-[10px] text-gray-500">Marzo</p>
                       <p className="text-sm font-bold text-gray-300">{p.marIng.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-500">Meta Abril</p>
-                      <p className="text-sm font-bold text-orange-400">{p.goalIng.toLocaleString()}</p>
+                      <p className="text-[10px] text-gray-500">Proy. Abr</p>
+                      <p className="text-sm font-bold text-blue-400">{p.projAbrilIng.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-500">Incremento</p>
-                      <p className={`text-sm font-bold ${p.incrementVsMarzo > 50 ? "text-red-400" : p.incrementVsMarzo > 20 ? "text-yellow-400" : "text-green-400"}`}>
-                        {p.incrementVsMarzo > 0 ? "+" : ""}{p.incrementVsMarzo.toFixed(0)}%
+                      <p className="text-[10px] text-gray-500">Crec.</p>
+                      <p className={`text-sm font-bold ${crecPct > 0 ? "text-green-400" : crecPct < 0 ? "text-red-400" : "text-gray-400"}`}>
+                        {crecPct > 0 ? "+" : ""}{crecPct}%
                       </p>
                     </div>
                   </div>
 
-                  <div className="mt-2 flex items-center justify-between text-[10px] text-gray-500">
-                    <span>{p.sellers} sellers activos</span>
-                    <span>{pctOfGoal}% de la meta total</span>
-                    <span>{(p.movRate * 100).toFixed(0)}% tasa mov.</span>
+                  {/* Progress bar */}
+                  <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden mb-2">
+                    <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.min((p.marIng / Math.max(p.projAbrilIng, 1)) * 100, 100)}%` }} />
                   </div>
 
-                  {/* Progress bar */}
-                  <div className="mt-2 h-1.5 rounded-full bg-gray-800 overflow-hidden">
-                    <div
-                      className="h-full rounded-full dropi-gradient"
-                      style={{ width: `${Math.min((p.marIng / p.goalIng) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <p className="text-[10px] text-gray-600 mt-0.5">
-                    {((p.marIng / p.goalIng) * 100).toFixed(0)}% ya alcanzado con nivel Marzo
-                  </p>
+                  {/* Key action */}
+                  <p className="text-[10px] text-orange-400">{p.actions[0]}</p>
                 </div>
               );
             })}
@@ -385,7 +325,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
         </>
       ) : (
         <>
-          {/* PLAN TABLE */}
+          {/* Actions table */}
           <div className="table-container overflow-x-auto max-h-[600px] overflow-y-auto">
             <table className="w-full text-xs">
               <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
@@ -393,55 +333,39 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                   <th className="text-left py-2 px-2 text-gray-400">#</th>
                   <th className="text-left py-2 px-2 text-gray-400">Proveedor</th>
                   <th className="text-right py-2 px-2 text-gray-400">Sellers</th>
-                  <th className="text-right py-2 px-2 text-gray-400">Ene Ing</th>
-                  <th className="text-right py-2 px-2 text-gray-400">Feb Ing</th>
-                  <th className="text-right py-2 px-2 text-gray-400">Mar Ing</th>
-                  <th className="text-right py-2 px-2 text-orange-400 font-bold">Meta Abr</th>
-                  <th className="text-right py-2 px-2 text-orange-400 font-bold">Meta Mov</th>
-                  <th className="text-right py-2 px-2 text-gray-400">Incr.</th>
-                  <th className="text-right py-2 px-2 text-gray-400">Extra Ing</th>
-                  <th className="text-right py-2 px-2 text-gray-400">+Sellers</th>
-                  <th className="text-right py-2 px-2 text-gray-400">% Mov</th>
+                  <th className="text-right py-2 px-2 text-gray-400">Ene</th>
+                  <th className="text-right py-2 px-2 text-gray-400">Feb</th>
+                  <th className="text-right py-2 px-2 text-gray-400">Mar</th>
+                  <th className="text-right py-2 px-2 text-gray-400">Tendencia</th>
+                  <th className="text-right py-2 px-2 text-blue-400 font-bold">Proy. Abr</th>
+                  <th className="text-right py-2 px-2 text-gray-400">% Ent</th>
                   <th className="text-right py-2 px-2 text-gray-400">% Dev</th>
-                  <th className="text-center py-2 px-2 text-gray-400">Viab.</th>
+                  <th className="text-left py-2 px-2 text-gray-400">Acciones</th>
                 </tr>
               </thead>
               <tbody>
-                {analysis.goalAllocated
-                  .filter((p) => p.goalIng >= 10)
-                  .map((p, i) => (
+                {analysis.prepared.filter((p) => p.marIng > 0).map((p, i) => (
                   <tr key={p.proveedor} className="border-b border-gray-800/40 hover:bg-orange-500/5">
                     <td className="py-2 px-2 text-gray-500">{i + 1}</td>
-                    <td className="py-2 px-2 text-white font-medium max-w-[180px] truncate">{p.proveedor}</td>
+                    <td className="py-2 px-2 text-white font-medium max-w-[160px] truncate">{p.proveedor}</td>
                     <td className="py-2 px-2 text-right text-gray-400">{p.sellers}</td>
-                    <td className="py-2 px-2 text-right text-gray-400">{p.eneIng > 0 ? p.eneIng.toLocaleString() : "—"}</td>
-                    <td className="py-2 px-2 text-right text-gray-400">{p.febIng > 0 ? p.febIng.toLocaleString() : "—"}</td>
-                    <td className="py-2 px-2 text-right text-blue-400">{p.marIng > 0 ? p.marIng.toLocaleString() : "—"}</td>
-                    <td className="py-2 px-2 text-right text-orange-400 font-bold">{p.goalIng.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right text-orange-300">{p.goalMov.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-gray-400">{p.eneIng > 0 ? p.eneIng.toLocaleString() : "-"}</td>
+                    <td className="py-2 px-2 text-right text-gray-400">{p.febIng > 0 ? p.febIng.toLocaleString() : "-"}</td>
+                    <td className="py-2 px-2 text-right text-gray-300 font-medium">{p.marIng.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right">
-                      <span className={p.incrementVsMarzo > 50 ? "text-red-400 font-bold" : p.incrementVsMarzo > 20 ? "text-yellow-400" : "text-green-400"}>
-                        {p.incrementVsMarzo > 0 ? "+" : ""}{p.incrementVsMarzo.toFixed(0)}%
+                      <span className={p.trend > 0.1 ? "text-green-400" : p.trend < -0.1 ? "text-red-400" : "text-gray-400"}>
+                        {p.trend > 0 ? "+" : ""}{Math.round(p.trend * 100)}%
                       </span>
                     </td>
-                    <td className="py-2 px-2 text-right text-gray-300">
-                      {p.extraNeeded > 0 ? `+${p.extraNeeded.toLocaleString()}` : "—"}
-                    </td>
-                    <td className="py-2 px-2 text-right text-gray-300">
-                      {p.extraSellersNeeded > 0 ? `+${p.extraSellersNeeded}` : "—"}
-                    </td>
-                    <td className="py-2 px-2 text-right text-gray-400">{(p.movRate * 100).toFixed(0)}%</td>
+                    <td className="py-2 px-2 text-right text-blue-400 font-bold">{p.projAbrilIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-green-400">{Math.round(p.entRate * 100)}%</td>
                     <td className="py-2 px-2 text-right">
-                      <span className={p.devRate > 0.3 ? "text-red-400" : p.devRate > 0.2 ? "text-yellow-400" : "text-gray-400"}>
-                        {(p.devRate * 100).toFixed(0)}%
+                      <span className={p.devRate > 0.3 ? "text-red-400 font-bold" : p.devRate > 0.2 ? "text-yellow-400" : "text-gray-400"}>
+                        {Math.round(p.devRate * 100)}%
                       </span>
                     </td>
-                    <td className="py-2 px-2 text-center">
-                      <span
-                        className={`inline-block w-2.5 h-2.5 rounded-full ${
-                          p.feasibility === "alta" ? "bg-green-400" : p.feasibility === "media" ? "bg-yellow-400" : "bg-red-400"
-                        }`}
-                      />
+                    <td className="py-2 px-2 text-left max-w-[200px]">
+                      <span className="text-[10px] text-orange-400">{p.actions[0]}</span>
                     </td>
                   </tr>
                 ))}
@@ -450,25 +374,36 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
           </div>
 
           {/* Legend */}
-          <div className="flex gap-4 mt-3 text-[10px] text-gray-500">
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" /> Alta viabilidad (&le;30% incremento)</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" /> Media (30-60%)</span>
-            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Baja (&gt;60%)</span>
-            <span>+Sellers = sellers adicionales estimados necesarios</span>
+          <div className="flex gap-4 mt-3 text-[10px] text-gray-500 flex-wrap">
+            <span>Proy. Abr = Marzo + crecimiento orgánico (max +30%)</span>
+            <span>Tendencia = cambio Ene→Mar</span>
           </div>
         </>
       )}
 
       {/* Bottom insight */}
       <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
-        <h3 className="text-sm font-bold text-orange-400 mb-2">📋 Resumen del Plan de Productos/Proveedores</h3>
+        <h3 className="text-sm font-bold text-orange-400 mb-2">Resumen de Crecimiento Abril</h3>
         <ul className="text-xs text-gray-300 space-y-1.5">
-          <li>• <strong>Meta:</strong> {GOAL_INGRESADAS.toLocaleString()} ingresadas &times; 78% = 40,000 movilizadas en Abril</li>
-          <li>• <strong>Top 5 proveedores</strong> ({analysis.goalAllocated.slice(0, 5).map((p) => p.proveedor).join(", ")}) deben aportar {analysis.goalAllocated.slice(0, 5).reduce((s, p) => s + p.goalIng, 0).toLocaleString()} ingresadas ({((analysis.goalAllocated.slice(0, 5).reduce((s, p) => s + p.goalIng, 0) / GOAL_INGRESADAS) * 100).toFixed(0)}% de la meta)</li>
-          <li>• <strong>{analysis.highFeasibility.length} proveedores</strong> pueden alcanzar su meta con crecimiento orgánico (&le;30% de incremento vs Marzo)</li>
-          <li>• <strong>{analysis.medFeasibility.length} proveedores</strong> necesitan esfuerzo adicional (campañas, nuevos sellers, mayor exposición)</li>
-          <li>• <strong>Acción clave:</strong> Enfocar reclutamiento de sellers en los proveedores con alta viabilidad y baja tasa de devolución para maximizar movilización efectiva</li>
-          <li>• <strong>Proveedores en crecimiento:</strong> {analysis.goalAllocated.filter((p) => p.monthlyGrowthRate > 0.2 && p.marIng > 200).slice(0, 5).map((p) => `${p.proveedor} (+${(p.monthlyGrowthRate * 100).toFixed(0)}%)`).join(", ") || "N/A"} — priorizar para escalar</li>
+          <li>
+            <strong>Proyeccion realista:</strong> {analysis.totalProjIng.toLocaleString()} ingresadas / {analysis.totalProjMov.toLocaleString()} movilizadas
+            {" "}({analysis.totalMarzoIng > 0 ? "+" + Math.round(((analysis.totalProjIng - analysis.totalMarzoIng) / analysis.totalMarzoIng) * 100) : 0}% vs Marzo)
+          </li>
+          <li>
+            <strong>Proyeccion stretch:</strong> {analysis.totalStretchIng.toLocaleString()} ingresadas / {analysis.totalStretchMov.toLocaleString()} movilizadas
+            {" "}(con acciones agresivas en top proveedores)
+          </li>
+          <li>
+            <strong>{analysis.creciendo.length} proveedores en crecimiento</strong> &mdash; escalar con mas sellers y catalogo
+          </li>
+          <li>
+            <strong>{analysis.cayendo.length} proveedores en caida</strong> &mdash; contacto directo para identificar causa y reactivar
+          </li>
+          {analysis.altoDev.length > 0 && (
+            <li>
+              <strong>{analysis.altoDev.length} con alta devolucion (&gt;30%)</strong> &mdash; reducir dev libera ordenes efectivas
+            </li>
+          )}
         </ul>
       </div>
     </div>
