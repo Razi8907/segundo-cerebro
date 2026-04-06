@@ -16,6 +16,7 @@ import ProductGoalPlanner from "../components/ProductGoalPlanner";
 import DailyTracker from "../components/DailyTracker";
 import ProductsAnalysis from "../components/ProductsAnalysis";
 import DropshipperManager from "../components/DropshipperManager";
+import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import type { MesFilter } from "../types";
 
 const allData = data as typeof data & {
@@ -131,6 +132,7 @@ export default function ArgentinaDashboard() {
 
         {isAbril ? (
           <>
+            <ArgentinaPlanAbril />
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
