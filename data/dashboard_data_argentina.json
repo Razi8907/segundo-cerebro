@@ -55,7 +55,8 @@
         "ent": 2665,
         "dev": 1263
       },
-      "growth_pct": -72
+      "growth_pct": -72,
+      "dropi_id": 340
     },
     {
       "proveedor": "MaicolPerez",
@@ -90,7 +91,8 @@
         "ent": 2593,
         "dev": 1040
       },
-      "growth_pct": -46
+      "growth_pct": -46,
+      "dropi_id": 264
     },
     {
       "proveedor": "MERXLaboratorio e Importaciones",
@@ -125,7 +127,8 @@
         "ent": 2037,
         "dev": 696
       },
-      "growth_pct": 125
+      "growth_pct": 125,
+      "dropi_id": 4639
     },
     {
       "proveedor": "MARIOGONZALEZ",
@@ -160,7 +163,8 @@
         "ent": 1275,
         "dev": 561
       },
-      "growth_pct": 46
+      "growth_pct": 46,
+      "dropi_id": 247
     },
     {
       "proveedor": "TIENDAOFERTAS",
@@ -195,7 +199,8 @@
         "ent": 1373,
         "dev": 577
       },
-      "growth_pct": 453
+      "growth_pct": 453,
+      "dropi_id": 1701
     },
     {
       "proveedor": "TN",
@@ -230,7 +235,8 @@
         "ent": 815,
         "dev": 391
       },
-      "growth_pct": -75
+      "growth_pct": -75,
+      "dropi_id": 1821
     },
     {
       "proveedor": "RaulGonzalez",
@@ -265,7 +271,8 @@
         "ent": 562,
         "dev": 319
       },
-      "growth_pct": 31
+      "growth_pct": 31,
+      "dropi_id": 345
     },
     {
       "proveedor": "ARGENTINAADMA",
@@ -300,7 +307,8 @@
         "ent": 358,
         "dev": 167
       },
-      "growth_pct": -14
+      "growth_pct": -14,
+      "dropi_id": 49
     },
     {
       "proveedor": "FLUENSTORE",
@@ -335,7 +343,8 @@
         "ent": 254,
         "dev": 259
       },
-      "growth_pct": -87
+      "growth_pct": -87,
+      "dropi_id": 63
     },
     {
       "proveedor": "MerxLaboratorio",
@@ -370,7 +379,8 @@
         "ent": 135,
         "dev": 93
       },
-      "growth_pct": 19800
+      "growth_pct": 19800,
+      "dropi_id": 15114
     },
     {
       "proveedor": "AlejandroSeijas",
@@ -405,7 +415,8 @@
         "ent": 345,
         "dev": 98
       },
-      "growth_pct": -18
+      "growth_pct": -18,
+      "dropi_id": 61
     },
     {
       "proveedor": "DaniiDiaz",
@@ -440,7 +451,8 @@
         "ent": 162,
         "dev": 120
       },
-      "growth_pct": -99
+      "growth_pct": -99,
+      "dropi_id": 3044
     },
     {
       "proveedor": "LizDiaz",
@@ -475,7 +487,8 @@
         "ent": 128,
         "dev": 152
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 1071
     },
     {
       "proveedor": "UrsoNahuel Ezequiel",
@@ -510,7 +523,8 @@
         "ent": 72,
         "dev": 78
       },
-      "growth_pct": -80
+      "growth_pct": -80,
+      "dropi_id": 54
     },
     {
       "proveedor": "PaulVandenbroele",
@@ -545,7 +559,8 @@
         "ent": 73,
         "dev": 22
       },
-      "growth_pct": 77
+      "growth_pct": 77,
+      "dropi_id": 1221
     },
     {
       "proveedor": "YaelAmallo",
@@ -580,7 +595,8 @@
         "ent": 88,
         "dev": 28
       },
-      "growth_pct": -84
+      "growth_pct": -84,
+      "dropi_id": 11030
     },
     {
       "proveedor": "YoelMenayed",
@@ -615,7 +631,8 @@
         "ent": 67,
         "dev": 38
       },
-      "growth_pct": -44
+      "growth_pct": -44,
+      "dropi_id": 1223
     },
     {
       "proveedor": "MorenaSantucci",
@@ -650,7 +667,8 @@
         "ent": 61,
         "dev": 17
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 13929
     },
     {
       "proveedor": "GabrielCruz",
@@ -685,7 +703,8 @@
         "ent": 29,
         "dev": 20
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 7187
     },
     {
       "proveedor": "ROCKETROCKET",
@@ -720,7 +739,8 @@
         "ent": 15,
         "dev": 7
       },
-      "growth_pct": 278
+      "growth_pct": 278,
+      "dropi_id": 46
     },
     {
       "proveedor": "Gabriel CruzeComm",
@@ -755,7 +775,8 @@
         "ent": 23,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 1351
     },
     {
       "proveedor": "GianfrancoApablaza",
@@ -790,7 +811,8 @@
         "ent": 23,
         "dev": 13
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 6894
     },
     {
       "proveedor": "ACMELAB",
@@ -825,7 +847,8 @@
         "ent": 14,
         "dev": 11
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 4259
     },
     {
       "proveedor": "camilapinho",
@@ -860,7 +883,8 @@
         "ent": 5,
         "dev": 16
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 5667
     },
     {
       "proveedor": "DropLabs",
@@ -895,7 +919,8 @@
         "ent": 6,
         "dev": 3
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 2281
     },
     {
       "proveedor": "tomaslalanne",
@@ -930,7 +955,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 4827
     },
     {
       "proveedor": "AlvaroRisoglio",
@@ -965,7 +991,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 4655
     },
     {
       "proveedor": "NIBRESMA.",
@@ -1000,7 +1027,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 3357
     },
     {
       "proveedor": "naimjori",
@@ -1035,7 +1063,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 23434
     },
     {
       "proveedor": "Vaxtech GroupVaxtech",
@@ -1070,7 +1099,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 5408
     },
     {
       "proveedor": "juankahale",
@@ -1105,7 +1135,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 4678
     },
     {
       "proveedor": "Kevin DavidMuszkzat",
@@ -1140,7 +1171,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 4379
     },
     {
       "proveedor": "MarioGonzalez Perez",
@@ -1175,7 +1207,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 248
     },
     {
       "proveedor": "sebastianschonfeld",
@@ -1210,7 +1243,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 5061
     },
     {
       "proveedor": "DiegoSanchez",
@@ -1245,7 +1279,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 6499
     },
     {
       "proveedor": "GuidoFalcon",
@@ -1280,7 +1315,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 4143
     },
     {
       "proveedor": "myriamgarcia",
@@ -1315,7 +1351,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 18445
     },
     {
       "proveedor": "CarlosPruebas Dropi",
@@ -1350,7 +1387,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 77
     },
     {
       "proveedor": "ErikaHaug",
@@ -1385,7 +1423,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 12409
     },
     {
       "proveedor": "KevinChirino",
@@ -1420,7 +1459,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 23680
     },
     {
       "proveedor": "LeonardoParrotta",
@@ -1455,7 +1495,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 3211
     },
     {
       "proveedor": "MateoIglesias",
@@ -1490,7 +1531,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 48
     },
     {
       "proveedor": "MatiasFilippi",
@@ -1525,7 +1567,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 3610
     },
     {
       "proveedor": "WilliamMoreno",
@@ -1560,7 +1603,8 @@
         "ent": 0,
         "dev": 0
       },
-      "growth_pct": null
+      "growth_pct": null,
+      "dropi_id": 1784
     }
   ],
   "sellers_top": [

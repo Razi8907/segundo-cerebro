@@ -20,6 +20,7 @@ interface ProveedorData {
   marzo: { ing: number | null; mov: number | null; ent: number | null; dev: number | null; pct_entrega: number | null; pct_dev: number | null };
   total: { ing: number; mov: number; ent: number; dev: number };
   growth_pct: number | null;
+  dropi_id?: number | null;
 }
 
 function getMesData(p: ProveedorData, mes: MesFilter) {
@@ -129,6 +130,7 @@ export default function ProveedoresRanking({
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white truncate">{p.proveedor}</p>
+              {p.dropi_id && <span className="text-[10px] text-gray-500">ID: {p.dropi_id}</span>}
               <div className="flex gap-3 mt-0.5">
                 <span className="text-[10px] text-orange-400">{p.mov.toLocaleString()} mov</span>
                 <span className="text-[10px] text-green-400">{p.pctEnt.toFixed(0)}% ent</span>

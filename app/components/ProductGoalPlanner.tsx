@@ -22,6 +22,7 @@ interface ProveedorData {
   marzo: { ing: number | null; mov: number | null; ent: number | null; dev: number | null; pct_entrega: number | null; pct_dev: number | null };
   total: { ing: number; mov: number; ent: number; dev: number };
   growth_pct: number | null;
+  dropi_id?: number | null;
 }
 
 const COLORS = [
@@ -282,7 +283,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                       </div>
                       <div>
                         <span className="text-sm font-medium text-white truncate block max-w-[140px]">{p.proveedor}</span>
-                        <span className="text-[10px] text-gray-500">{p.sellers} sellers</span>
+                        <span className="text-[10px] text-gray-500">{p.dropi_id ? `ID: ${p.dropi_id} · ` : ""}{p.sellers} sellers</span>
                       </div>
                     </div>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
@@ -347,7 +348,10 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                 {analysis.prepared.filter((p) => p.marIng > 0).map((p, i) => (
                   <tr key={p.proveedor} className="border-b border-gray-800/40 hover:bg-orange-500/5">
                     <td className="py-2 px-2 text-gray-500">{i + 1}</td>
-                    <td className="py-2 px-2 text-white font-medium max-w-[160px] truncate">{p.proveedor}</td>
+                    <td className="py-2 px-2 max-w-[160px]">
+                      <span className="text-white font-medium block truncate">{p.proveedor}</span>
+                      {p.dropi_id && <span className="text-[10px] text-gray-500">ID: {p.dropi_id}</span>}
+                    </td>
                     <td className="py-2 px-2 text-right text-gray-400">{p.sellers}</td>
                     <td className="py-2 px-2 text-right text-gray-400">{p.eneIng > 0 ? p.eneIng.toLocaleString() : "-"}</td>
                     <td className="py-2 px-2 text-right text-gray-400">{p.febIng > 0 ? p.febIng.toLocaleString() : "-"}</td>

@@ -21,6 +21,7 @@ interface ProveedorData {
   marzo: { ing: number | null; mov: number | null; ent: number | null; dev: number | null; pct_entrega: number | null; pct_dev: number | null };
   total: { ing: number; mov: number; ent: number; dev: number };
   growth_pct: number | null;
+  dropi_id?: number | null;
 }
 
 interface Resumen {
@@ -265,7 +266,10 @@ export default function StrategicSimulator({
                       style={{ backgroundColor: categoryColors[p.category] }}
                     />
                   </td>
-                  <td className="py-2 px-2 text-white font-medium max-w-[180px] truncate">{p.proveedor}</td>
+                  <td className="py-2 px-2 max-w-[180px]">
+                    <span className="text-white font-medium block truncate">{p.proveedor}</span>
+                    {p.dropi_id && <span className="text-[10px] text-gray-500">ID: {p.dropi_id}</span>}
+                  </td>
                   <td className="py-2 px-2 text-right text-gray-300">{p.sellers}</td>
                   <td className="py-2 px-2 text-right text-gray-300">{p.avgMov.toLocaleString()}</td>
                   <td className="py-2 px-2 text-right text-blue-400 font-medium">{p.marMov.toLocaleString()}</td>

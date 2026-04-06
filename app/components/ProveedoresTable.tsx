@@ -11,6 +11,7 @@ interface Proveedor {
   marzo: { ing: number | null; mov: number | null; ent: number | null; dev: number | null; pct_entrega: number | null; pct_dev: number | null };
   total: { ing: number; mov: number; ent: number; dev: number };
   growth_pct: number | null;
+  dropi_id?: number | null;
 }
 
 function getData(p: Proveedor, mes: MesFilter) {
@@ -95,7 +96,10 @@ export default function ProveedoresTable({ proveedores, mesFilter }: { proveedor
               return (
                 <tr key={p.proveedor} className="border-b border-gray-800/50 hover:bg-orange-500/5 transition-colors">
                   <td className="py-2.5 px-2 text-gray-500">{i + 1}</td>
-                  <td className="py-2.5 px-2 text-white font-medium max-w-[200px] truncate">{p.proveedor}</td>
+                  <td className="py-2.5 px-2 max-w-[200px]">
+                    <span className="text-white font-medium block truncate">{p.proveedor}</span>
+                    {p.dropi_id && <span className="text-[10px] text-gray-500">ID: {p.dropi_id}</span>}
+                  </td>
                   <td className="py-2.5 px-2 text-right text-gray-400">{p.sellers}</td>
                   <td className="py-2.5 px-2 text-right text-gray-300">{p.fIng.toLocaleString()}</td>
                   <td className="py-2.5 px-2 text-right text-blue-400 font-medium">{p.fMov.toLocaleString()}</td>

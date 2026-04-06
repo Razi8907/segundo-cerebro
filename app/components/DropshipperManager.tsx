@@ -31,6 +31,7 @@ interface ProveedorData {
   sellers: number;
   total: { ing: number; mov: number; ent: number; dev: number };
   growth_pct: number | null;
+  dropi_id?: number | null;
 }
 
 const META_MOV_ABRIL = 40000;
