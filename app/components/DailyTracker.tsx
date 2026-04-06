@@ -41,16 +41,35 @@ const DIAS_SEMANA_ABRIL = [
   "MARTES","MIÉRCOLES",
 ];
 
+interface ResumenMes {
+  ingresadas: number;
+  movilizadas: number;
+  entregados: number;
+  devoluciones: number;
+}
+
+interface Resumen {
+  enero: ResumenMes;
+  febrero: ResumenMes;
+  marzo: ResumenMes;
+  [key: string]: any;
+}
+
+const DIAS_MES: Record<string, number> = { enero: 31, febrero: 28, marzo: 31 };
+const MES_LABELS: Record<string, string> = { enero: "Enero 2026", febrero: "Febrero 2026", marzo: "Marzo 2026" };
+
 export default function DailyTracker({
   marzoData,
   metaInfo,
   abrilRealData,
   mesFilter,
+  resumen,
 }: {
   marzoData: DailyData[];
   metaInfo: MetaInfo;
   abrilRealData?: DailyData[];
   mesFilter: MesFilter;
+  resumen?: Resumen;
 }) {
   const META_DIARIA = metaInfo.promedio_diario_necesario;
   const META_TOTAL = metaInfo.meta_ingresadas_abril;
@@ -143,16 +162,112 @@ export default function DailyTracker({
     dia: d.dia_semana,
   }));
 
-  // ─── Q1 / Ene / Feb / Mar view: solo histórico, sin metas ───
-  if (!isAbril) {
+  // ─── Enero / Febrero: resumen mensual (no hay data diaria) ───
+  if ((mesFilter === "enero" || mesFilter === "febrero") && resumen) {
+    const mesData = resumen[mesFilter];
+    const dias = DIAS_MES[mesFilter];
+    const promDiario = Math.round(mesData.ingresadas / dias);
+    const pctEnt = mesData.movilizadas > 0 ? ((mesData.entregados / mesData.movilizadas) * 100).toFixed(1) : "0";
+    const pctDev = mesData.movilizadas > 0 ? ((mesData.devoluciones / mesData.movilizadas) * 100).toFixed(1) : "0";
+
     return (
       <div className="glass-card p-6 border-orange-500/30">
         <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
-          📅 Seguimiento Diario &mdash; Histórico Q1
+          📅 Seguimiento &mdash; {MES_LABELS[mesFilter]}
         </h2>
         <p className="text-xs text-gray-400 mb-6">
-          Órdenes ingresadas día a día &middot; Meses cerrados
+          Resumen del mes &middot; {dias} días &middot; Mes cerrado
         </p>
+
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+          <div className="rounded-xl p-4 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Ingresadas</p>
+            <p className="text-2xl font-bold text-blue-400">{mesData.ingresadas.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500">~{promDiario.toLocaleString()}/día</p>
+          </div>
+          <div className="rounded-xl p-4 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Movilizadas</p>
+            <p className="text-2xl font-bold text-orange-400">{mesData.movilizadas.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500">{dias} días</p>
+          </div>
+          <div className="rounded-xl p-4 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Entregados</p>
+            <p className="text-2xl font-bold text-green-400">{mesData.entregados.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500">{pctEnt}% de movilizadas</p>
+          </div>
+          <div className="rounded-xl p-4 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
+            <p className="text-[10px] text-gray-400 uppercase">Devoluciones</p>
+            <p className="text-2xl font-bold text-red-400">{mesData.devoluciones.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-500">{pctDev}% de movilizadas</p>
+          </div>
+        </div>
+
+        {/* Comparativa trimestral */}
+        {resumen && (
+          <div>
+            <h3 className="text-sm font-medium text-gray-300 mb-3">Comparativa Mensual Q1</h3>
+            <ResponsiveContainer width="100%" height={280}>
+              <BarChart data={[
+                { mes: "Enero", Ingresadas: resumen.enero.ingresadas, Movilizadas: resumen.enero.movilizadas, Entregados: resumen.enero.entregados },
+                { mes: "Febrero", Ingresadas: resumen.febrero.ingresadas, Movilizadas: resumen.febrero.movilizadas, Entregados: resumen.febrero.entregados },
+                { mes: "Marzo", Ingresadas: resumen.marzo.ingresadas, Movilizadas: resumen.marzo.movilizadas, Entregados: resumen.marzo.entregados },
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+                <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316", fontSize: 12 }}
+                  formatter={(value) => Number(value).toLocaleString()}
+                />
+                <Bar dataKey="Ingresadas" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Movilizadas" fill="#F97316" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Entregados" fill="#10B981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ─── Q1 / Marzo view: histórico con data diaria de marzo ───
+  if (!isAbril) {
+    const isQ1 = mesFilter === "q1";
+    const title = isQ1 ? "Histórico Q1 (Ene-Mar)" : "Marzo 2026";
+
+    return (
+      <div className="glass-card p-6 border-orange-500/30">
+        <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
+          📅 Seguimiento Diario &mdash; {title}
+        </h2>
+        <p className="text-xs text-gray-400 mb-6">
+          {isQ1 ? "Resumen trimestral + detalle diario de Marzo" : "Órdenes ingresadas día a día"} &middot; Mes cerrado
+        </p>
+
+        {/* Q1 monthly comparison */}
+        {isQ1 && resumen && (
+          <div className="mb-6">
+            <h3 className="text-sm font-medium text-gray-300 mb-3">Comparativa Mensual Q1</h3>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={[
+                { mes: "Enero", Ingresadas: resumen.enero.ingresadas, Movilizadas: resumen.enero.movilizadas, Entregados: resumen.enero.entregados },
+                { mes: "Febrero", Ingresadas: resumen.febrero.ingresadas, Movilizadas: resumen.febrero.movilizadas, Entregados: resumen.febrero.entregados },
+                { mes: "Marzo", Ingresadas: resumen.marzo.ingresadas, Movilizadas: resumen.marzo.movilizadas, Entregados: resumen.marzo.entregados },
+              ]}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+                <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316", fontSize: 12 }}
+                  formatter={(value) => Number(value).toLocaleString()}
+                />
+                <Bar dataKey="Ingresadas" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Movilizadas" fill="#F97316" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Entregados" fill="#10B981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         {/* KPIs histórico */}
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-6">

@@ -131,7 +131,7 @@ export default function ParaguayDashboard() {
         {/* Show Abril-specific content when Abril is selected */}
         {isAbril ? (
           <>
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
+            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
             <StrategicSimulator proveedores={proveedores} resumen={resumen} />
@@ -139,7 +139,7 @@ export default function ParaguayDashboard() {
           </>
         ) : (
           <>
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} />
+            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
 
