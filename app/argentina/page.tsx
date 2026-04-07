@@ -96,10 +96,9 @@ export default function ArgentinaDashboard() {
                   mesFilter === m
                     ? m === "abril"
                       ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20"
-                      : "text-white border-sky-500 shadow-lg shadow-sky-500/20"
-                    : "bg-transparent text-gray-400 border-gray-700 hover:border-sky-500/40 hover:text-sky-300"
+                      : "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
+                    : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
                 }`}
-                style={mesFilter === m && m !== "abril" ? { background: "#74ACDF" } : {}}
               >
                 {m === "q1" ? "Q1 Completo" : m === "abril" ? "🎯 Abril (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
               </button>

@@ -96,7 +96,7 @@ export default function ParaguayDashboard() {
                     ? m === "abril"
                       ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20"
                       : "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
-                    : "bg-transparent text-gray-400 border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
+                    : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
                 }`}
               >
                 {m === "q1" ? "Q1 Completo" : m === "abril" ? "🎯 Abril (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
