@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import type { MesFilter } from "../types";
 import {
   BarChart,
@@ -64,25 +64,47 @@ export default function DailyTracker({
   abrilRealData,
   mesFilter,
   resumen,
+  country = "py",
 }: {
   marzoData: DailyData[];
   metaInfo: MetaInfo;
   abrilRealData?: DailyData[];
   mesFilter: MesFilter;
   resumen?: Resumen;
+  country?: "py" | "ar";
 }) {
   const META_DIARIA = metaInfo.promedio_diario_necesario;
   const META_TOTAL = metaInfo.meta_ingresadas_abril;
   const isAbril = mesFilter === "abril";
 
-  // Abril tracking state
+  const STORAGE_KEY = `segundo-cerebro-abril-${country}`;
+
+  // Abril tracking state — initialize from localStorage, fallback to JSON data
   const [abrilData, setAbrilData] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>(
-    () => (abrilRealData || []).map((d) => ({ fecha: d.fecha, ordenes: d.ordenes, dia_semana: d.dia_semana }))
+    () => {
+      if (typeof window !== "undefined") {
+        try {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          }
+        } catch { /* ignore */ }
+      }
+      return (abrilRealData || []).map((d) => ({ fecha: d.fecha, ordenes: d.ordenes, dia_semana: d.dia_semana }));
+    }
   );
   const [inputDay, setInputDay] = useState("");
   const [inputOrdenes, setInputOrdenes] = useState("");
 
-  const addDay = () => {
+  // Persist to localStorage whenever abrilData changes
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(abrilData));
+    } catch { /* ignore quota errors */ }
+  }, [abrilData, STORAGE_KEY]);
+
+  const addDay = useCallback(() => {
     const day = parseInt(inputDay);
     const ordenes = parseInt(inputOrdenes);
     if (isNaN(day) || isNaN(ordenes) || day < 1 || day > 30) return;
@@ -95,7 +117,7 @@ export default function DailyTracker({
     });
     setInputDay(String(day + 1));
     setInputOrdenes("");
-  };
+  }, [inputDay, inputOrdenes]);
 
   const analysis = useMemo(() => {
     // Marzo analysis
@@ -415,7 +437,7 @@ export default function DailyTracker({
           </button>
           {abrilData.length > 0 && (
             <button
-              onClick={() => setAbrilData([])}
+              onClick={() => { setAbrilData([]); try { localStorage.removeItem(STORAGE_KEY); } catch {} }}
               className="px-3 py-2 text-xs rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10"
             >
               Limpiar
