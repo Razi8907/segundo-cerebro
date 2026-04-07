@@ -62,6 +62,9 @@ export default function StrategicSimulator({
     const totalAvgMov = activeProvs.reduce((s, p) => s + p.total.mov / 3, 0);
     const volumeScale = activeProvs.length > 0 ? (totalAvgMov / activeProvs.length) * 3 : 2000;
 
+    // Total March movilizadas across all providers
+    const totalMarzoMov = activeProvs.reduce((s, p) => s + (p.marzo.mov || 0), 0);
+
     const scored = activeProvs
       .map((p) => {
         const marMov = p.marzo.mov || 0;
@@ -72,17 +75,24 @@ export default function StrategicSimulator({
         const pctEnt = p.total.ent / p.total.mov;
 
         // Score: volume (40%) + trend (30%) + low dev (20%) + high delivery (10%)
-        // volumeScale is dynamic per country
         const volumeScore = Math.min(avgMov / volumeScale, 1) * 40;
         const trendScore = Math.min(Math.max(trend, -1), 2) / 2 * 30;
         const devScore = (1 - Math.min(pctDev, 1)) * 20;
         const entScore = Math.min(pctEnt, 1) * 10;
         const totalScore = volumeScore + trendScore + devScore + entScore;
 
-        // Projected April: based on March movilizadas + capped realistic growth
-        // Cap growth at 30% over March to avoid absurd projections from extreme trends
-        const cappedGrowth = Math.min(Math.max(trend * 0.5, 0), 0.30);
-        const projectedAbril = Math.round(marMov * (1 + cappedGrowth));
+        // Goal-based projection: distribute GOAL_MOVILIZADAS proportionally
+        // based on each provider's March share
+        const share = totalMarzoMov > 0 ? marMov / totalMarzoMov : 0;
+        const baseTarget = Math.round(GOAL_MOVILIZADAS * share);
+
+        // Providers with strong growth trend (>100%) get up to 50% extra over March
+        // Others get their proportional share of the goal
+        const cappedGrowth = trend > 1 ? 0.50 : Math.min(Math.max(trend * 0.5, 0), 0.30);
+        const trendProjection = Math.round(marMov * (1 + cappedGrowth));
+
+        // Use the higher of goal-share or trend projection
+        const projectedAbril = Math.max(baseTarget, trendProjection);
 
         return {
           ...p,
@@ -93,6 +103,7 @@ export default function StrategicSimulator({
           pctEnt: Math.round(pctEnt * 100),
           score: Math.round(totalScore),
           projectedAbril,
+          share: Math.round(share * 10000) / 100,
           category:
             totalScore >= 60
               ? "estrella"
