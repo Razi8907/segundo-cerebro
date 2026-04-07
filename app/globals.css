@@ -1,10 +1,60 @@
 @import "tailwindcss";
 
+/* ── Light theme (default — Dropi identity: white + orange) ── */
 :root {
   --dropi-orange: #F97316;
-  --dropi-dark: #1a1a2e;
-  --dropi-card: #16213e;
-  --dropi-surface: #0f3460;
+  --bg-page: #f8fafc;
+  --bg-header: rgba(255, 255, 255, 0.95);
+  --bg-card: #ffffff;
+  --bg-card-hover: rgba(249, 115, 22, 0.04);
+  --bg-card-border: rgba(249, 115, 22, 0.18);
+  --bg-card-border-hover: rgba(249, 115, 22, 0.4);
+  --bg-input: #f1f5f9;
+  --bg-input-border: rgba(249, 115, 22, 0.25);
+  --bg-kpi: #ffffff;
+  --bg-table-header: rgba(255, 255, 255, 0.98);
+  --bg-tooltip: #ffffff;
+  --border-tooltip: rgba(249, 115, 22, 0.4);
+  --text-primary: #1f2937;
+  --text-secondary: #6b7280;
+  --text-muted: #9ca3af;
+  --text-accent: #ea580c;
+  --border-header: rgba(249, 115, 22, 0.15);
+  --border-section: rgba(0, 0, 0, 0.06);
+  --chart-grid: #e5e7eb;
+  --chart-axis: #6b7280;
+  --scrollbar-track: #f1f5f9;
+  --scrollbar-thumb: #F97316;
+  --shadow-card: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --background: #f8fafc;
+  --foreground: #1f2937;
+}
+
+/* ── Dark theme ── */
+.dark {
+  --bg-page: #1a1a2e;
+  --bg-header: rgba(26, 26, 46, 0.95);
+  --bg-card: rgba(22, 33, 62, 0.8);
+  --bg-card-hover: rgba(249, 115, 22, 0.08);
+  --bg-card-border: rgba(249, 115, 22, 0.15);
+  --bg-card-border-hover: rgba(249, 115, 22, 0.35);
+  --bg-input: #16213e;
+  --bg-input-border: rgba(249, 115, 22, 0.2);
+  --bg-kpi: rgba(22, 33, 62, 0.9);
+  --bg-table-header: rgba(22, 33, 62, 0.98);
+  --bg-tooltip: #16213e;
+  --border-tooltip: rgba(249, 115, 22, 0.3);
+  --text-primary: #e5e7eb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --text-accent: #F97316;
+  --border-header: rgba(249, 115, 22, 0.2);
+  --border-section: rgba(255, 255, 255, 0.06);
+  --chart-grid: #2a2a4a;
+  --chart-axis: #9ca3af;
+  --scrollbar-track: #1a1a2e;
+  --scrollbar-thumb: #F97316;
+  --shadow-card: 0 0 20px rgba(249, 115, 22, 0.08);
   --background: #1a1a2e;
   --foreground: #e5e7eb;
 }
@@ -17,29 +67,32 @@
 }
 
 body {
-  background: var(--dropi-dark);
-  color: #e5e7eb;
+  background: var(--bg-page);
+  color: var(--text-primary);
   font-family: 'Inter', system-ui, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .glass-card {
-  background: rgba(22, 33, 62, 0.8);
+  background: var(--bg-card);
   backdrop-filter: blur(10px);
-  border: 1px solid rgba(249, 115, 22, 0.15);
+  border: 1px solid var(--bg-card-border);
   border-radius: 16px;
+  box-shadow: var(--shadow-card);
   transition: all 0.3s ease;
 }
 
 .glass-card:hover {
-  border-color: rgba(249, 115, 22, 0.35);
-  box-shadow: 0 0 20px rgba(249, 115, 22, 0.08);
+  border-color: var(--bg-card-border-hover);
+  box-shadow: var(--shadow-card);
 }
 
 .kpi-card {
-  background: linear-gradient(135deg, rgba(22, 33, 62, 0.9) 0%, rgba(15, 52, 96, 0.6) 100%);
-  border: 1px solid rgba(249, 115, 22, 0.2);
+  background: var(--bg-kpi);
+  border: 1px solid var(--bg-card-border);
   border-radius: 16px;
   padding: 1.5rem;
+  box-shadow: var(--shadow-card);
 }
 
 .gradient-text {
@@ -53,9 +106,26 @@ body {
   background: linear-gradient(135deg, #F97316 0%, #EA580C 50%, #C2410C 100%);
 }
 
+/* Theme-aware text utilities */
+.t-primary { color: var(--text-primary); }
+.t-secondary { color: var(--text-secondary); }
+.t-muted { color: var(--text-muted); }
+
+/* Theme toggle button */
+.theme-toggle-btn {
+  background: var(--bg-card);
+  border-color: var(--bg-card-border);
+  color: var(--text-secondary);
+}
+.theme-toggle-btn:hover {
+  border-color: var(--dropi-orange);
+  color: var(--dropi-orange);
+}
+
+/* Scrollbar */
 .table-container {
   scrollbar-width: thin;
-  scrollbar-color: #F97316 #1a1a2e;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 .table-container::-webkit-scrollbar {
@@ -64,11 +134,11 @@ body {
 }
 
 .table-container::-webkit-scrollbar-track {
-  background: #1a1a2e;
+  background: var(--scrollbar-track);
   border-radius: 3px;
 }
 
 .table-container::-webkit-scrollbar-thumb {
-  background: #F97316;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }

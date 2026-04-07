@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import ThemeToggle from "./components/ThemeToggle";
 
 export default function Home() {
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "#1a1a2e" }}>
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "var(--bg-page)" }}>
       <div className="w-full max-w-2xl py-12">
         {/* Dropi Logo + Title */}
         <div className="text-center mb-10">
@@ -14,12 +15,12 @@ export default function Home() {
           <p className="text-xs tracking-[0.2em] uppercase text-orange-400/70 font-medium mb-3">
             Regional Commercial Operations
           </p>
-          <h1 className="text-3xl sm:text-4xl font-bold text-white leading-tight mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold t-primary leading-tight mb-2">
             Dashboard de Seguimiento
             <br />
             <span className="gradient-text">Country</span>
           </h1>
-          <p className="text-base text-gray-400 font-light tracking-wide">
+          <p className="text-base t-secondary font-light tracking-wide">
             Raziel Busto Domaniczky
           </p>
         </div>
@@ -30,33 +31,33 @@ export default function Home() {
             <div className="text-6xl mb-1 drop-shadow-lg" style={{ filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))" }}>
               &#127477;&#127486;
             </div>
-            <span className="text-[10px] text-gray-500 uppercase tracking-wider">Paraguay</span>
+            <span className="text-[10px] t-muted uppercase tracking-wider">Paraguay</span>
           </div>
           <div className="w-px h-12 bg-gray-700" />
           <div className="text-center">
             <div className="text-6xl mb-1 drop-shadow-lg" style={{ filter: "drop-shadow(0 4px 8px rgba(0,0,0,0.3))" }}>
               &#127462;&#127479;
             </div>
-            <span className="text-[10px] text-gray-500 uppercase tracking-wider">Argentina</span>
+            <span className="text-[10px] t-muted uppercase tracking-wider">Argentina</span>
           </div>
         </div>
 
         {/* Metrics */}
         <div className="flex justify-center gap-3 mb-10 flex-wrap">
-          <div className="rounded-xl px-5 py-3 text-center border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Mercados</p>
+          <div className="rounded-xl px-5 py-3 text-center border border-orange-500/20" style={{ background: "var(--bg-card-hover)" }}>
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Mercados</p>
             <p className="text-2xl font-bold text-orange-400">2</p>
           </div>
-          <div className="rounded-xl px-5 py-3 text-center border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Proveedores</p>
+          <div className="rounded-xl px-5 py-3 text-center border border-blue-500/20" style={{ background: "var(--bg-card-hover)" }}>
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Proveedores</p>
             <p className="text-2xl font-bold text-blue-400">270</p>
           </div>
-          <div className="rounded-xl px-5 py-3 text-center border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Dropshippers</p>
+          <div className="rounded-xl px-5 py-3 text-center border border-green-500/20" style={{ background: "var(--bg-card-hover)" }}>
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Dropshippers</p>
             <p className="text-2xl font-bold text-green-400">611</p>
           </div>
-          <div className="rounded-xl px-5 py-3 text-center border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
-            <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Periodo</p>
+          <div className="rounded-xl px-5 py-3 text-center border border-purple-500/20" style={{ background: "var(--bg-card-hover)" }}>
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Periodo</p>
             <p className="text-2xl font-bold text-purple-400">Q2</p>
           </div>
         </div>
@@ -67,7 +68,7 @@ export default function Home() {
           <Link
             href="/paraguay"
             className="group relative rounded-2xl p-6 border border-orange-500/20 transition-all hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/10 overflow-hidden"
-            style={{ background: "rgba(22,33,62,0.8)" }}
+            style={{ background: "var(--bg-card)" }}
           >
             <div className="absolute top-0 right-0 w-32 h-32 opacity-10 text-8xl leading-none" style={{ transform: "translate(10px, -10px)" }}>
               &#127477;&#127486;
@@ -76,17 +77,17 @@ export default function Home() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="text-4xl">&#127477;&#127486;</div>
                 <div>
-                  <h2 className="text-lg font-bold text-white group-hover:text-orange-400 transition-colors">Paraguay</h2>
-                  <p className="text-xs text-gray-500">Dropi PY</p>
+                  <h2 className="text-lg font-bold t-primary group-hover:text-orange-400 transition-colors">Paraguay</h2>
+                  <p className="text-xs t-muted">Dropi PY</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-4">
-                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(249,115,22,0.08)" }}>
-                  <p className="text-[10px] text-gray-500">Proveedores</p>
+                <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg-card-hover)" }}>
+                  <p className="text-[10px] t-muted">Proveedores</p>
                   <p className="text-sm font-bold text-orange-400">226</p>
                 </div>
-                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(249,115,22,0.08)" }}>
-                  <p className="text-[10px] text-gray-500">Dropshippers</p>
+                <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg-card-hover)" }}>
+                  <p className="text-[10px] t-muted">Dropshippers</p>
                   <p className="text-sm font-bold text-orange-400">299</p>
                 </div>
               </div>
@@ -98,7 +99,7 @@ export default function Home() {
                   Q1 + Abril
                 </span>
               </div>
-              <div className="mt-4 flex items-center text-xs text-gray-500 group-hover:text-orange-400 transition-colors">
+              <div className="mt-4 flex items-center text-xs t-muted group-hover:text-orange-400 transition-colors">
                 Ir al dashboard
                 <svg className="ml-1 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
               </div>
@@ -109,7 +110,7 @@ export default function Home() {
           <Link
             href="/argentina"
             className="group relative rounded-2xl p-6 border border-sky-500/20 transition-all hover:border-sky-500/50 hover:shadow-lg hover:shadow-sky-500/10 overflow-hidden"
-            style={{ background: "rgba(22,33,62,0.8)" }}
+            style={{ background: "var(--bg-card)" }}
           >
             <div className="absolute top-0 right-0 w-32 h-32 opacity-10 text-8xl leading-none" style={{ transform: "translate(10px, -10px)" }}>
               &#127462;&#127479;
@@ -118,17 +119,17 @@ export default function Home() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="text-4xl">&#127462;&#127479;</div>
                 <div>
-                  <h2 className="text-lg font-bold text-white group-hover:text-sky-400 transition-colors">Argentina</h2>
-                  <p className="text-xs text-gray-500">Dropi AR</p>
+                  <h2 className="text-lg font-bold t-primary group-hover:text-sky-400 transition-colors">Argentina</h2>
+                  <p className="text-xs t-muted">Dropi AR</p>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-2 mb-4">
-                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(116,172,223,0.08)" }}>
-                  <p className="text-[10px] text-gray-500">Proveedores</p>
+                <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg-card-hover)" }}>
+                  <p className="text-[10px] t-muted">Proveedores</p>
                   <p className="text-sm font-bold text-sky-400">44</p>
                 </div>
-                <div className="rounded-lg px-3 py-2" style={{ background: "rgba(116,172,223,0.08)" }}>
-                  <p className="text-[10px] text-gray-500">Dropshippers</p>
+                <div className="rounded-lg px-3 py-2" style={{ background: "var(--bg-card-hover)" }}>
+                  <p className="text-[10px] t-muted">Dropshippers</p>
                   <p className="text-sm font-bold text-sky-400">312</p>
                 </div>
               </div>
@@ -140,7 +141,7 @@ export default function Home() {
                   Q1 + Abril
                 </span>
               </div>
-              <div className="mt-4 flex items-center text-xs text-gray-500 group-hover:text-sky-400 transition-colors">
+              <div className="mt-4 flex items-center text-xs t-muted group-hover:text-sky-400 transition-colors">
                 Ir al dashboard
                 <svg className="ml-1 w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
               </div>
@@ -154,6 +155,8 @@ export default function Home() {
           <span>Activo &middot; Q2 2026</span>
           <span className="mx-2 text-gray-700">|</span>
           <span className="text-orange-500/50">Powered by Dropi</span>
+          <span className="mx-2 text-gray-700">|</span>
+          <ThemeToggle />
         </div>
       </div>
     </div>

@@ -18,6 +18,7 @@ import ProductsAnalysis from "../components/ProductsAnalysis";
 import DropshipperManager from "../components/DropshipperManager";
 import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
+import ThemeToggle from "../components/ThemeToggle";
 import type { MesFilter } from "../types";
 
 const allData = data as typeof data & {
@@ -67,11 +68,11 @@ export default function ArgentinaDashboard() {
   const isAbril = mesFilter === "abril";
 
   return (
-    <div className="min-h-screen" style={{ background: "#1a1a2e" }}>
+    <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
       {/* Header */}
       <header
         className="sticky top-0 z-50 backdrop-blur-md border-b border-sky-500/20"
-        style={{ background: "rgba(26,26,46,0.95)" }}
+        style={{ background: "var(--bg-header)" }}
       >
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -83,7 +84,7 @@ export default function ArgentinaDashboard() {
             </div>
             <div>
               <h1 className="text-xl font-bold" style={{ background: "linear-gradient(90deg, #74ACDF, #F6B40E)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>Dropi Argentina</h1>
-              <p className="text-xs text-gray-400">Dashboard Operativo &middot; Segundo Cerebro</p>
+              <p className="text-xs t-secondary">Dashboard Operativo &middot; Segundo Cerebro</p>
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -109,6 +110,7 @@ export default function ArgentinaDashboard() {
             <span className="text-xs px-3 py-1.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
               {resumen.total_sellers.toLocaleString()} Sellers
             </span>
+            <ThemeToggle />
           </div>
         </div>
       </header>
