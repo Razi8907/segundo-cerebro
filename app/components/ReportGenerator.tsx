@@ -53,7 +53,8 @@ interface Producto {
   [key: string]: any;
 }
 
-type ReportType = "resumen_ejecutivo" | "seguimiento_abril" | "proveedores" | "productos" | "completo";
+type ReportType = "resumen" | "proveedores" | "productos" | "seguimiento_abril" | "completo";
+type Periodo = "total" | "q1" | "enero" | "febrero" | "marzo" | "abril";
 
 function downloadCSV(filename: string, content: string) {
   const BOM = "\uFEFF";
@@ -71,55 +72,104 @@ function formatDate() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function generateResumenEjecutivo(resumen: Resumen, metaInfo: MetaInfo, abrilData: DailyData[], country: string): string {
-  const countryLabel = country === "py" ? "Paraguay" : "Argentina";
-  const q1Ing = resumen.enero.ingresadas + resumen.febrero.ingresadas + resumen.marzo.ingresadas;
-  const q1Mov = resumen.enero.movilizadas + resumen.febrero.movilizadas + resumen.marzo.movilizadas;
-  const q1Ent = resumen.enero.entregados + resumen.febrero.entregados + resumen.marzo.entregados;
-  const q1Dev = resumen.enero.devoluciones + resumen.febrero.devoluciones + resumen.marzo.devoluciones;
+const PERIODO_LABELS: Record<Periodo, string> = {
+  total: "Total (Q1 + Abril)",
+  q1: "Q1 2026 (Ene-Mar)",
+  enero: "Enero 2026",
+  febrero: "Febrero 2026",
+  marzo: "Marzo 2026",
+  abril: "Abril 2026",
+};
+
+function getResumenPeriodo(resumen: Resumen, metaInfo: MetaInfo, abrilData: DailyData[], periodo: Periodo) {
+  const meses: Record<string, { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number }> = {
+    enero: resumen.enero,
+    febrero: resumen.febrero,
+    marzo: resumen.marzo,
+  };
 
   const abrilTotal = abrilData.reduce((s, d) => s + d.ordenes, 0);
   const diasCargados = abrilData.length;
   const promAbril = diasCargados > 0 ? Math.round(abrilTotal / diasCargados) : 0;
-  const proyeccion = diasCargados > 0 ? Math.round(promAbril * 30) : 0;
-  const pctMeta = diasCargados > 0 ? ((proyeccion / metaInfo.meta_ingresadas_abril) * 100).toFixed(1) : "0";
+  const proyAbril = diasCargados > 0 ? Math.round(promAbril * 30) : 0;
+  const abrilRow = {
+    ingresadas: abrilTotal,
+    movilizadas: Math.round(abrilTotal * metaInfo.tasa_movilizacion),
+    entregados: 0,
+    devoluciones: 0,
+    proyeccion: proyAbril,
+    diasCargados,
+  };
 
-  let csv = `RESUMEN EJECUTIVO - Dropi ${countryLabel}\n`;
+  if (periodo === "enero" || periodo === "febrero" || periodo === "marzo") {
+    return { rows: { [periodo]: meses[periodo] }, abrilRow: null };
+  }
+  if (periodo === "abril") {
+    return { rows: {}, abrilRow };
+  }
+  if (periodo === "q1") {
+    return { rows: meses, abrilRow: null };
+  }
+  // total
+  return { rows: meses, abrilRow };
+}
+
+function generateResumenCSV(resumen: Resumen, metaInfo: MetaInfo, abrilData: DailyData[], country: string, periodo: Periodo): string {
+  const countryLabel = country === "py" ? "Paraguay" : "Argentina";
+  const { rows, abrilRow } = getResumenPeriodo(resumen, metaInfo, abrilData, periodo);
+
+  let csv = `RESUMEN - Dropi ${countryLabel} - ${PERIODO_LABELS[periodo]}\n`;
   csv += `Fecha de generacion,${formatDate()}\n\n`;
 
-  csv += `RENDIMIENTO Q1 2026\n`;
-  csv += `Mes,Ingresadas,Movilizadas,Entregados,Devoluciones,% Entrega,% Devolucion\n`;
-  for (const [mes, data] of Object.entries({ Enero: resumen.enero, Febrero: resumen.febrero, Marzo: resumen.marzo })) {
-    const pctEnt = data.movilizadas > 0 ? ((data.entregados / data.movilizadas) * 100).toFixed(1) : "0";
-    const pctDev = data.movilizadas > 0 ? ((data.devoluciones / data.movilizadas) * 100).toFixed(1) : "0";
-    csv += `${mes},${data.ingresadas},${data.movilizadas},${data.entregados},${data.devoluciones},${pctEnt}%,${pctDev}%\n`;
+  const mesEntries = Object.entries(rows);
+  if (mesEntries.length > 0) {
+    csv += `Mes,Ingresadas,Movilizadas,Entregados,Devoluciones,% Entrega,% Devolucion\n`;
+    let totIng = 0, totMov = 0, totEnt = 0, totDev = 0;
+    for (const [mes, data] of mesEntries) {
+      const pctEnt = data.movilizadas > 0 ? ((data.entregados / data.movilizadas) * 100).toFixed(1) : "0";
+      const pctDev = data.movilizadas > 0 ? ((data.devoluciones / data.movilizadas) * 100).toFixed(1) : "0";
+      csv += `${mes.charAt(0).toUpperCase() + mes.slice(1)},${data.ingresadas},${data.movilizadas},${data.entregados},${data.devoluciones},${pctEnt}%,${pctDev}%\n`;
+      totIng += data.ingresadas; totMov += data.movilizadas; totEnt += data.entregados; totDev += data.devoluciones;
+    }
+    if (mesEntries.length > 1) {
+      csv += `TOTAL Q1,${totIng},${totMov},${totEnt},${totDev},${totMov > 0 ? ((totEnt / totMov) * 100).toFixed(1) : 0}%,${totMov > 0 ? ((totDev / totMov) * 100).toFixed(1) : 0}%\n`;
+    }
+    csv += "\n";
   }
-  csv += `TOTAL Q1,${q1Ing},${q1Mov},${q1Ent},${q1Dev},${q1Mov > 0 ? ((q1Ent / q1Mov) * 100).toFixed(1) : 0}%,${q1Mov > 0 ? ((q1Dev / q1Mov) * 100).toFixed(1) : 0}%\n\n`;
+
+  if (abrilRow) {
+    csv += `ABRIL 2026\n`;
+    csv += `Ordenes ingresadas cargadas,${abrilRow.ingresadas}\n`;
+    csv += `Movilizadas estimadas,${abrilRow.movilizadas}\n`;
+    csv += `Dias cargados,${abrilRow.diasCargados}\n`;
+    csv += `Proyeccion final (30 dias),${abrilRow.proyeccion}\n`;
+    csv += `Meta ingresadas,${metaInfo.meta_ingresadas_abril}\n`;
+    csv += `Meta movilizadas,${metaInfo.meta_movilizadas_abril}\n`;
+    csv += `% de meta,${abrilRow.diasCargados > 0 ? ((abrilRow.proyeccion / metaInfo.meta_ingresadas_abril) * 100).toFixed(1) : 0}%\n\n`;
+  }
+
+  if (periodo === "total" && abrilRow) {
+    const q1Ing = resumen.enero.ingresadas + resumen.febrero.ingresadas + resumen.marzo.ingresadas;
+    csv += `GRAN TOTAL (Q1 + Abril parcial)\n`;
+    csv += `Total ingresadas,${q1Ing + abrilRow.ingresadas}\n`;
+    csv += `Total movilizadas,${resumen.enero.movilizadas + resumen.febrero.movilizadas + resumen.marzo.movilizadas + abrilRow.movilizadas}\n\n`;
+  }
 
   csv += `ESTRUCTURA OPERATIVA\n`;
   csv += `Proveedores activos,${resumen.total_proveedores}\n`;
-  csv += `Sellers/Dropshippers,${resumen.total_sellers}\n\n`;
-
-  csv += `META ABRIL 2026\n`;
-  csv += `Meta movilizadas,${metaInfo.meta_movilizadas_abril}\n`;
-  csv += `Meta ingresadas,${metaInfo.meta_ingresadas_abril}\n`;
-  csv += `Promedio diario necesario,${metaInfo.promedio_diario_necesario}\n`;
-  csv += `Dias cargados,${diasCargados}\n`;
-  csv += `Ordenes acumuladas abril,${abrilTotal}\n`;
-  csv += `Promedio diario actual,${promAbril}\n`;
-  csv += `Proyeccion final,${proyeccion}\n`;
-  csv += `% de meta,${pctMeta}%\n`;
+  csv += `Sellers/Dropshippers,${resumen.total_sellers}\n`;
 
   return csv;
 }
 
-function generateSeguimientoAbril(abrilData: DailyData[], metaInfo: MetaInfo, marzoData: DailyData[], country: string): string {
+function generateSeguimientoAbrilCSV(abrilData: DailyData[], metaInfo: MetaInfo, country: string): string {
   const countryLabel = country === "py" ? "Paraguay" : "Argentina";
   const META_DIARIA = metaInfo.promedio_diario_necesario;
 
   let csv = `SEGUIMIENTO DIARIO ABRIL 2026 - Dropi ${countryLabel}\n`;
   csv += `Fecha de generacion,${formatDate()}\n`;
   csv += `Meta mensual ingresadas,${metaInfo.meta_ingresadas_abril}\n`;
+  csv += `Meta mensual movilizadas,${metaInfo.meta_movilizadas_abril}\n`;
   csv += `Meta diaria,${META_DIARIA}\n\n`;
 
   csv += `Dia,Fecha,Dia Semana,Ordenes,Meta Diaria,Diferencia,Estado,Acumulado\n`;
@@ -146,37 +196,50 @@ function generateSeguimientoAbril(abrilData: DailyData[], metaInfo: MetaInfo, ma
   csv += `Proyeccion final (30 dias),${proyeccion}\n`;
   csv += `% de meta,${diasCargados > 0 ? ((proyeccion / metaInfo.meta_ingresadas_abril) * 100).toFixed(1) : 0}%\n`;
   csv += `Dias restantes,${diasRestantes}\n`;
-  csv += `Necesario/dia restante,${necesario}\n\n`;
-
-  csv += `REFERENCIA MARZO 2026\n`;
-  csv += `Total marzo,${metaInfo.marzo_total_ordenes}\n`;
-  csv += `Promedio diario marzo,${metaInfo.marzo_promedio_diario}\n`;
+  csv += `Necesario/dia restante,${necesario}\n`;
 
   return csv;
 }
 
-function generateProveedoresReport(proveedores: Proveedor[], country: string): string {
+function generateProveedoresCSV(proveedores: Proveedor[], country: string, periodo: Periodo): string {
   const countryLabel = country === "py" ? "Paraguay" : "Argentina";
 
-  let csv = `REPORTE DE PROVEEDORES - Dropi ${countryLabel}\n`;
+  let csv = `REPORTE DE PROVEEDORES - Dropi ${countryLabel} - ${PERIODO_LABELS[periodo]}\n`;
   csv += `Fecha de generacion,${formatDate()}\n`;
   csv += `Total proveedores,${proveedores.length}\n\n`;
 
-  csv += `Proveedor,Dropi ID,Sellers,Ing Ene,Mov Ene,Ent Ene,Dev Ene,Ing Feb,Mov Feb,Ent Feb,Dev Feb,Ing Mar,Mov Mar,Ent Mar,Dev Mar,Total Ing,Total Mov,Total Ent,Total Dev,% Entrega Mar,% Dev Mar,Crecimiento %\n`;
-
-  for (const p of proveedores) {
-    csv += `${p.proveedor},${p.dropi_id},${p.sellers},`;
-    csv += `${p.enero.ing ?? 0},${p.enero.mov ?? 0},${p.enero.ent ?? 0},${p.enero.dev ?? 0},`;
-    csv += `${p.febrero.ing ?? 0},${p.febrero.mov ?? 0},${p.febrero.ent ?? 0},${p.febrero.dev ?? 0},`;
-    csv += `${p.marzo.ing ?? 0},${p.marzo.mov ?? 0},${p.marzo.ent ?? 0},${p.marzo.dev ?? 0},`;
-    csv += `${p.total.ing},${p.total.mov},${p.total.ent},${p.total.dev},`;
-    csv += `${((p.marzo.pct_entrega ?? 0) * 100).toFixed(1)}%,${((p.marzo.pct_dev ?? 0) * 100).toFixed(1)}%,${p.growth_pct ?? 0}%\n`;
+  if (periodo === "enero" || periodo === "febrero" || periodo === "marzo") {
+    const mes = periodo;
+    const mesLabel = mes.charAt(0).toUpperCase() + mes.slice(1);
+    csv += `Proveedor,Dropi ID,Sellers,Ingresadas ${mesLabel},Movilizadas ${mesLabel},Entregados ${mesLabel},Devoluciones ${mesLabel},% Entrega,% Devolucion\n`;
+    for (const p of proveedores) {
+      const d = p[mes] as MesData;
+      const ing = d.ing ?? 0;
+      const mov = d.mov ?? 0;
+      const ent = d.ent ?? 0;
+      const dev = d.dev ?? 0;
+      if (ing === 0 && mov === 0) continue;
+      const pctEnt = ((d.pct_entrega ?? 0) * 100).toFixed(1);
+      const pctDev = ((d.pct_dev ?? 0) * 100).toFixed(1);
+      csv += `${p.proveedor},${p.dropi_id},${p.sellers},${ing},${mov},${ent},${dev},${pctEnt}%,${pctDev}%\n`;
+    }
+  } else {
+    // Q1, Total, Abril → show all months
+    csv += `Proveedor,Dropi ID,Sellers,Ing Ene,Mov Ene,Ent Ene,Dev Ene,Ing Feb,Mov Feb,Ent Feb,Dev Feb,Ing Mar,Mov Mar,Ent Mar,Dev Mar,Total Ing,Total Mov,Total Ent,Total Dev,% Entrega Mar,% Dev Mar,Crecimiento %\n`;
+    for (const p of proveedores) {
+      csv += `${p.proveedor},${p.dropi_id},${p.sellers},`;
+      csv += `${p.enero.ing ?? 0},${p.enero.mov ?? 0},${p.enero.ent ?? 0},${p.enero.dev ?? 0},`;
+      csv += `${p.febrero.ing ?? 0},${p.febrero.mov ?? 0},${p.febrero.ent ?? 0},${p.febrero.dev ?? 0},`;
+      csv += `${p.marzo.ing ?? 0},${p.marzo.mov ?? 0},${p.marzo.ent ?? 0},${p.marzo.dev ?? 0},`;
+      csv += `${p.total.ing},${p.total.mov},${p.total.ent},${p.total.dev},`;
+      csv += `${((p.marzo.pct_entrega ?? 0) * 100).toFixed(1)}%,${((p.marzo.pct_dev ?? 0) * 100).toFixed(1)}%,${p.growth_pct ?? 0}%\n`;
+    }
   }
 
   return csv;
 }
 
-function generateProductosReport(productos: Producto[], country: string): string {
+function generateProductosCSV(productos: Producto[], country: string): string {
   const countryLabel = country === "py" ? "Paraguay" : "Argentina";
 
   let csv = `REPORTE DE PRODUCTOS - Dropi ${countryLabel}\n`;
@@ -216,7 +279,8 @@ export default function ReportGenerator({
   seguimientoAbril: DailyData[];
   country: "py" | "ar";
 }) {
-  const [generating, setGenerating] = useState<ReportType | null>(null);
+  const [generating, setGenerating] = useState<string | null>(null);
+  const [periodo, setPeriodo] = useState<Periodo>("total");
   const countryLabel = country === "py" ? "Paraguay" : "Argentina";
   const STORAGE_KEY = `segundo-cerebro-abril-${country}`;
 
@@ -232,38 +296,41 @@ export default function ReportGenerator({
   }
 
   function handleDownload(type: ReportType) {
-    setGenerating(type);
+    setGenerating(`${type}-${periodo}`);
     const abrilData = getAbrilData();
     const date = formatDate();
+    const periodoSuffix = periodo === "total" ? "Total" : periodo === "q1" ? "Q1" : periodo.charAt(0).toUpperCase() + periodo.slice(1);
     let csv = "";
     let filename = "";
 
     switch (type) {
-      case "resumen_ejecutivo":
-        csv = generateResumenEjecutivo(resumen, metaInfo, abrilData, country);
-        filename = `Resumen_Ejecutivo_${countryLabel}_${date}.csv`;
+      case "resumen":
+        csv = generateResumenCSV(resumen, metaInfo, abrilData, country, periodo);
+        filename = `Resumen_${periodoSuffix}_${countryLabel}_${date}.csv`;
         break;
       case "seguimiento_abril":
-        csv = generateSeguimientoAbril(abrilData, metaInfo, seguimientoDiario, country);
+        csv = generateSeguimientoAbrilCSV(abrilData, metaInfo, country);
         filename = `Seguimiento_Abril_${countryLabel}_${date}.csv`;
         break;
       case "proveedores":
-        csv = generateProveedoresReport(proveedores, country);
-        filename = `Proveedores_${countryLabel}_${date}.csv`;
+        csv = generateProveedoresCSV(proveedores, country, periodo);
+        filename = `Proveedores_${periodoSuffix}_${countryLabel}_${date}.csv`;
         break;
       case "productos":
-        csv = generateProductosReport(productos, country);
+        csv = generateProductosCSV(productos, country);
         filename = `Productos_${countryLabel}_${date}.csv`;
         break;
       case "completo": {
-        csv = generateResumenEjecutivo(resumen, metaInfo, abrilData, country);
+        csv = generateResumenCSV(resumen, metaInfo, abrilData, country, periodo);
         csv += "\n\n" + "=".repeat(60) + "\n\n";
-        csv += generateSeguimientoAbril(abrilData, metaInfo, seguimientoDiario, country);
+        if (periodo === "abril" || periodo === "total") {
+          csv += generateSeguimientoAbrilCSV(abrilData, metaInfo, country);
+          csv += "\n\n" + "=".repeat(60) + "\n\n";
+        }
+        csv += generateProveedoresCSV(proveedores, country, periodo);
         csv += "\n\n" + "=".repeat(60) + "\n\n";
-        csv += generateProveedoresReport(proveedores, country);
-        csv += "\n\n" + "=".repeat(60) + "\n\n";
-        csv += generateProductosReport(productos, country);
-        filename = `Reporte_Completo_${countryLabel}_${date}.csv`;
+        csv += generateProductosCSV(productos, country);
+        filename = `Reporte_Completo_${periodoSuffix}_${countryLabel}_${date}.csv`;
         break;
       }
     }
@@ -273,11 +340,11 @@ export default function ReportGenerator({
   }
 
   const reports: { type: ReportType; label: string; desc: string; icon: string; color: string }[] = [
-    { type: "resumen_ejecutivo", label: "Resumen Ejecutivo", desc: "KPIs Q1 + metas abril + estructura operativa", icon: "📊", color: "blue" },
+    { type: "resumen", label: "Resumen Ejecutivo", desc: "KPIs del periodo seleccionado", icon: "📊", color: "blue" },
     { type: "seguimiento_abril", label: "Seguimiento Abril", desc: "Dia a dia de abril con semaforo y proyeccion", icon: "🎯", color: "green" },
-    { type: "proveedores", label: "Proveedores", desc: "Todos los proveedores con metricas mensuales Q1", icon: "🏭", color: "orange" },
+    { type: "proveedores", label: "Proveedores", desc: "Proveedores con metricas del periodo", icon: "🏭", color: "orange" },
     { type: "productos", label: "Productos", desc: "Top productos mas vendidos Q1", icon: "📦", color: "purple" },
-    { type: "completo", label: "Reporte Completo", desc: "Todos los reportes en un solo archivo", icon: "📋", color: "red" },
+    { type: "completo", label: "Reporte Completo", desc: "Todos los reportes del periodo en un archivo", icon: "📋", color: "red" },
   ];
 
   const colorStyles: Record<string, { border: string; bg: string; text: string; hover: string }> = {
@@ -288,25 +355,59 @@ export default function ReportGenerator({
     red: { border: "border-red-500/30", bg: "rgba(239,68,68,0.05)", text: "text-red-400", hover: "hover:border-red-500/60" },
   };
 
+  const periodos: { key: Periodo; label: string }[] = [
+    { key: "total", label: "Total" },
+    { key: "q1", label: "Q1" },
+    { key: "enero", label: "Enero" },
+    { key: "febrero", label: "Febrero" },
+    { key: "marzo", label: "Marzo" },
+    { key: "abril", label: "Abril" },
+  ];
+
   return (
     <div className="glass-card p-6 border-cyan-500/30">
       <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
         📥 Reportes &mdash; Dropi {countryLabel}
       </h2>
-      <p className="text-xs text-gray-400 mb-6">
-        Genera y descarga reportes en CSV &middot; Incluye datos de abril cargados manualmente
+      <p className="text-xs text-gray-400 mb-4">
+        Genera y descarga reportes en CSV &middot; Selecciona el periodo y el tipo de reporte
       </p>
+
+      {/* Period selector */}
+      <div className="mb-5">
+        <p className="text-[10px] text-gray-400 uppercase mb-2">Periodo del reporte</p>
+        <div className="flex gap-2 flex-wrap">
+          {periodos.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPeriodo(p.key)}
+              className={`text-xs px-4 py-2 rounded-lg border transition-all ${
+                periodo === p.key
+                  ? "bg-cyan-500 text-white border-cyan-500 shadow-lg shadow-cyan-500/20"
+                  : "bg-transparent text-gray-400 border-gray-700 hover:border-cyan-500/40 hover:text-cyan-300"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-gray-500 mt-2">
+          Descargando: <span className="text-cyan-400 font-medium">{PERIODO_LABELS[periodo]}</span>
+        </p>
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {reports.map((r) => {
           const s = colorStyles[r.color];
-          const isGenerating = generating === r.type;
+          const isGenerating = generating === `${r.type}-${periodo}`;
+          const isAbrilOnly = r.type === "seguimiento_abril";
+          const disabled = isAbrilOnly && periodo !== "abril" && periodo !== "total";
           return (
             <button
               key={r.type}
-              onClick={() => handleDownload(r.type)}
-              disabled={isGenerating}
-              className={`text-left p-4 rounded-xl border ${s.border} ${s.hover} transition-all cursor-pointer group`}
+              onClick={() => !disabled && handleDownload(r.type)}
+              disabled={isGenerating || disabled}
+              className={`text-left p-4 rounded-xl border ${s.border} ${s.hover} transition-all group ${disabled ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
               style={{ background: s.bg }}
             >
               <div className="flex items-start gap-3">
