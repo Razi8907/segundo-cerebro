@@ -79,8 +79,10 @@ export default function StrategicSimulator({
         const entScore = Math.min(pctEnt, 1) * 10;
         const totalScore = volumeScore + trendScore + devScore + entScore;
 
-        // Projected April: based on March movilizadas + realistic growth from trend
-        const projectedAbril = Math.round(marMov * (1 + Math.max(trend * 0.5, 0)));
+        // Projected April: based on March movilizadas + capped realistic growth
+        // Cap growth at 30% over March to avoid absurd projections from extreme trends
+        const cappedGrowth = Math.min(Math.max(trend * 0.5, 0), 0.30);
+        const projectedAbril = Math.round(marMov * (1 + cappedGrowth));
 
         return {
           ...p,
