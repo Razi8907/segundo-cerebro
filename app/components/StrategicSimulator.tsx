@@ -55,14 +55,16 @@ export default function StrategicSimulator({
   const analysis = useMemo(() => {
     const marzoMov = resumen.marzo.movilizadas;
     const gap = GOAL_MOVILIZADAS - marzoMov;
-    const gapPct = ((gap / marzoMov) * 100).toFixed(1);
+    const gapPct = marzoMov > 0 ? ((gap / marzoMov) * 100).toFixed(1) : "0";
 
-    // Score proveedores: high volume + growth + low devolution = best
-    const scored = proveedores
-      .filter((p) => p.total.mov > 0)
+    // Dynamic volume scale based on country size
+    const activeProvs = proveedores.filter((p) => p.total.mov > 0);
+    const totalAvgMov = activeProvs.reduce((s, p) => s + p.total.mov / 3, 0);
+    const volumeScale = activeProvs.length > 0 ? (totalAvgMov / activeProvs.length) * 3 : 2000;
+
+    const scored = activeProvs
       .map((p) => {
         const marMov = p.marzo.mov || 0;
-        const febMov = p.febrero.mov || 0;
         const eneMov = p.enero.mov || 0;
         const avgMov = p.total.mov / 3;
         const trend = marMov > 0 && eneMov > 0 ? (marMov - eneMov) / eneMov : 0;
@@ -70,13 +72,14 @@ export default function StrategicSimulator({
         const pctEnt = p.total.ent / p.total.mov;
 
         // Score: volume (40%) + trend (30%) + low dev (20%) + high delivery (10%)
-        const volumeScore = Math.min(avgMov / 2000, 1) * 40;
+        // volumeScale is dynamic per country
+        const volumeScore = Math.min(avgMov / volumeScale, 1) * 40;
         const trendScore = Math.min(Math.max(trend, -1), 2) / 2 * 30;
         const devScore = (1 - Math.min(pctDev, 1)) * 20;
         const entScore = Math.min(pctEnt, 1) * 10;
         const totalScore = volumeScore + trendScore + devScore + entScore;
 
-        // Projected April contribution (based on March + growth trend)
+        // Projected April: based on March movilizadas + realistic growth from trend
         const projectedAbril = Math.round(marMov * (1 + Math.max(trend * 0.5, 0)));
 
         return {
@@ -100,13 +103,11 @@ export default function StrategicSimulator({
       })
       .sort((a, b) => b.score - a.score);
 
-    // Top performers to focus on
     const estrellas = scored.filter((s) => s.category === "estrella");
     const potenciales = scored.filter((s) => s.category === "potencial");
     const mantener = scored.filter((s) => s.category === "mantener");
     const revisar = scored.filter((s) => s.category === "revisar");
 
-    // Projected total if we grow top proveedores
     const projectedTotal = scored.reduce((sum, s) => sum + s.projectedAbril, 0);
     const additionalNeeded = Math.max(0, GOAL_MOVILIZADAS - projectedTotal);
 
@@ -224,7 +225,7 @@ export default function StrategicSimulator({
               labelStyle={{ color: "#e5e7eb" }}
               formatter={(value) => Number(value).toLocaleString()}
             />
-            <ReferenceLine x={GOAL_MOVILIZADAS / 20} stroke="#10B981" strokeDasharray="3 3" label={{ value: "Meta promedio", fill: "#10B981", fontSize: 10 }} />
+            <ReferenceLine x={analysis.scored.length > 0 ? Math.round(GOAL_MOVILIZADAS / analysis.scored.length) : 0} stroke="#10B981" strokeDasharray="3 3" label={{ value: "Meta promedio", fill: "#10B981", fontSize: 10 }} />
             <Bar dataKey="Marzo Real" fill="#6B7280" radius={[0, 4, 4, 0]} barSize={10} />
             <Bar dataKey="Proy. Abril" radius={[0, 4, 4, 0]} barSize={10}>
               {chartData.map((entry, index) => (
