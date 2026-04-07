@@ -16,20 +16,33 @@ export default function ChartDownloadBtn({
     if (!ref.current || downloading) return;
     setDownloading(true);
     try {
-      const html2canvas = (await import("html2canvas")).default;
-      const canvas = await html2canvas(ref.current, {
+      // Dynamic import with explicit path
+      const mod = await import("html2canvas");
+      const html2canvas = mod.default || mod;
+      const canvas = await (html2canvas as any)(ref.current, {
         backgroundColor: "#1a1a2e",
         scale: 2,
         logging: false,
         useCORS: true,
+        allowTaint: true,
+        removeContainer: true,
       });
-      const url = canvas.toDataURL("image/png");
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${filename}.png`;
-      a.click();
-    } catch {
-      /* ignore */
+
+      // Use toBlob for more reliable download
+      canvas.toBlob((blob: Blob | null) => {
+        if (!blob) return;
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${filename}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+      }, "image/png");
+    } catch (err) {
+      console.error("Chart download error:", err);
+      alert("Error al descargar la imagen. Intenta de nuevo.");
     }
     setDownloading(false);
   }
@@ -46,7 +59,7 @@ export default function ChartDownloadBtn({
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
         </svg>
-        {downloading ? "..." : "PNG"}
+        {downloading ? "Descargando..." : "PNG"}
       </button>
     </div>
   );
