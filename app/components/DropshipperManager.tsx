@@ -34,44 +34,46 @@ interface ProveedorData {
   dropi_id?: number | null;
 }
 
-const META_MOV_ABRIL = 40000;
-const META_ING_ABRIL = 51283;
-
-// Top providers ranked by potential
-const TOP_PROVIDERS = [
-  "NYCSHOP", "OSVALDORAMIREZ", "FedericoWarnes", "GuillermoCandia",
-  "GuimenezJuan", "Alfredo JosueRojas Gonzalez", "Merx Importaciones y LaboratorioFondos",
-  "Swiss Trading Group IMPORTADORASwiss Trading Group IMPORTADORA",
-  "ADMA COMPANYPY", "EMLUDYCDE", "LeydiGómez", "ADMACOMPANY",
-  "BELOLARBELOLAR", "NaturalCaps", "DouglasGomez",
-];
-
 import type { MesFilter } from "../types";
+
+interface MetaInfo {
+  meta_movilizadas_abril: number;
+  meta_ingresadas_abril: number;
+  [key: string]: any;
+}
 
 export default function DropshipperManager({
   dropshippers,
   proveedores,
   mesFilter = "abril",
+  metaInfo,
 }: {
   dropshippers: Dropshipper[];
   proveedores: ProveedorData[];
   mesFilter?: MesFilter;
+  metaInfo?: MetaInfo;
 }) {
   const isAbril = mesFilter === "abril";
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "escalar" | "reactivar" | "nuevos_provs" | "alto_dev">("all");
   const [selectedDS, setSelectedDS] = useState<string | null>(null);
 
+  const META_MOV_ABRIL = metaInfo?.meta_movilizadas_abril ?? 40000;
+  const META_ING_ABRIL = metaInfo?.meta_ingresadas_abril ?? 51283;
+
+  // Top providers ranked by potential — derived from data
+  const TOP_PROVIDERS = proveedores
+    .sort((a, b) => b.total.mov - a.total.mov)
+    .slice(0, 15)
+    .map((p) => p.proveedor);
+
   const analysis = useMemo(() => {
     const totalMovQ1 = dropshippers.reduce((s, d) => s + d.total.mov, 0);
-    const avgMovPerDS = totalMovQ1 / dropshippers.length / 3; // monthly avg per DS
 
     const scored = dropshippers.map((d) => {
       const marMov = d.mar.mov;
       const avgMov = d.total.mov / 3;
 
-      // What this DS needs to contribute to April goal
-      // Proportional to their March share
       const totalMarMov = dropshippers.reduce((s, dd) => s + dd.mar.mov, 0);
       const share = totalMarMov > 0 ? marMov / totalMarMov : 0;
       const goalAbrilMov = Math.round(META_MOV_ABRIL * share);
@@ -153,7 +155,7 @@ export default function DropshipperManager({
     const altoDevCount = scored.filter((s) => s.category === "alto_dev");
 
     return { scored, escalables, reactivar, nuevosProvs, altoDevCount };
-  }, [dropshippers]);
+  }, [dropshippers, META_MOV_ABRIL, META_ING_ABRIL, TOP_PROVIDERS]);
 
   const filtered = analysis.scored.filter((d) => {
     if (search && !d.email.toLowerCase().includes(search.toLowerCase())) return false;

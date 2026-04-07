@@ -30,21 +30,29 @@ interface Resumen {
   marzo: { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number };
 }
 
-const GOAL_MOVILIZADAS = 40000;
-const TASA_MOVILIZACION = 0.78;
-const GOAL_INGRESADAS = Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION);
+interface MetaInfo {
+  meta_movilizadas_abril: number;
+  meta_ingresadas_abril: number;
+  tasa_movilizacion: number;
+  [key: string]: any;
+}
 
 export default function StrategicSimulator({
   proveedores,
   resumen,
+  metaInfo,
 }: {
   proveedores: ProveedorData[];
   resumen: Resumen;
+  metaInfo?: MetaInfo;
 }) {
   const [showAll, setShowAll] = useState(false);
 
+  const GOAL_MOVILIZADAS = metaInfo?.meta_movilizadas_abril ?? 40000;
+  const TASA_MOVILIZACION = metaInfo?.tasa_movilizacion ?? 0.78;
+  const GOAL_INGRESADAS = metaInfo?.meta_ingresadas_abril ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION);
+
   const analysis = useMemo(() => {
-    // Current March data as baseline
     const marzoMov = resumen.marzo.movilizadas;
     const gap = GOAL_MOVILIZADAS - marzoMov;
     const gapPct = ((gap / marzoMov) * 100).toFixed(1);
@@ -114,7 +122,7 @@ export default function StrategicSimulator({
       projectedTotal,
       additionalNeeded,
     };
-  }, [proveedores, resumen]);
+  }, [proveedores, resumen, GOAL_MOVILIZADAS]);
 
   const chartData = analysis.scored.slice(0, 20).map((p) => ({
     name: p.proveedor.length > 15 ? p.proveedor.slice(0, 15) + "…" : p.proveedor,
@@ -144,10 +152,10 @@ export default function StrategicSimulator({
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            🎯 Plan Estratégico: 40,000 Movilizadas en Abril
+            🎯 Plan Estratégico: {GOAL_MOVILIZADAS.toLocaleString()} Movilizadas en Abril
           </h2>
           <p className="text-xs text-gray-400 mt-1">
-            Se necesitan {GOAL_INGRESADAS.toLocaleString()} órdenes ingresadas (78% tasa de movilización)
+            Se necesitan {GOAL_INGRESADAS.toLocaleString()} órdenes ingresadas ({Math.round(TASA_MOVILIZACION * 100)}% tasa de movilización)
           </p>
         </div>
 
@@ -168,7 +176,7 @@ export default function StrategicSimulator({
           </div>
           <div className="text-center px-4 py-2 rounded-xl bg-green-500/10 border border-green-500/20">
             <p className="text-[10px] text-gray-400 uppercase">Meta</p>
-            <p className="text-lg font-bold text-green-400">40,000</p>
+            <p className="text-lg font-bold text-green-400">{GOAL_MOVILIZADAS.toLocaleString()}</p>
           </div>
         </div>
       </div>
@@ -320,7 +328,7 @@ export default function StrategicSimulator({
       <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
         <h3 className="text-sm font-bold text-orange-400 mb-2">💡 Resumen Estratégico para Abril</h3>
         <ul className="text-xs text-gray-300 space-y-1.5">
-          <li>• <strong>Meta:</strong> 40,000 movilizadas = ~{GOAL_INGRESADAS.toLocaleString()} ingresadas (78% tasa movilización)</li>
+          <li>• <strong>Meta:</strong> {GOAL_MOVILIZADAS.toLocaleString()} movilizadas = ~{GOAL_INGRESADAS.toLocaleString()} ingresadas ({Math.round(TASA_MOVILIZACION * 100)}% tasa movilización)</li>
           <li>• <strong>Gap actual:</strong> Marzo cerró en {analysis.marzoMov.toLocaleString()} → necesitamos +{analysis.gap.toLocaleString()} ({analysis.gapPct}% más)</li>
           <li>• <strong>Por tendencia:</strong> Se proyectan {analysis.projectedTotal.toLocaleString()} movilizadas {analysis.projectedTotal >= GOAL_MOVILIZADAS ? "(✅ se alcanza la meta)" : `(❌ faltan ${(GOAL_MOVILIZADAS - analysis.projectedTotal).toLocaleString()} adicionales)`}</li>
           <li>• <strong>Top {analysis.estrellas.length} proveedores estrella</strong> aportan {analysis.estrellas.reduce((s, p) => s + p.projectedAbril, 0).toLocaleString()} mov. proyectadas → escalar sellers activos y reclutar nuevos</li>

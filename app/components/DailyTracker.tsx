@@ -364,7 +364,7 @@ export default function DailyTracker({
         🎯 Seguimiento Diario &mdash; Meta Abril: {META_TOTAL.toLocaleString()} ingresadas
       </h2>
       <p className="text-xs text-gray-400 mb-6">
-        Carga diaria de Abril &middot; Meta diaria: {META_DIARIA.toLocaleString()} órdenes &middot; Objetivo: 40,000 movilizadas
+        Carga diaria de Abril &middot; Meta diaria: {META_DIARIA.toLocaleString()} órdenes &middot; Objetivo: {metaInfo.meta_movilizadas_abril.toLocaleString()} movilizadas
       </p>
 
       {/* KPIs row - solo Abril */}

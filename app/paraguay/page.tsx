@@ -133,15 +133,15 @@ export default function ParaguayDashboard() {
         {isAbril ? (
           <>
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="py" />
-            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
+            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
-            <StrategicSimulator proveedores={proveedores} resumen={resumen} />
+            <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
             <ProductGoalPlanner proveedores={proveedores} />
           </>
         ) : (
           <>
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="py" />
-            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} />
+            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
