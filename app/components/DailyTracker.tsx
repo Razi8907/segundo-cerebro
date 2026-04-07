@@ -162,6 +162,60 @@ export default function DailyTracker({
       });
     }
 
+    // Weekly breakdown for April
+    const META_MOV = metaInfo.meta_movilizadas_abril;
+    const weeks = [
+      { label: "S1 (1-6)", start: 1, end: 6, dias: 6 },
+      { label: "S2 (7-13)", start: 7, end: 13, dias: 7 },
+      { label: "S3 (14-20)", start: 14, end: 20, dias: 7 },
+      { label: "S4 (21-27)", start: 21, end: 27, dias: 7 },
+      { label: "S5 (28-30)", start: 28, end: 30, dias: 3 },
+    ];
+
+    let acumReal = 0;
+    const weeklyData = weeks.map((w) => {
+      // Real data for loaded days
+      const realDays = abrilData.filter((d) => d.fecha >= w.start && d.fecha <= w.end);
+      const realTotal = realDays.reduce((s, d) => s + d.ordenes, 0);
+      const diasCargadosWeek = realDays.length;
+      acumReal += realTotal;
+
+      // Meta semanal proporcional (ingresadas)
+      const metaSemanalIng = Math.round(META_TOTAL * (w.dias / 30));
+      // Meta semanal movilizadas
+      const metaSemanalMov = Math.round(META_MOV * (w.dias / 30));
+
+      // What's still needed from remaining days in this week
+      const diasFaltantesWeek = w.dias - diasCargadosWeek;
+      const necesarioRestanteWeek = diasFaltantesWeek > 0
+        ? Math.round((metaSemanalIng - realTotal) / diasFaltantesWeek)
+        : 0;
+
+      // Projected: real + estimated for missing days
+      const estimadoFaltante = diasFaltantesWeek > 0
+        ? diasFaltantesWeek * (diasCargados > 0 ? promedioAbril : META_DIARIA)
+        : 0;
+      const proyectadoSemanal = realTotal + Math.round(estimadoFaltante);
+
+      // Acumulado meta
+      const acumMetaIng = Math.round(META_TOTAL * (w.end / 30));
+      const acumMetaMov = Math.round(META_MOV * (w.end / 30));
+
+      return {
+        semana: w.label,
+        dias: w.dias,
+        diasCargados: diasCargadosWeek,
+        real: realTotal,
+        metaIng: metaSemanalIng,
+        metaMov: metaSemanalMov,
+        proyectado: proyectadoSemanal,
+        necesarioDiario: necesarioRestanteWeek,
+        acumReal: acumReal,
+        acumMetaIng,
+        acumMetaMov,
+      };
+    });
+
     return {
       dowAvg,
       abrilTotal,
@@ -173,6 +227,7 @@ export default function DailyTracker({
       necesarioPorDiaRestante,
       coloredAbril,
       abrilProjected,
+      weeklyData,
     };
   }, [marzoData, abrilData, META_DIARIA, META_TOTAL, metaInfo]);
 
@@ -372,7 +427,7 @@ export default function DailyTracker({
         <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Meta Diaria</p>
           <p className="text-lg font-bold text-orange-400">{META_DIARIA.toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">Para 40K mov.</p>
+          <p className="text-[10px] text-gray-500">Para {(metaInfo.meta_movilizadas_abril / 1000).toFixed(0)}K mov.</p>
         </div>
         <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Abril Acum.</p>
@@ -545,6 +600,123 @@ export default function DailyTracker({
           </div>
         </div>
       )}
+
+      {/* Weekly projection chart */}
+      <div className="mb-6 p-4 rounded-xl border border-cyan-500/20" style={{ background: "rgba(6,182,212,0.03)" }}>
+        <h3 className="text-sm font-bold text-cyan-400 mb-1">
+          📅 Proyección Semanal — Camino a {META_TOTAL.toLocaleString()} ingresadas → {metaInfo.meta_movilizadas_abril.toLocaleString()} movilizadas
+        </h3>
+        <p className="text-[10px] text-gray-400 mb-4">
+          Meta semanal proporcional &middot; Acumulado real vs necesario para llegar al objetivo
+        </p>
+
+        <ResponsiveContainer width="100%" height={300}>
+          <ComposedChart data={analysis.weeklyData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+            <XAxis dataKey="semana" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+            <YAxis yAxisId="left" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+            <YAxis yAxisId="right" orientation="right" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+            <Tooltip
+              contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(6,182,212,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 11 }}
+              formatter={(value, name) => {
+                if (value == null) return ["—", name];
+                const labels: Record<string, string> = {
+                  real: "Real ingresadas",
+                  metaIng: "Meta ingresadas",
+                  metaMov: "Meta movilizadas",
+                  proyectado: "Proyectado",
+                  acumReal: "Acum. real",
+                  acumMetaIng: "Acum. meta ing.",
+                };
+                return [Number(value).toLocaleString(), labels[String(name)] || String(name)];
+              }}
+            />
+            <Bar yAxisId="left" dataKey="metaIng" name="metaIng" fill="#F97316" opacity={0.2} radius={[4, 4, 0, 0]} barSize={28} />
+            <Bar yAxisId="left" dataKey="real" name="real" radius={[4, 4, 0, 0]} barSize={28}>
+              {analysis.weeklyData.map((w, i) => (
+                <Cell key={i} fill={w.real >= w.metaIng ? "#10B981" : w.real >= w.metaIng * 0.8 ? "#F59E0B" : w.diasCargados > 0 ? "#EF4444" : "#374151"} />
+              ))}
+            </Bar>
+            <Line yAxisId="right" type="monotone" dataKey="acumReal" stroke="#06B6D4" strokeWidth={2} dot={{ fill: "#06B6D4", r: 4 }} name="acumReal" />
+            <Line yAxisId="right" type="monotone" dataKey="acumMetaIng" stroke="#F97316" strokeWidth={2} strokeDasharray="6 3" dot={{ fill: "#F97316", r: 3 }} name="acumMetaIng" />
+          </ComposedChart>
+        </ResponsiveContainer>
+
+        {/* Legend */}
+        <div className="flex gap-4 mt-2 justify-center flex-wrap">
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="w-3 h-3 rounded" style={{ background: "#10B981" }} />
+            <span className="text-gray-400">Real (cumple meta)</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="w-3 h-3 rounded" style={{ background: "#F97316", opacity: 0.2 }} />
+            <span className="text-gray-400">Meta semanal ingresadas</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="w-4 border-t-2 border-cyan-500" />
+            <span className="text-gray-400">Acumulado real</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px]">
+            <span className="w-4 border-t-2 border-dashed border-orange-500" />
+            <span className="text-gray-400">Acumulado meta</span>
+          </div>
+        </div>
+
+        {/* Weekly table */}
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-cyan-500/20">
+                <th className="text-left py-2 px-2 text-gray-400">Semana</th>
+                <th className="text-right py-2 px-2 text-gray-400">Días</th>
+                <th className="text-right py-2 px-2 text-cyan-400">Meta Ing.</th>
+                <th className="text-right py-2 px-2 text-orange-400">Meta Mov.</th>
+                <th className="text-right py-2 px-2 text-gray-400">Real</th>
+                <th className="text-right py-2 px-2 text-gray-400">Acum. Real</th>
+                <th className="text-right py-2 px-2 text-gray-400">Acum. Meta</th>
+                <th className="text-right py-2 px-2 text-gray-400">Necesario/día</th>
+                <th className="text-center py-2 px-2 text-gray-400">Estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {analysis.weeklyData.map((w) => {
+                const pct = w.metaIng > 0 && w.diasCargados > 0 ? (w.real / w.metaIng) * 100 : 0;
+                const estado = w.diasCargados === 0 ? "Pendiente" : pct >= 100 ? "Cumplida" : pct >= 80 ? "En rango" : "Bajo meta";
+                const estadoColor = w.diasCargados === 0 ? "text-gray-500" : pct >= 100 ? "text-green-400" : pct >= 80 ? "text-yellow-400" : "text-red-400";
+                return (
+                  <tr key={w.semana} className="border-b border-gray-800/40">
+                    <td className="py-2 px-2 text-white font-medium">{w.semana}</td>
+                    <td className="py-2 px-2 text-right text-gray-400">{w.dias} ({w.diasCargados} carg.)</td>
+                    <td className="py-2 px-2 text-right text-cyan-400 font-bold">{w.metaIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-orange-400">{w.metaMov.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-white font-bold">{w.real > 0 ? w.real.toLocaleString() : "—"}</td>
+                    <td className="py-2 px-2 text-right text-cyan-400">{w.acumReal > 0 ? w.acumReal.toLocaleString() : "—"}</td>
+                    <td className="py-2 px-2 text-right text-orange-400">{w.acumMetaIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-purple-400">
+                      {w.necesarioDiario > 0 ? w.necesarioDiario.toLocaleString() + "/día" : w.diasCargados > 0 ? "—" : META_DIARIA.toLocaleString() + "/día"}
+                    </td>
+                    <td className={`py-2 px-2 text-center text-[10px] font-medium ${estadoColor}`}>{estado}</td>
+                  </tr>
+                );
+              })}
+              <tr className="border-t border-cyan-500/30">
+                <td className="py-2 px-2 text-white font-bold">TOTAL</td>
+                <td className="py-2 px-2 text-right text-gray-400">30</td>
+                <td className="py-2 px-2 text-right text-cyan-400 font-bold">{META_TOTAL.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right text-orange-400 font-bold">{metaInfo.meta_movilizadas_abril.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right text-white font-bold">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</td>
+                <td colSpan={2} className="py-2 px-2 text-right text-gray-400">
+                  {analysis.abrilTotal > 0 ? `${analysis.pctMeta.toFixed(1)}% de meta (proy.)` : ""}
+                </td>
+                <td className="py-2 px-2 text-right text-purple-400 font-bold">
+                  {analysis.necesarioPorDiaRestante > 0 ? analysis.necesarioPorDiaRestante.toLocaleString() + "/día" : META_DIARIA.toLocaleString() + "/día"}
+                </td>
+                <td />
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       {/* Marzo reference chart */}
       <div className="mb-6">
