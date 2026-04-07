@@ -97,7 +97,7 @@ export default function ProductsAnalysis({
     pieData.push({
       name: `Otros (${productosTotal - 10})`,
       value: totalUnidades - topProducts.slice(0, 10).reduce((s, p) => s + p.cantidad, 0),
-      fill: "#4B5563",
+      fill: "#d1d5db",
     });
 
     return { topProducts, totalUnidades, top10Share, top20Share, top50Share, pieData };

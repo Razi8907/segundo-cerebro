@@ -63,7 +63,7 @@ export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resum
                 endAngle={-270}
               >
                 <PolarAngleAxis type="number" domain={[0, 100]} angleAxisId={0} tick={false} />
-                <RadialBar background={{ fill: "#2a2a4a" }} dataKey="value" angleAxisId={0} cornerRadius={10} />
+                <RadialBar background={{ fill: "#d1d5db" }} dataKey="value" angleAxisId={0} cornerRadius={10} />
               </RadialBarChart>
             </ResponsiveContainer>
             <span className="text-2xl font-bold mt-[-60px] mb-6" style={{ color: m.color }}>

@@ -112,7 +112,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
         value: p.projAbrilIng,
         fill: COLORS[i % COLORS.length],
       })),
-      ...(othersProjIng > 0 ? [{ name: `Otros (${prepared.length - 12})`, value: othersProjIng, fill: "#4B5563" }] : []),
+      ...(othersProjIng > 0 ? [{ name: `Otros (${prepared.length - 12})`, value: othersProjIng, fill: "#d1d5db" }] : []),
     ];
 
     // Categories
