@@ -17,6 +17,7 @@ import DailyTracker from "../components/DailyTracker";
 import ProductsAnalysis from "../components/ProductsAnalysis";
 import DropshipperManager from "../components/DropshipperManager";
 import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
+import ReportGenerator from "../components/ReportGenerator";
 import type { MesFilter } from "../types";
 
 const allData = data as typeof data & {
@@ -158,6 +159,16 @@ export default function ArgentinaDashboard() {
             <SellersTable sellers={sellers_top} mesFilter={mesFilter} />
           </>
         )}
+
+        <ReportGenerator
+          resumen={resumen}
+          metaInfo={meta_info}
+          proveedores={proveedores}
+          productos={productos}
+          seguimientoDiario={seguimiento_diario}
+          seguimientoAbril={seguimiento_abril}
+          country="ar"
+        />
 
         <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
           Dropi Argentina &middot; Segundo Cerebro Dashboard &middot; Datos Q1 2026

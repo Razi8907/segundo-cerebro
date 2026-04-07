@@ -16,6 +16,7 @@ import ProductGoalPlanner from "../components/ProductGoalPlanner";
 import DailyTracker from "../components/DailyTracker";
 import ProductsAnalysis from "../components/ProductsAnalysis";
 import DropshipperManager from "../components/DropshipperManager";
+import ReportGenerator from "../components/ReportGenerator";
 import type { MesFilter } from "../types";
 
 const allData = data as typeof data & {
@@ -156,6 +157,16 @@ export default function ParaguayDashboard() {
             <SellersTable sellers={sellers_top} mesFilter={mesFilter} />
           </>
         )}
+
+        <ReportGenerator
+          resumen={resumen}
+          metaInfo={meta_info}
+          proveedores={proveedores}
+          productos={productos}
+          seguimientoDiario={seguimiento_diario}
+          seguimientoAbril={seguimiento_abril}
+          country="py"
+        />
 
         <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
           Dropi Paraguay &middot; Segundo Cerebro Dashboard &middot; Datos Q1 2026
