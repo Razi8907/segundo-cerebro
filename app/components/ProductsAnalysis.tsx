@@ -26,7 +26,12 @@ interface ProveedorData {
   growth_pct: number | null;
 }
 
-const META_INGRESADAS = 51283;
+interface MetaInfo {
+  meta_movilizadas_abril: number;
+  meta_ingresadas_abril: number;
+  [key: string]: any;
+}
+
 const COLORS = [
   "#F97316", "#3B82F6", "#10B981", "#EF4444", "#8B5CF6",
   "#EC4899", "#14B8A6", "#F59E0B", "#6366F1", "#06B6D4",
@@ -40,13 +45,16 @@ export default function ProductsAnalysis({
   proveedores,
   productosTotal,
   mesFilter = "abril",
+  metaInfo,
 }: {
   productos: Product[];
   proveedores: ProveedorData[];
   productosTotal: number;
   mesFilter?: MesFilter;
+  metaInfo?: MetaInfo;
 }) {
   const isAbril = mesFilter === "abril";
+  const META_INGRESADAS = metaInfo?.meta_ingresadas_abril ?? 51283;
   const [search, setSearch] = useState("");
   const [showCount, setShowCount] = useState(30);
 

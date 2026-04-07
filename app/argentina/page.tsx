@@ -136,7 +136,7 @@ export default function ArgentinaDashboard() {
             <ArgentinaPlanAbril />
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="ar" />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
-            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
+            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
             <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
             <ProductGoalPlanner proveedores={proveedores} />
           </>
@@ -144,7 +144,7 @@ export default function ArgentinaDashboard() {
           <>
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="ar" />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
-            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} />
+            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
 
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <TrendChart resumen={resumen} mesFilter={mesFilter} />
