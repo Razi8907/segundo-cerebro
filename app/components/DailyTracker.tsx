@@ -15,6 +15,7 @@ import {
   ComposedChart,
   Line,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface DailyData {
   dia_semana: string;
@@ -248,6 +249,7 @@ export default function DailyTracker({
     const pctDev = mesData.movilizadas > 0 ? ((mesData.devoluciones / mesData.movilizadas) * 100).toFixed(1) : "0";
 
     return (
+      <ChartDownloadBtn filename="Seguimiento_Diario">
       <div className="glass-card p-6 border-orange-500/30">
         <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
           📅 Seguimiento &mdash; {MES_LABELS[mesFilter]}
@@ -304,6 +306,7 @@ export default function DailyTracker({
           </div>
         )}
       </div>
+      </ChartDownloadBtn>
     );
   }
 
@@ -313,6 +316,7 @@ export default function DailyTracker({
     const title = isQ1 ? "Histórico Q1 (Ene-Mar)" : "Marzo 2026";
 
     return (
+      <ChartDownloadBtn filename="Seguimiento_Diario">
       <div className="glass-card p-6 border-orange-500/30">
         <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
           📅 Seguimiento Diario &mdash; {title}
@@ -409,11 +413,13 @@ export default function DailyTracker({
           </div>
         </div>
       </div>
+      </ChartDownloadBtn>
     );
   }
 
   // ─── ABRIL view: meta, semáforo, carga diaria, proyección ───
   return (
+    <ChartDownloadBtn filename="Seguimiento_Diario">
     <div className="glass-card p-6 border-green-500/30">
       <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
         🎯 Seguimiento Diario &mdash; Meta Abril: {META_TOTAL.toLocaleString()} ingresadas
@@ -760,5 +766,6 @@ export default function DailyTracker({
         </div>
       </div>
     </div>
+    </ChartDownloadBtn>
   );
 }

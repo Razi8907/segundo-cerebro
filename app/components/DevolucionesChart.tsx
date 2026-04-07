@@ -10,6 +10,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface Resumen {
   enero: { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number };
@@ -44,6 +45,7 @@ export default function DevolucionesChart({ resumen, mesFilter }: { resumen: Res
     : allData.filter((d) => d.mes.toLowerCase() === mesFilter);
 
   return (
+    <ChartDownloadBtn filename="Devoluciones">
     <div className="glass-card p-6">
       <h2 className="text-lg font-semibold text-white mb-1">Tasas de Entrega vs Devolución</h2>
       <p className="text-xs text-gray-400 mb-4">Evolución porcentual por mes</p>
@@ -78,5 +80,6 @@ export default function DevolucionesChart({ resumen, mesFilter }: { resumen: Res
         </AreaChart>
       </ResponsiveContainer>
     </div>
+    </ChartDownloadBtn>
   );
 }

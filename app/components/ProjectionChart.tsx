@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface Resumen {
   enero: { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number };
@@ -60,6 +61,7 @@ export default function ProjectionChart({ resumen }: { resumen: Resumen }) {
   const projQ2Mov = linearProjection(movilizadas, 4) + linearProjection(movilizadas, 5) + linearProjection(movilizadas, 6);
 
   return (
+    <ChartDownloadBtn filename="Proyeccion_Q2">
     <div className="glass-card p-6">
       <h2 className="text-lg font-semibold text-white mb-1">Proyección Q2 2026</h2>
       <p className="text-xs text-gray-400 mb-2">Regresión lineal basada en tendencia Q1</p>
@@ -96,5 +98,6 @@ export default function ProjectionChart({ resumen }: { resumen: Resumen }) {
         </LineChart>
       </ResponsiveContainer>
     </div>
+    </ChartDownloadBtn>
   );
 }

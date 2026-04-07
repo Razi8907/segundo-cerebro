@@ -11,6 +11,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface ProveedorData {
   proveedor: string;
@@ -63,6 +64,7 @@ export default function ProveedoresRanking({
   }));
 
   return (
+    <ChartDownloadBtn filename="Ranking_Proveedores">
     <div className="glass-card p-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
@@ -151,5 +153,6 @@ export default function ProveedoresRanking({
         ))}
       </div>
     </div>
+    </ChartDownloadBtn>
   );
 }

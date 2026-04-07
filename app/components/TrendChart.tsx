@@ -12,6 +12,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface Resumen {
   enero: { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number };
@@ -33,6 +34,7 @@ export default function TrendChart({ resumen, mesFilter }: { resumen: Resumen; m
   const highlightMes = mesFilter !== "q1" ? mesFilter.charAt(0).toUpperCase() + mesFilter.slice(1) : null;
 
   return (
+    <ChartDownloadBtn filename="Tendencia_Mensual">
     <div className="glass-card p-6">
       <h2 className="text-lg font-semibold text-white mb-1">Tendencia Mensual</h2>
       <p className="text-xs text-gray-400 mb-4">
@@ -61,5 +63,6 @@ export default function TrendChart({ resumen, mesFilter }: { resumen: Resumen; m
         </BarChart>
       </ResponsiveContainer>
     </div>
+    </ChartDownloadBtn>
   );
 }

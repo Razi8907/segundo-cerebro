@@ -19,6 +19,7 @@ import {
   ReferenceLine,
   Legend,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 // ═══════════════════════════════════════════════════
 // DATA FROM PLAN COMERCIAL + CALENDARIO ABRIL 2026
@@ -206,6 +207,7 @@ export default function ArgentinaPlanAbril() {
   ];
 
   return (
+    <ChartDownloadBtn filename="Plan_Abril_Argentina">
     <div className="glass-card p-6 border-sky-500/30">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
@@ -998,5 +1000,6 @@ export default function ArgentinaPlanAbril() {
         </div>
       )}
     </div>
+    </ChartDownloadBtn>
   );
 }

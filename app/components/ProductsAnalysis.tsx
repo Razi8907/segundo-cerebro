@@ -39,6 +39,7 @@ const COLORS = [
 ];
 
 import type { MesFilter } from "../types";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 export default function ProductsAnalysis({
   productos,
@@ -116,6 +117,7 @@ export default function ProductsAnalysis({
   const topProvs = proveedores.slice(0, 15);
 
   return (
+    <ChartDownloadBtn filename="Productos">
     <div className="glass-card p-6 border-orange-500/30">
       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4 mb-6">
         <div>
@@ -323,5 +325,6 @@ export default function ProductsAnalysis({
         </div>
       </div>}
     </div>
+    </ChartDownloadBtn>
   );
 }

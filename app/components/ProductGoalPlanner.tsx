@@ -13,6 +13,7 @@ import {
   PieChart,
   Pie,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface ProveedorData {
   proveedor: string;
@@ -139,6 +140,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
   }));
 
   return (
+    <ChartDownloadBtn filename="Proyeccion_Proveedores">
     <div className="glass-card p-6 border-orange-500/30">
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
         <div>
@@ -411,5 +413,6 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
         </ul>
       </div>
     </div>
+    </ChartDownloadBtn>
   );
 }

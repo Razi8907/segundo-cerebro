@@ -35,6 +35,7 @@ interface ProveedorData {
 }
 
 import type { MesFilter } from "../types";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface MetaInfo {
   meta_movilizadas_abril: number;
@@ -188,6 +189,7 @@ export default function DropshipperManager({
   }));
 
   return (
+    <ChartDownloadBtn filename="Gestion_Dropshippers">
     <div className="glass-card p-6 border-orange-500/30">
       <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
         👥 Gestión de Dropshippers {isAbril ? "— Plan de Seguimiento Abril" : "— Rendimiento Q1"}
@@ -464,5 +466,6 @@ export default function DropshipperManager({
         </div>
       </div>}
     </div>
+    </ChartDownloadBtn>
   );
 }

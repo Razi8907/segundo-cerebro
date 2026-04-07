@@ -7,6 +7,7 @@ import {
   ResponsiveContainer,
   PolarAngleAxis,
 } from "recharts";
+import ChartDownloadBtn from "./ChartDownloadBtn";
 
 interface Resumen {
   enero: { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number };
@@ -43,6 +44,7 @@ export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resum
   ];
 
   return (
+    <ChartDownloadBtn filename="Eficiencia_Operativa">
     <div className="glass-card p-6">
       <h2 className="text-lg font-semibold text-white mb-1">Eficiencia Operativa</h2>
       <p className="text-xs text-gray-400 mb-4">Tasas de conversión del funnel de órdenes</p>
@@ -73,5 +75,6 @@ export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resum
         ))}
       </div>
     </div>
+    </ChartDownloadBtn>
   );
 }
