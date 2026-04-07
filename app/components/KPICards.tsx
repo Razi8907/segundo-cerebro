@@ -54,7 +54,7 @@ export default function KPICards({ ingresadas, movilizadas, entregados, devoluci
         <div
           key={card.title}
           className={`relative overflow-hidden rounded-2xl border ${card.borderColor} p-5 transition-all hover:scale-[1.02]`}
-          style={{ background: "rgba(22,33,62,0.7)" }}
+          style={{ background: "var(--bg-card)" }}
         >
           <div className="flex items-start justify-between">
             <div>
