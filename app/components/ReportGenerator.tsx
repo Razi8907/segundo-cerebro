@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useUser } from "../lib/useUser";
 
 interface MesData {
   ing: number | null;
@@ -281,6 +282,7 @@ export default function ReportGenerator({
 }) {
   const [generating, setGenerating] = useState<string | null>(null);
   const [periodo, setPeriodo] = useState<Periodo>("total");
+  const { canDownload } = useUser();
   const countryLabel = country === "py" ? "Paraguay" : "Argentina";
   const STORAGE_KEY = `segundo-cerebro-abril-${country}`;
 
@@ -370,7 +372,9 @@ export default function ReportGenerator({
         📥 Reportes &mdash; Dropi {countryLabel}
       </h2>
       <p className="text-xs text-gray-400 mb-4">
-        Genera y descarga reportes en CSV &middot; Selecciona el periodo y el tipo de reporte
+        {canDownload
+          ? "Genera y descarga reportes en CSV \u00b7 Selecciona el periodo y el tipo de reporte"
+          : "No ten\u00e9s permiso para descargar reportes. Contacta al administrador."}
       </p>
 
       {/* Period selector */}
@@ -401,7 +405,7 @@ export default function ReportGenerator({
           const s = colorStyles[r.color];
           const isGenerating = generating === `${r.type}-${periodo}`;
           const isAbrilOnly = r.type === "seguimiento_abril";
-          const disabled = isAbrilOnly && periodo !== "abril" && periodo !== "total";
+          const disabled = !canDownload || (isAbrilOnly && periodo !== "abril" && periodo !== "total");
           return (
             <button
               key={r.type}

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type ReactNode } from "react";
+import { useUser } from "../lib/useUser";
 
 export default function ChartDownloadBtn({
   children,
@@ -11,9 +12,14 @@ export default function ChartDownloadBtn({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [downloading, setDownloading] = useState(false);
+  const { canDownload } = useUser();
 
   async function handleDownload() {
     if (!ref.current || downloading) return;
+    if (!canDownload) {
+      alert("No tenés permiso para descargar. Contacta al administrador.");
+      return;
+    }
     setDownloading(true);
     try {
       const { toPng } = await import("html-to-image");
@@ -22,7 +28,6 @@ export default function ChartDownloadBtn({
         pixelRatio: 2,
         cacheBust: true,
         filter: (node: HTMLElement) => {
-          // Exclude the download button itself from the screenshot
           if (node.tagName === "BUTTON" && node.textContent?.includes("PNG")) return false;
           return true;
         },
@@ -38,6 +43,10 @@ export default function ChartDownloadBtn({
       alert("Error al descargar. Intenta de nuevo.");
     }
     setDownloading(false);
+  }
+
+  if (!canDownload) {
+    return <>{children}</>;
   }
 
   return (
