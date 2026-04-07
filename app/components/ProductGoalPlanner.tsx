@@ -275,8 +275,8 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
               return (
                 <div
                   key={p.proveedor}
-                  className="p-4 rounded-xl border border-gray-800/50 hover:border-orange-500/30 transition-all"
-                  style={{ background: "rgba(15,52,96,0.2)" }}
+                  className="p-4 rounded-xl border border-orange-500/20 hover:border-orange-500/40 transition-all"
+                  style={{ background: "rgba(249,115,22,0.04)" }}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
