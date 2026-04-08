@@ -83,6 +83,6 @@ export const config = {
      * - /favicon.ico
      * - Static files (images, etc.)
      */
-    "/((?!login|api/auth|_next|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
+    "/((?!login|api/auth|api/data/upload|_next|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
   ],
 };

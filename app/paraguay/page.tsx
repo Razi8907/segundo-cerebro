@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import data from "../../data/dashboard_data.json";
+import { useDashboardData } from "../lib/useDashboardData";
 import KPICards from "../components/KPICards";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
@@ -20,17 +20,7 @@ import ReportGenerator from "../components/ReportGenerator";
 import ThemeToggle from "../components/ThemeToggle";
 import type { MesFilter } from "../types";
 
-const allData = data as typeof data & {
-  seguimiento_diario: any[];
-  productos: any[];
-  productos_total: number;
-  meta_info: any;
-  dropshippers: any[];
-  dropshippers_total: number;
-  seguimiento_abril: any[];
-};
-
-function getResumenByMes(mes: MesFilter) {
+function getResumenByMes(mes: MesFilter, allData: any) {
   const r = allData.resumen;
   if (mes === "q1") {
     return {
@@ -53,8 +43,9 @@ function getResumenByMes(mes: MesFilter) {
 
 export default function ParaguayDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
+  const { data: allData, updatedAt } = useDashboardData("py");
   const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers, seguimiento_abril } = allData;
-  const kpis = getResumenByMes(mesFilter);
+  const kpis = getResumenByMes(mesFilter, allData);
 
   const mesLabels: Record<MesFilter, string> = {
     q1: "Q1 2026 (Ene-Mar)",
@@ -172,6 +163,7 @@ export default function ParaguayDashboard() {
 
         <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
           Dropi Paraguay &middot; Segundo Cerebro Dashboard &middot; Datos Q1 2026
+          {updatedAt && <span className="block mt-1 text-[10px]">Última actualización: {new Date(updatedAt).toLocaleString("es-PY")}</span>}
         </footer>
       </main>
     </div>
