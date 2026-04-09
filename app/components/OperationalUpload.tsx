@@ -372,25 +372,6 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         ))}
       </div>
 
-      {/* TOP PRODUCTS — cards */}
-      <div className="mb-6">
-        <h3 className="text-sm font-bold t-primary mb-3">Top 20 Productos {isFiltered ? `— ${filterLabel}` : ""}</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
-          {aggData.by_producto.slice(0, 20).map((p, i) => (
-            <div key={p.nombre} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
-              <span className="text-xs font-bold text-orange-500 shrink-0 w-5">{i + 1}</span>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] t-primary font-medium truncate" title={p.nombre}>{p.nombre}</p>
-                <div className="flex gap-2">
-                  <p className="text-xs font-bold text-orange-600">{p.ordenes.toLocaleString()} órd.</p>
-                  <p className="text-[10px] t-muted">{p.cantidad.toLocaleString()} uds.</p>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Status distribution — cards + Daily chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div>
@@ -519,6 +500,25 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
           </table>
         </div>
         <p className="text-[10px] t-muted mt-1">Click en un dropshipper para filtrar todo el análisis</p>
+      </div>
+
+      {/* TOP PRODUCTS — cards */}
+      <div className="mb-6">
+        <h3 className="text-sm font-bold t-primary mb-3">Top 20 Productos {isFiltered ? `— ${filterLabel}` : ""}</h3>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {aggData.by_producto.slice(0, 20).map((p, i) => (
+            <div key={p.nombre} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
+              <span className="text-xs font-bold text-orange-500 shrink-0 w-5">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] t-primary font-medium truncate" title={p.nombre}>{p.nombre}</p>
+                <div className="flex gap-2">
+                  <p className="text-xs font-bold text-orange-600">{p.ordenes.toLocaleString()} órd.</p>
+                  <p className="text-[10px] t-muted">{p.cantidad.toLocaleString()} uds.</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* ═══ LOGISTICS SECTION ═══ */}
