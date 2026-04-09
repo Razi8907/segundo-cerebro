@@ -270,7 +270,7 @@ function DataTable({ rows, columns, highlightHours }: {
   const totalPages = Math.ceil(rows.length / pageSize);
   const pageRows = rows.slice(page * pageSize, (page + 1) * pageSize);
 
-  function rowBg(): string | undefined {
+  function rowBg(_r?: any): string | undefined {
     return undefined;
   }
 
