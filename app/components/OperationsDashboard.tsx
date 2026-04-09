@@ -569,6 +569,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
 
   // Semaforo colors for paradas
   function semaforoColor(horas: number): string {
+    if (horas >= 240) return "#7f1d1d"; // rojo oscuro — 10+ días INDEMNIZACIÓN
     if (horas >= 168) return "#dc2626"; // rojo — 7+ días
     if (horas >= 120) return "#f97316"; // naranja — 5+ días
     if (horas >= 72) return "#facc15";  // amarillo — 3+ días
@@ -618,15 +619,36 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       if (fCiudad !== "all") f = f.filter((r: any) => r.ciudad_destino === fCiudad);
       if (fDias === "3-5") f = f.filter((r: any) => r.diasSinCambio >= 3 && r.diasSinCambio < 5);
       else if (fDias === "5-7") f = f.filter((r: any) => r.diasSinCambio >= 5 && r.diasSinCambio < 7);
+      else if (fDias === "7-10") f = f.filter((r: any) => r.diasSinCambio >= 7 && r.diasSinCambio < 10);
+      else if (fDias === "10+") f = f.filter((r: any) => r.diasSinCambio >= 10);
       else if (fDias === "7+") f = f.filter((r: any) => r.diasSinCambio >= 7);
       return f;
     }, [pRows, fTransp, fCiudad, fDias]);
 
+    const indemnizacionRows = useMemo(() => pRows.filter((r: any) => r.diasSinCambio >= 10), [pRows]);
+
     return (
       <div className="space-y-4">
+        {/* ALERTA INDEMNIZACIÓN */}
+        {indemnizacionRows.length > 0 && (
+          <div className="p-4 rounded-xl border-2 border-red-600 animate-pulse" style={{ background: "rgba(220,38,38,0.08)" }}>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">🚨</span>
+              <div>
+                <h3 className="text-base font-bold text-red-600">ALERTA INDEMNIZACIÓN — {indemnizacionRows.length} guía{indemnizacionRows.length > 1 ? "s" : ""}</h3>
+                <p className="text-xs t-secondary">{indemnizacionRows.length} guía{indemnizacionRows.length > 1 ? "s llevan" : " lleva"} 10+ días en poder de la transportadora. Iniciar reclamo de indemnización.</p>
+              </div>
+              <button onClick={() => setFDias("10+")} className="ml-auto px-3 py-1.5 text-xs rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 shrink-0">
+                Ver guías
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* KPIs */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           <KpiCard label="Total Paradas +72hs" value={pRows.length} color="red" />
+          <KpiCard label="🚨 Indemnización 10+" value={indemnizacionRows.length} color="red" sub="10+ días" />
           {countBy(pRows, (r: any) => r.transportadora).map((b: any) => (
             <KpiCard key={b.name} label={b.name} value={b.count} color="orange" sub="por transportadora" />
           ))}
@@ -646,7 +668,9 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             <option value="all">Todos los días</option>
             <option value="3-5">3-5 días (amarillo)</option>
             <option value="5-7">5-7 días (naranja)</option>
-            <option value="7+">7+ días (rojo)</option>
+            <option value="7-10">7-10 días (rojo)</option>
+            <option value="10+">🚨 10+ días (INDEMNIZACIÓN)</option>
+            <option value="7+">7+ días (todos)</option>
           </select>
           {(fTransp !== "all" || fCiudad !== "all" || fDias !== "all") && (
             <button onClick={() => { setFTransp("all"); setFCiudad("all"); setFDias("all"); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">Limpiar</button>
@@ -656,9 +680,10 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
 
         {/* Semaforo legend */}
         <div className="flex flex-wrap gap-4 text-[10px] t-secondary">
-          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#facc15" }} /> 3-5 días (72-120hs)</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#f97316" }} /> 5-7 días (120-168hs)</span>
-          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#dc2626" }} /> 7+ días (+168hs)</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#facc15" }} /> 3-5 días</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#f97316" }} /> 5-7 días</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#dc2626" }} /> 7-10 días</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#7f1d1d" }} /> 🚨 10+ días — INDEMNIZACIÓN</span>
         </div>
 
         {/* Table */}
@@ -666,6 +691,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           <table className="w-full text-xs">
             <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
               <tr className="border-b border-orange-500/20">
+                <th className="text-center py-2 px-2 text-gray-400">Alerta</th>
                 <th className="text-left py-2 px-2 text-gray-400">Guía</th>
                 <th className="text-left py-2 px-2 text-gray-400">Transportadora</th>
                 <th className="text-left py-2 px-2 text-gray-400">Estado</th>
@@ -684,7 +710,10 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
                 const d = r.diasSinCambio || 0;
                 const color = semaforoColor(h);
                 return (
-                  <tr key={`${r.guia}-${i}`} className="border-b border-gray-800/40" style={{ background: semaforoBg(h) }}>
+                  <tr key={`${r.guia}-${i}`} className="border-b border-gray-800/40">
+                    <td className="py-2 px-2 text-center">
+                      {d >= 10 ? <span className="text-sm" title="INDEMNIZACIÓN">🚨</span> : d >= 7 ? <span className="text-sm" title="Crítico">🔴</span> : d >= 5 ? <span className="text-sm" title="Alerta">🟠</span> : <span className="text-sm" title="Atención">🟡</span>}
+                    </td>
                     <td className="py-2 px-2 t-primary font-medium">{r.guia}</td>
                     <td className="py-2 px-2 t-secondary">{r.transportadora}</td>
                     <td className="py-2 px-2"><span style={{ color: STATUS_COLORS[r.estatus] || "#6b7280" }}>{r.estatus}</span></td>
