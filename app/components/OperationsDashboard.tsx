@@ -237,6 +237,70 @@ function parseExcel(file: File, country: string): Promise<GuideRow[]> {
   });
 }
 
+/* ───────── CSV download helper ───────── */
+function downloadCSV(filename: string, rows: any[], columns: { key: string; label: string }[]) {
+  const BOM = "\uFEFF";
+  const header = columns.map((c) => c.label).join(",");
+  const lines = rows.map((r) =>
+    columns.map((c) => {
+      const val = r[c.key];
+      if (val == null) return "";
+      const str = String(val);
+      return str.includes(",") || str.includes('"') || str.includes("\n")
+        ? `"${str.replace(/"/g, '""')}"`
+        : str;
+    }).join(",")
+  );
+  const csv = BOM + header + "\n" + lines.join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}_${todayStr()}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+const EXPORT_COLUMNS = [
+  { key: "guia", label: "Guia" },
+  { key: "fecha", label: "Fecha" },
+  { key: "dropshipper", label: "Dropshipper" },
+  { key: "nombre_tienda", label: "Tienda" },
+  { key: "proveedor_nombre", label: "Proveedor" },
+  { key: "transportadora", label: "Transportadora" },
+  { key: "estatus", label: "Estado" },
+  { key: "fecha_procesamiento", label: "Fecha Procesamiento" },
+  { key: "fecha_ultimo_movimiento", label: "Ultimo Movimiento" },
+  { key: "ciudad_destino", label: "Ciudad" },
+  { key: "departamento_destino", label: "Departamento" },
+  { key: "nombre_cliente", label: "Cliente" },
+  { key: "telefono", label: "Telefono" },
+  { key: "novedad", label: "Novedad" },
+  { key: "concepto_ultimo_movimiento", label: "Concepto Ultimo Mov" },
+  { key: "comercial_asignado", label: "Comercial" },
+  { key: "total_orden", label: "Total Orden" },
+  { key: "productos", label: "Productos" },
+];
+
+const PARADAS_EXPORT_COLUMNS = [
+  ...EXPORT_COLUMNS,
+  { key: "horasTransporte", label: "Horas Transporte" },
+  { key: "diasSinCambio", label: "Dias en Transporte" },
+];
+
+function DownloadBtn({ onClick, label = "Descargar CSV" }: { onClick: () => void; label?: string }) {
+  return (
+    <button onClick={onClick} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-orange-500/20 text-orange-500 hover:bg-orange-500/10 transition-colors">
+      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+      {label}
+    </button>
+  );
+}
+
 /* ───────── sub-components ───────── */
 function KpiCard({ label, value, sub, color = "orange" }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
@@ -675,7 +739,8 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           {(fTransp !== "all" || fCiudad !== "all" || fDias !== "all") && (
             <button onClick={() => { setFTransp("all"); setFCiudad("all"); setFDias("all"); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">Limpiar</button>
           )}
-          <span className="text-xs t-secondary self-center ml-auto">{filtered.length} guías</span>
+          <span className="text-xs t-secondary self-center">{filtered.length} guías</span>
+          <DownloadBtn onClick={() => downloadCSV("Paradas_72hs", filtered, PARADAS_EXPORT_COLUMNS)} label={`Descargar (${filtered.length})`} />
         </div>
 
         {/* Semaforo legend */}
@@ -797,6 +862,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {/* ── RESUMEN TAB ── */}
       {tab === "resumen" && (
         <div className="space-y-4">
+          <DownloadBtn onClick={() => downloadCSV("Resumen_Completo", rows, EXPORT_COLUMNS)} label={`Descargar todo (${rows.length} guías)`} />
           {/* KPI cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             <KpiCard label="Total guias" value={kpis.total.toLocaleString()} color="orange" />
@@ -875,7 +941,10 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {/* ── AEX TAB ── */}
       {tab === "aex" && (
         <div className="space-y-4">
-          {renderStatusBreakdown(aexRows, "AEX")}
+          <div className="flex justify-between items-center">
+            {renderStatusBreakdown(aexRows, "AEX")}
+          </div>
+          <DownloadBtn onClick={() => downloadCSV("AEX", aexRows, EXPORT_COLUMNS)} label={`Descargar AEX (${aexRows.length})`} />
           <DataTable rows={aexRows} columns={transportColumns} highlightHours />
         </div>
       )}
@@ -884,6 +953,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {tab === "fixy" && (
         <div className="space-y-4">
           {renderStatusBreakdown(fixyRows, "FIXY")}
+          <DownloadBtn onClick={() => downloadCSV("FIXY", fixyRows, EXPORT_COLUMNS)} label={`Descargar FIXY (${fixyRows.length})`} />
           <DataTable rows={fixyRows} columns={transportColumns} highlightHours />
         </div>
       )}
@@ -892,6 +962,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {tab === "fixy_nd" && (
         <div className="space-y-4">
           {renderStatusBreakdown(fixyNdRows, "FIXY-NEXTDAY")}
+          <DownloadBtn onClick={() => downloadCSV("FIXY_NextDay", fixyNdRows, EXPORT_COLUMNS)} label={`Descargar FIXY-ND (${fixyNdRows.length})`} />
           <DataTable rows={fixyNdRows} columns={transportColumns} highlightHours />
         </div>
       )}
@@ -908,6 +979,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
               <KpiCard key={b.name} label={b.name || "Sin DS"} value={b.count} color="blue" sub="por dropshipper" />
             ))}
           </div>
+          <DownloadBtn onClick={() => downloadCSV("No_Entregadas", noEntregadas, EXPORT_COLUMNS)} label={`Descargar No Entregadas (${noEntregadas.length})`} />
           <DataTable rows={noEntregadas} columns={fullColumns} />
         </div>
       )}
@@ -921,6 +993,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
               <KpiCard key={b.name} label={b.name || "Sin transp."} value={b.count} color="blue" sub="por transportadora" />
             ))}
           </div>
+          <DownloadBtn onClick={() => downloadCSV("Novedades", novedades, EXPORT_COLUMNS)} label={`Descargar Novedades (${novedades.length})`} />
           <DataTable rows={novedades} columns={fullColumns} />
         </div>
       )}
@@ -929,6 +1002,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {tab === "mov_prov" && (
         <div className="space-y-4">
           {renderStatusBreakdown(movProv, "Mov. Proveedor")}
+          <DownloadBtn onClick={() => downloadCSV("Mov_Proveedor", movProv, EXPORT_COLUMNS)} label={`Descargar Mov. Proveedor (${movProv.length})`} />
           {Object.entries(groupBy(movProv, (r) => r.proveedor_nombre)).sort((a, b) => b[1].length - a[1].length).map(([prov, provRows]) => (
             <div key={prov}>
               <h4 className="text-xs font-bold t-primary mb-2 mt-3">{prov} ({provRows.length})</h4>
@@ -949,6 +1023,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {tab === "mov_ds" && (
         <div className="space-y-4">
           {renderStatusBreakdown(movDs, "Mov. Dropshipper")}
+          <DownloadBtn onClick={() => downloadCSV("Mov_Dropshipper", movDs, EXPORT_COLUMNS)} label={`Descargar Mov. Dropshipper (${movDs.length})`} />
           {Object.entries(groupBy(movDs, (r) => r.dropshipper)).sort((a, b) => b[1].length - a[1].length).map(([ds, dsRows]) => (
             <div key={ds}>
               <h4 className="text-xs font-bold t-primary mb-2 mt-3">{ds} ({dsRows.length})</h4>
@@ -969,12 +1044,13 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {tab === "canceladas" && (
         <div className="space-y-4">
           {renderStatusBreakdown(canceladas, "Canceladas")}
+          <DownloadBtn onClick={() => downloadCSV("Canceladas", canceladas, EXPORT_COLUMNS)} label={`Descargar Canceladas (${canceladas.length})`} />
           <DataTable rows={canceladas} columns={fullColumns} />
         </div>
       )}
 
       {/* ── PARADAS +72hs TAB ── */}
-      {tab === "paradas" && <ParadasTab rows={paradasRows} />}
+      {tab === "paradas" && <ParadasTab rows={paradasRows} />
     </div>
   );
 }
