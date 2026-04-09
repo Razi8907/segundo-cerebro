@@ -480,23 +480,29 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
   const movDs = useMemo(() => rows.filter((r) => STATUS_GROUPS.mov_dropshipper.includes(r.estatus)), [rows]);
   const canceladas = useMemo(() => rows.filter((r) => STATUS_GROUPS.cancelacion.includes(r.estatus)), [rows]);
 
-  // Paradas +72hs: latest fecha_carga, in transit, > 72hs
+  // Paradas +72hs: guides in transport states where FECHA EN PROCESAMIENTO > 72hs ago
   const paradasRows = useMemo(() => {
-    if (!latestFechaCarga) return [];
-    const latestRows = rows.filter((r) => r.fecha_carga === latestFechaCarga);
-    const inTransit = latestRows.filter(
+    // Use latest upload, deduplicate by guia (keep latest fecha_carga)
+    const guiaMap = new Map<string, typeof rows[0]>();
+    for (const r of rows) {
+      const existing = guiaMap.get(r.guia);
+      if (!existing || r.fecha_carga > existing.fecha_carga) {
+        guiaMap.set(r.guia, r);
+      }
+    }
+    const latest = Array.from(guiaMap.values());
+    const inTransit = latest.filter(
       (r) => STATUS_GROUPS.mov_aex.includes(r.estatus) || STATUS_GROUPS.mov_fixy.includes(r.estatus)
     );
     return inTransit
       .filter((r) => hoursFromProcessing(r.fecha_procesamiento) > 72)
       .map((r) => {
-        // Count how many different fecha_carga dates this guide appeared with same status
-        const sameGuide = rows.filter((x) => x.guia === r.guia && x.estatus === r.estatus);
-        const uniqueDates = new Set(sameGuide.map((x) => x.fecha_carga));
-        return { ...r, diasSinCambio: uniqueDates.size, horasTransporte: hoursFromProcessing(r.fecha_procesamiento) };
+        const horas = hoursFromProcessing(r.fecha_procesamiento);
+        const diasDesdeProc = Math.floor(horas / 24);
+        return { ...r, diasSinCambio: diasDesdeProc, horasTransporte: horas };
       })
       .sort((a, b) => b.horasTransporte - a.horasTransporte);
-  }, [rows, latestFechaCarga]);
+  }, [rows]);
 
   // Alert counts
   const alertCounts = useMemo(() => {
@@ -577,7 +583,11 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       const color = h > 168 ? "#7f1d1d" : h > 120 ? "#dc2626" : h > 72 ? "#d97706" : undefined;
       return <span style={{ color, fontWeight: 700 }}>{h}h</span>;
     }},
-    { key: "diasSinCambio", label: "Dias sin cambio", render: (r: any) => <span className="font-bold" style={{ color: "#ea580c" }}>{r.diasSinCambio || "—"}</span> },
+    { key: "diasSinCambio", label: "Días en transp.", render: (r: any) => {
+      const d = r.diasSinCambio || 0;
+      const color = d >= 7 ? "#7f1d1d" : d >= 5 ? "#dc2626" : d >= 3 ? "#d97706" : "#ea580c";
+      return <span className="font-bold" style={{ color }}>{d} días</span>;
+    }},
     { key: "dropshipper", label: "Dropshipper" },
     { key: "ciudad_destino", label: "Ciudad" },
     { key: "telefono", label: "Telefono" },
