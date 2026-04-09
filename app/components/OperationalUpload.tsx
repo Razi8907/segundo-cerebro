@@ -7,28 +7,14 @@ import {
 import ChartDownloadBtn from "./ChartDownloadBtn";
 
 const STATUS_COLORS: Record<string, string> = {
-  PENDIENTE: "#F59E0B",
-  "PENDIENTE CONFIRMACION": "#FBBF24",
-  GUIA_GENERADA: "#3B82F6",
-  "EN BODEGA ORIGEN": "#6366F1",
-  "RECOGIDO POR TRANSPORTADORA": "#8B5CF6",
-  MANIFIESTO: "#A78BFA",
-  "EN BODEGA DESTINO": "#06B6D4",
-  "EN REPARTO": "#14B8A6",
-  "SALIDA A RUTA": "#10B981",
-  "RUTEADO PARA SU ENTREGA": "#34D399",
-  ENTREGADO: "#10B981",
-  "NOVEDAD": "#F97316",
-  "NOVEDAD SOLUCIONADA": "#FB923C",
-  CANCELADO: "#EF4444",
-  DEVOLUCION: "#DC2626",
-  "EN PROCESO DE DEVOLUCION": "#F87171",
-  RECHAZADO: "#B91C1C",
-  "GESTIONADO OPERATIVA": "#6B7280",
-  "MAL RUTEO": "#9CA3AF",
-  "REINGRESO A BODEGA": "#D946EF",
-  PACTADO: "#22D3EE",
-  "REPACTADO LISTO PARA DESPACHO": "#67E8F9",
+  PENDIENTE: "#d97706", "PENDIENTE CONFIRMACION": "#b45309", GUIA_GENERADA: "#2563eb",
+  "EN BODEGA ORIGEN": "#4f46e5", "RECOGIDO POR TRANSPORTADORA": "#7c3aed", MANIFIESTO: "#8b5cf6",
+  "EN BODEGA DESTINO": "#0891b2", "EN REPARTO": "#0d9488", "SALIDA A RUTA": "#059669",
+  "RUTEADO PARA SU ENTREGA": "#10b981", ENTREGADO: "#16a34a", NOVEDAD: "#ea580c",
+  "NOVEDAD SOLUCIONADA": "#f97316", CANCELADO: "#dc2626", DEVOLUCION: "#b91c1c",
+  "EN PROCESO DE DEVOLUCION": "#ef4444", RECHAZADO: "#991b1b", "GESTIONADO OPERATIVA": "#4b5563",
+  "MAL RUTEO": "#6b7280", "REINGRESO A BODEGA": "#a21caf", PACTADO: "#0e7490",
+  "REPACTADO LISTO PARA DESPACHO": "#06b6d4",
 };
 
 const STATUS_ORDER = [
@@ -38,6 +24,11 @@ const STATUS_ORDER = [
   "GESTIONADO OPERATIVA", "PACTADO", "REPACTADO LISTO PARA DESPACHO",
   "CANCELADO", "RECHAZADO", "EN PROCESO DE DEVOLUCION", "DEVOLUCION", "MAL RUTEO", "REINGRESO A BODEGA",
 ];
+
+interface RawRow {
+  estatus: string; fecha: string; proveedor: string; provId: number;
+  dropshipper: string; producto: string; cantidad: number; departamento: string;
+}
 
 interface AggData {
   total_orders: number;
@@ -50,7 +41,7 @@ interface AggData {
   by_departamento: { nombre: string; total: number }[];
 }
 
-function parseExcel(file: File): Promise<any[][]> {
+function parseExcel(file: File): Promise<RawRow[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = async (e) => {
@@ -59,7 +50,22 @@ function parseExcel(file: File): Promise<any[][]> {
         const wb = XLSX.read(e.target?.result, { type: "array" });
         const ws = wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
-        resolve(rows);
+        const header = rows[0] as string[];
+        const idx = (name: string) => header.indexOf(name);
+        const iE = idx("ESTATUS"), iF = idx("FECHA"), iPN = idx("PROVEEDOR NOMBRE"),
+          iPID = idx("PROVEEDOR ID"), iDS = idx("DROPSHIPPER"), iPR = idx("PRODUCTO"),
+          iC = idx("CANTIDAD"), iD = idx("DEPARTAMENTO DESTINO");
+        const parsed: RawRow[] = [];
+        for (let i = 1; i < rows.length; i++) {
+          const r = rows[i];
+          parsed.push({
+            estatus: String(r[iE] || "DESCONOCIDO"), fecha: String(r[iF] || ""),
+            proveedor: String(r[iPN] || "Sin proveedor"), provId: Number(r[iPID]) || 0,
+            dropshipper: String(r[iDS] || "Sin dropshipper"), producto: String(r[iPR] || "Sin producto"),
+            cantidad: Number(r[iC]) || 1, departamento: String(r[iD] || "Sin departamento"),
+          });
+        }
+        resolve(parsed);
       } catch (err) { reject(err); }
     };
     reader.onerror = reject;
@@ -67,20 +73,7 @@ function parseExcel(file: File): Promise<any[][]> {
   });
 }
 
-function aggregate(rows: any[][]): AggData {
-  const header = rows[0] as string[];
-  const idx = (name: string) => header.indexOf(name);
-
-  const iEstatus = idx("ESTATUS");
-  const iFecha = idx("FECHA");
-  const iProvNombre = idx("PROVEEDOR NOMBRE");
-  const iProvId = idx("PROVEEDOR ID");
-  const iDropshipper = idx("DROPSHIPPER");
-  const iProducto = idx("PRODUCTO");
-  const iCantidad = idx("CANTIDAD");
-  const iDepto = idx("DEPARTAMENTO DESTINO");
-
-  const data = rows.slice(1);
+function aggregateRows(rows: RawRow[]): AggData {
   const by_status: Record<string, number> = {};
   const by_date_map: Record<string, { total: number; estados: Record<string, number> }> = {};
   const by_prov_map: Record<string, { id: number; total: number; estados: Record<string, number> }> = {};
@@ -88,41 +81,25 @@ function aggregate(rows: any[][]): AggData {
   const by_prod_map: Record<string, { cantidad: number; ordenes: number }> = {};
   const by_dept_map: Record<string, number> = {};
 
-  for (const r of data) {
-    const status = String(r[iEstatus] || "DESCONOCIDO");
-    const fecha = String(r[iFecha] || "");
-    const prov = String(r[iProvNombre] || "Sin proveedor");
-    const provId = Number(r[iProvId]) || 0;
-    const ds = String(r[iDropshipper] || "Sin dropshipper");
-    const prod = String(r[iProducto] || "Sin producto");
-    const cant = Number(r[iCantidad]) || 1;
-    const dept = String(r[iDepto] || "Sin departamento");
-
-    by_status[status] = (by_status[status] || 0) + 1;
-
-    if (!by_date_map[fecha]) by_date_map[fecha] = { total: 0, estados: {} };
-    by_date_map[fecha].total++;
-    by_date_map[fecha].estados[status] = (by_date_map[fecha].estados[status] || 0) + 1;
-
-    if (!by_prov_map[prov]) by_prov_map[prov] = { id: provId, total: 0, estados: {} };
-    by_prov_map[prov].total++;
-    by_prov_map[prov].estados[status] = (by_prov_map[prov].estados[status] || 0) + 1;
-
-    if (!by_ds_map[ds]) by_ds_map[ds] = { total: 0, estados: {} };
-    by_ds_map[ds].total++;
-    by_ds_map[ds].estados[status] = (by_ds_map[ds].estados[status] || 0) + 1;
-
-    if (!by_prod_map[prod]) by_prod_map[prod] = { cantidad: 0, ordenes: 0 };
-    by_prod_map[prod].cantidad += cant;
-    by_prod_map[prod].ordenes++;
-
-    by_dept_map[dept] = (by_dept_map[dept] || 0) + 1;
+  for (const r of rows) {
+    by_status[r.estatus] = (by_status[r.estatus] || 0) + 1;
+    if (!by_date_map[r.fecha]) by_date_map[r.fecha] = { total: 0, estados: {} };
+    by_date_map[r.fecha].total++;
+    by_date_map[r.fecha].estados[r.estatus] = (by_date_map[r.fecha].estados[r.estatus] || 0) + 1;
+    if (!by_prov_map[r.proveedor]) by_prov_map[r.proveedor] = { id: r.provId, total: 0, estados: {} };
+    by_prov_map[r.proveedor].total++;
+    by_prov_map[r.proveedor].estados[r.estatus] = (by_prov_map[r.proveedor].estados[r.estatus] || 0) + 1;
+    if (!by_ds_map[r.dropshipper]) by_ds_map[r.dropshipper] = { total: 0, estados: {} };
+    by_ds_map[r.dropshipper].total++;
+    by_ds_map[r.dropshipper].estados[r.estatus] = (by_ds_map[r.dropshipper].estados[r.estatus] || 0) + 1;
+    if (!by_prod_map[r.producto]) by_prod_map[r.producto] = { cantidad: 0, ordenes: 0 };
+    by_prod_map[r.producto].cantidad += r.cantidad;
+    by_prod_map[r.producto].ordenes++;
+    by_dept_map[r.departamento] = (by_dept_map[r.departamento] || 0) + 1;
   }
-
   const fechas = Object.keys(by_date_map).sort();
-
   return {
-    total_orders: data.length,
+    total_orders: rows.length,
     date_range: { from: fechas[0] || "", to: fechas[fechas.length - 1] || "" },
     by_status,
     by_date: fechas.map((f) => ({ fecha: f, ...by_date_map[f] })),
@@ -133,25 +110,23 @@ function aggregate(rows: any[][]): AggData {
   };
 }
 
-const PIE_COLORS = ["#F97316", "#3B82F6", "#10B981", "#EF4444", "#8B5CF6", "#EC4899", "#14B8A6", "#F59E0B", "#6366F1", "#06B6D4", "#84CC16", "#D946EF"];
+const PIE_COLORS = ["#ea580c", "#2563eb", "#16a34a", "#dc2626", "#7c3aed", "#db2777", "#0d9488", "#d97706", "#4f46e5", "#0891b2", "#65a30d", "#a21caf"];
+const TICK_STYLE = { fill: "#374151", fontSize: 10 };
+const TICK_STYLE_SM = { fill: "#374151", fontSize: 9 };
+const TOOLTIP_STYLE = { backgroundColor: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "8px", color: "#1f2937", fontSize: 11 };
 
 export default function OperationalUpload({ country }: { country: "py" | "ar" }) {
-  const [aggData, setAggData] = useState<AggData | null>(null);
+  const [rawRows, setRawRows] = useState<RawRow[]>([]);
+  const [savedAgg, setSavedAgg] = useState<AggData | null>(null);
   const [uploadedAt, setUploadedAt] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [provFilter, setProvFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [filterType, setFilterType] = useState<"all" | "proveedor" | "dropshipper">("all");
+  const [filterValue, setFilterValue] = useState<string>("");
 
-  // Load existing data from API
   useEffect(() => {
     fetch(`/api/data/operational?country=${country}`)
       .then((r) => r.json())
-      .then((res) => {
-        if (res.data) {
-          setAggData(res.data);
-          setUploadedAt(res.uploaded_at);
-        }
-      })
+      .then((res) => { if (res.data) { setSavedAgg(res.data); setUploadedAt(res.uploaded_at); } })
       .catch(() => {});
   }, [country]);
 
@@ -161,33 +136,52 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
     setUploading(true);
     try {
       const rows = await parseExcel(file);
-      const agg = aggregate(rows);
-      setAggData(agg);
-
-      // Save to API
+      setRawRows(rows);
+      const agg = aggregateRows(rows);
+      setSavedAgg(agg);
+      setFilterType("all"); setFilterValue("");
       await fetch("/api/data/operational", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ country, data: agg, raw_count: agg.total_orders }),
       });
       setUploadedAt(new Date().toISOString());
     } catch (err) {
       console.error("Upload error:", err);
-      alert("Error al procesar el archivo. Verificá que sea un Excel válido.");
+      alert("Error al procesar el archivo.");
     }
     setUploading(false);
     e.target.value = "";
   }, [country]);
 
-  // Filtered proveedor data for detail table
-  const detailData = useMemo(() => {
-    if (!aggData) return [];
-    let items = provFilter === "all"
-      ? aggData.by_proveedor
-      : aggData.by_proveedor.filter((p) => p.nombre === provFilter);
+  // Full aggregation (no filter) — from savedAgg or rawRows
+  const fullAgg = useMemo(() => {
+    if (rawRows.length > 0) return aggregateRows(rawRows);
+    return savedAgg;
+  }, [rawRows, savedAgg]);
 
-    return items;
-  }, [aggData, provFilter]);
+  // Filtered aggregation
+  const aggData = useMemo(() => {
+    if (!fullAgg) return null;
+    if (filterType === "all" || !filterValue) return fullAgg;
+    if (rawRows.length === 0) {
+      // No raw rows, filter from savedAgg tables
+      if (filterType === "proveedor") {
+        const p = fullAgg.by_proveedor.find((x) => x.nombre === filterValue);
+        if (!p) return fullAgg;
+        return { ...fullAgg, total_orders: p.total, by_status: p.estados, by_proveedor: [p] };
+      }
+      if (filterType === "dropshipper") {
+        const d = fullAgg.by_dropshipper.find((x) => x.nombre === filterValue);
+        if (!d) return fullAgg;
+        return { ...fullAgg, total_orders: d.total, by_status: d.estados, by_dropshipper: [d] };
+      }
+      return fullAgg;
+    }
+    const filtered = filterType === "proveedor"
+      ? rawRows.filter((r) => r.proveedor === filterValue)
+      : rawRows.filter((r) => r.dropshipper === filterValue);
+    return aggregateRows(filtered);
+  }, [fullAgg, rawRows, filterType, filterValue]);
 
   const allStatuses = useMemo(() => {
     if (!aggData) return [];
@@ -199,8 +193,8 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   if (!aggData) {
     return (
       <div className="glass-card p-6 border-cyan-500/30">
-        <h2 className="text-xl font-bold text-white mb-1">📋 Análisis Operacional — Abril {countryLabel}</h2>
-        <p className="text-xs text-gray-400 mb-4">Subí el archivo Excel del dashboard comercial de Dropi para ver el análisis</p>
+        <h2 className="text-xl font-bold t-primary mb-1">📋 Análisis Operacional — Abril {countryLabel}</h2>
+        <p className="text-xs t-secondary mb-4">Subí el archivo Excel del dashboard comercial de Dropi para ver el análisis</p>
         <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg dropi-gradient text-white text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
           {uploading ? "Procesando..." : "Subir Excel de Abril"}
@@ -210,235 +204,224 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
     );
   }
 
+  const isFiltered = filterType !== "all" && !!filterValue;
+  const filterLabel = isFiltered ? `${filterType === "proveedor" ? "Proveedor" : "Dropshipper"}: ${filterValue}` : "Todos";
+
   const statusChartData = allStatuses.map((s) => ({
-    name: s.length > 18 ? s.slice(0, 18) + "…" : s,
-    fullName: s,
-    value: aggData.by_status[s],
-    fill: STATUS_COLORS[s] || "#6B7280",
+    name: s.length > 20 ? s.slice(0, 20) + "…" : s,
+    fullName: s, value: aggData.by_status[s] || 0, fill: STATUS_COLORS[s] || "#6B7280",
   }));
 
   const dateChartData = aggData.by_date.map((d) => ({
-    fecha: d.fecha.replace("-04-2026", "/04"),
-    total: d.total,
-    entregado: d.estados["ENTREGADO"] || 0,
-    cancelado: d.estados["CANCELADO"] || 0,
+    fecha: d.fecha.replace(/-04-2026$/, "/04").replace(/-04-2026/, "/04"),
+    total: d.total, entregado: d.estados["ENTREGADO"] || 0, cancelado: d.estados["CANCELADO"] || 0,
   }));
 
   return (
     <ChartDownloadBtn filename={`Operacional_Abril_${countryLabel}`}>
     <div className="glass-card p-6 border-cyan-500/30">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-xl font-bold text-white mb-1">📋 Análisis Operacional — Abril {countryLabel}</h2>
-          <p className="text-xs text-gray-400">
-            {aggData.total_orders.toLocaleString()} guías &middot; {aggData.date_range.from} al {aggData.date_range.to}
-            {uploadedAt && <span className="ml-2 text-cyan-400">Actualizado: {new Date(uploadedAt).toLocaleString("es-PY")}</span>}
+          <h2 className="text-xl font-bold t-primary mb-1">📋 Análisis Operacional — Abril {countryLabel}</h2>
+          <p className="text-xs t-secondary">
+            {(fullAgg?.total_orders || 0).toLocaleString()} guías totales &middot; {aggData.date_range.from} al {aggData.date_range.to}
+            {uploadedAt && <span className="ml-2 text-orange-500">Act: {new Date(uploadedAt).toLocaleString("es-PY")}</span>}
           </p>
         </div>
-        <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-cyan-500/30 text-cyan-400 text-xs cursor-pointer hover:bg-cyan-500/10 transition-colors shrink-0">
+        <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-500 text-xs cursor-pointer hover:bg-orange-500/10 transition-colors shrink-0">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
           {uploading ? "Procesando..." : "Actualizar archivo"}
           <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} className="hidden" disabled={uploading} />
         </label>
       </div>
 
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-        <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Total Guías</p>
-          <p className="text-xl font-bold text-blue-400">{aggData.total_orders.toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">{aggData.by_date.length} días</p>
-        </div>
-        <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Entregados</p>
-          <p className="text-xl font-bold text-green-400">{(aggData.by_status["ENTREGADO"] || 0).toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">{aggData.total_orders > 0 ? ((aggData.by_status["ENTREGADO"] || 0) / aggData.total_orders * 100).toFixed(1) : 0}%</p>
-        </div>
-        <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">En Tránsito</p>
-          <p className="text-xl font-bold text-orange-400">
-            {((aggData.by_status["EN BODEGA ORIGEN"] || 0) + (aggData.by_status["EN BODEGA DESTINO"] || 0) + (aggData.by_status["EN REPARTO"] || 0) + (aggData.by_status["RECOGIDO POR TRANSPORTADORA"] || 0)).toLocaleString()}
-          </p>
-          <p className="text-[10px] text-gray-500">bodega + reparto</p>
-        </div>
-        <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Cancelados</p>
-          <p className="text-xl font-bold text-red-400">{(aggData.by_status["CANCELADO"] || 0).toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">{aggData.total_orders > 0 ? ((aggData.by_status["CANCELADO"] || 0) / aggData.total_orders * 100).toFixed(1) : 0}%</p>
-        </div>
-        <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Proveedores</p>
-          <p className="text-xl font-bold text-purple-400">{aggData.by_proveedor.length}</p>
-          <p className="text-[10px] text-gray-500">{aggData.by_dropshipper.length} dropshippers</p>
-        </div>
-      </div>
-
-      {/* Status distribution chart */}
-      <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Distribución por Estado</h3>
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart data={statusChartData} layout="vertical" margin={{ left: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-            <XAxis type="number" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-            <YAxis dataKey="name" type="category" tick={{ fill: "#9ca3af", fontSize: 9 }} width={150} />
-            <Tooltip
-              contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(6,182,212,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 11 }}
-              formatter={(value, _name, props) => [Number(value).toLocaleString(), (props as any).payload?.fullName || ""]}
-            />
-            <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14}>
-              {statusChartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* Daily chart */}
-      <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Guías por Día</h3>
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={dateChartData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-            <XAxis dataKey="fecha" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-            <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
-            <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(6,182,212,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString()} />
-            <Bar dataKey="total" fill="#3B82F6" radius={[4, 4, 0, 0]} name="Total" />
-            <Bar dataKey="entregado" fill="#10B981" radius={[4, 4, 0, 0]} name="Entregado" />
-            <Bar dataKey="cancelado" fill="#EF4444" radius={[4, 4, 0, 0]} name="Cancelado" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* PROVEEDOR x STATUS DETAIL TABLE */}
-      <div className="mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-          <h3 className="text-sm font-bold text-cyan-400">Guías por Estado y Proveedor/Dropshipper</h3>
-          <div className="flex gap-2 flex-wrap">
+      {/* GLOBAL FILTER */}
+      <div className="mb-5 p-3 rounded-xl border border-orange-500/20" style={{ background: "var(--bg-card-hover)" }}>
+        <p className="text-[10px] t-muted uppercase mb-2">Filtrar todo por usuario</p>
+        <div className="flex gap-2 flex-wrap items-center">
+          <select
+            value={filterType}
+            onChange={(e) => { setFilterType(e.target.value as any); setFilterValue(""); }}
+            className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none" style={{ background: "var(--bg-input)" }}
+          >
+            <option value="all">Todos</option>
+            <option value="proveedor">Por Proveedor</option>
+            <option value="dropshipper">Por Dropshipper</option>
+          </select>
+          {filterType !== "all" && (
             <select
-              value={provFilter}
-              onChange={(e) => setProvFilter(e.target.value)}
-              className="text-xs px-3 py-1.5 rounded-lg bg-[#16213e] border border-cyan-500/20 text-white focus:outline-none"
+              value={filterValue}
+              onChange={(e) => setFilterValue(e.target.value)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none flex-1 max-w-xs" style={{ background: "var(--bg-input)" }}
             >
-              <option value="all">Todos los proveedores</option>
-              {aggData.by_proveedor.map((p) => (
-                <option key={p.nombre} value={p.nombre}>{p.nombre} ({p.total})</option>
+              <option value="">Seleccionar...</option>
+              {(filterType === "proveedor" ? fullAgg!.by_proveedor : fullAgg!.by_dropshipper).map((u) => (
+                <option key={u.nombre} value={u.nombre}>{u.nombre} ({u.total})</option>
               ))}
             </select>
+          )}
+          {isFiltered && (
+            <button onClick={() => { setFilterType("all"); setFilterValue(""); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">
+              Limpiar filtro
+            </button>
+          )}
+        </div>
+        {isFiltered && <p className="text-xs text-orange-500 font-medium mt-2">Mostrando: {filterLabel} — {aggData.total_orders.toLocaleString()} guías</p>}
+      </div>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
+        {[
+          { label: "Total Guías", value: aggData.total_orders, sub: `${aggData.by_date.length} días`, color: "blue" },
+          { label: "Entregados", value: aggData.by_status["ENTREGADO"] || 0, sub: `${aggData.total_orders > 0 ? ((aggData.by_status["ENTREGADO"] || 0) / aggData.total_orders * 100).toFixed(1) : 0}%`, color: "green" },
+          { label: "En Tránsito", value: (aggData.by_status["EN BODEGA ORIGEN"] || 0) + (aggData.by_status["EN BODEGA DESTINO"] || 0) + (aggData.by_status["EN REPARTO"] || 0) + (aggData.by_status["RECOGIDO POR TRANSPORTADORA"] || 0), sub: "bodega + reparto", color: "orange" },
+          { label: "Cancelados", value: aggData.by_status["CANCELADO"] || 0, sub: `${aggData.total_orders > 0 ? ((aggData.by_status["CANCELADO"] || 0) / aggData.total_orders * 100).toFixed(1) : 0}%`, color: "red" },
+          { label: "Proveedores", value: aggData.by_proveedor.length, sub: `${aggData.by_dropshipper.length} dropshippers`, color: "purple" },
+        ].map((k) => (
+          <div key={k.label} className={`rounded-xl p-3 border border-${k.color}-500/20`} style={{ background: "var(--bg-card)" }}>
+            <p className="text-[10px] t-muted uppercase">{k.label}</p>
+            <p className={`text-xl font-bold text-${k.color}-500`}>{k.value.toLocaleString()}</p>
+            <p className="text-[10px] t-muted">{k.sub}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* TOP PRODUCTS — FULL WIDTH ON TOP */}
+      <div className="mb-6">
+        <h3 className="text-sm font-bold t-primary mb-3">Top 20 Productos {isFiltered ? `— ${filterLabel}` : ""}</h3>
+        <ResponsiveContainer width="100%" height={420}>
+          <BarChart data={aggData.by_producto.slice(0, 20).map((p) => ({ name: p.nombre.length > 30 ? p.nombre.slice(0, 30) + "…" : p.nombre, ordenes: p.ordenes, cantidad: p.cantidad }))} layout="vertical" margin={{ left: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
+            <XAxis type="number" tick={TICK_STYLE} />
+            <YAxis dataKey="name" type="category" tick={{ fill: "#1f2937", fontSize: 9 }} width={220} />
+            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => Number(v).toLocaleString()} />
+            <Bar dataKey="ordenes" fill="#ea580c" radius={[0, 4, 4, 0]} barSize={14} name="Órdenes" />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Status distribution + Daily — side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <div>
+          <h3 className="text-sm font-bold t-primary mb-3">Distribución por Estado</h3>
+          <ResponsiveContainer width="100%" height={380}>
+            <BarChart data={statusChartData} layout="vertical" margin={{ left: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
+              <XAxis type="number" tick={TICK_STYLE} />
+              <YAxis dataKey="name" type="category" tick={TICK_STYLE_SM} width={160} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value, _name, props) => [Number(value).toLocaleString(), (props as any).payload?.fullName || ""]} />
+              <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14}>
+                {statusChartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+        <div>
+          <h3 className="text-sm font-bold t-primary mb-3">Guías por Día</h3>
+          <ResponsiveContainer width="100%" height={280}>
+            <BarChart data={dateChartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
+              <XAxis dataKey="fecha" tick={TICK_STYLE} />
+              <YAxis tick={TICK_STYLE} />
+              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => Number(v).toLocaleString()} />
+              <Bar dataKey="total" fill="#2563eb" radius={[4, 4, 0, 0]} name="Total" />
+              <Bar dataKey="entregado" fill="#16a34a" radius={[4, 4, 0, 0]} name="Entregado" />
+              <Bar dataKey="cancelado" fill="#dc2626" radius={[4, 4, 0, 0]} name="Cancelado" />
+            </BarChart>
+          </ResponsiveContainer>
+          {/* Departamentos below daily chart */}
+          <h3 className="text-sm font-bold t-primary mt-6 mb-3">Distribución Geográfica</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {aggData.by_departamento.slice(0, 12).map((d, i) => (
+              <div key={d.nombre} className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-200" style={{ background: "var(--bg-card)" }}>
+                <span className="w-3 h-3 rounded-full shrink-0" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
+                <div className="min-w-0">
+                  <p className="text-[10px] t-primary font-medium truncate">{d.nombre}</p>
+                  <p className="text-xs font-bold" style={{ color: PIE_COLORS[i % PIE_COLORS.length] }}>{d.total.toLocaleString()}</p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
+      </div>
+
+      {/* PROVEEDOR x STATUS TABLE */}
+      <div className="mb-6">
+        <h3 className="text-sm font-bold t-primary mb-3">Guías por Estado y Proveedor</h3>
         <div className="table-container overflow-x-auto max-h-[500px] overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
-              <tr className="border-b border-cyan-500/20">
+              <tr className="border-b border-orange-500/20">
                 <th className="text-left py-2 px-2 text-gray-400 sticky left-0" style={{ background: "rgba(22,33,62,0.98)" }}>Proveedor</th>
                 <th className="text-right py-2 px-2 text-gray-400 font-bold">Total</th>
                 {allStatuses.map((s) => (
-                  <th key={s} className="text-right py-2 px-2 text-gray-400 whitespace-nowrap">
-                    <span title={s}>{s.length > 12 ? s.slice(0, 12) + "…" : s}</span>
-                  </th>
+                  <th key={s} className="text-right py-2 px-2 text-gray-400 whitespace-nowrap"><span title={s}>{s.length > 12 ? s.slice(0, 12) + "…" : s}</span></th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {detailData.map((p) => (
-                <tr key={p.nombre} className="border-b border-gray-800/40 hover:bg-cyan-500/5">
-                  <td className="py-2 px-2 text-white font-medium whitespace-nowrap sticky left-0" style={{ background: "var(--bg-card)" }}>
-                    {p.nombre}
-                  </td>
-                  <td className="py-2 px-2 text-right text-cyan-400 font-bold">{p.total.toLocaleString()}</td>
+              {aggData.by_proveedor.map((p) => (
+                <tr key={p.nombre} className={`border-b border-gray-800/40 hover:bg-orange-500/5 cursor-pointer ${filterType === "proveedor" && filterValue === p.nombre ? "bg-orange-500/10" : ""}`}
+                  onClick={() => { setFilterType("proveedor"); setFilterValue(p.nombre); }}>
+                  <td className="py-2 px-2 t-primary font-medium whitespace-nowrap sticky left-0" style={{ background: "var(--bg-card)" }}>{p.nombre}</td>
+                  <td className="py-2 px-2 text-right font-bold text-orange-500">{p.total.toLocaleString()}</td>
                   {allStatuses.map((s) => {
                     const val = p.estados[s] || 0;
-                    return (
-                      <td key={s} className="py-2 px-2 text-right" style={{ color: val > 0 ? STATUS_COLORS[s] || "#9ca3af" : "#374151" }}>
-                        {val > 0 ? val.toLocaleString() : "—"}
-                      </td>
-                    );
+                    return <td key={s} className="py-2 px-2 text-right" style={{ color: val > 0 ? STATUS_COLORS[s] : "#9ca3af" }}>{val > 0 ? val.toLocaleString() : "—"}</td>;
                   })}
                 </tr>
               ))}
-              {provFilter === "all" && (
-                <tr className="border-t border-cyan-500/30 font-bold">
-                  <td className="py-2 px-2 text-white sticky left-0" style={{ background: "var(--bg-card)" }}>TOTAL</td>
-                  <td className="py-2 px-2 text-right text-cyan-400">{aggData.total_orders.toLocaleString()}</td>
+              {!isFiltered && (
+                <tr className="border-t-2 border-orange-500/30 font-bold">
+                  <td className="py-2 px-2 t-primary sticky left-0" style={{ background: "var(--bg-card)" }}>TOTAL</td>
+                  <td className="py-2 px-2 text-right text-orange-500">{aggData.total_orders.toLocaleString()}</td>
                   {allStatuses.map((s) => (
-                    <td key={s} className="py-2 px-2 text-right" style={{ color: STATUS_COLORS[s] || "#9ca3af" }}>
-                      {(aggData.by_status[s] || 0).toLocaleString()}
-                    </td>
+                    <td key={s} className="py-2 px-2 text-right" style={{ color: STATUS_COLORS[s] }}>{(aggData.by_status[s] || 0).toLocaleString()}</td>
                   ))}
                 </tr>
               )}
             </tbody>
           </table>
         </div>
+        <p className="text-[10px] t-muted mt-1">Click en un proveedor para filtrar todo el análisis</p>
       </div>
 
-      {/* Top Products + Departamentos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div>
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Top 15 Productos</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <BarChart data={aggData.by_producto.slice(0, 15).map((p) => ({ name: p.nombre.length > 22 ? p.nombre.slice(0, 22) + "…" : p.nombre, ordenes: p.ordenes }))} layout="vertical" margin={{ left: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-              <XAxis type="number" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-              <YAxis dataKey="name" type="category" tick={{ fill: "#9ca3af", fontSize: 8 }} width={160} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px", color: "#F97316", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString()} />
-              <Bar dataKey="ordenes" fill="#F97316" radius={[0, 4, 4, 0]} barSize={12} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-        <div>
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Distribución por Departamento</h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <PieChart>
-              <Pie data={aggData.by_departamento.slice(0, 10).map((d, i) => ({ name: d.nombre, value: d.total, fill: PIE_COLORS[i % PIE_COLORS.length] }))} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={110} innerRadius={50} paddingAngle={2}>
-                {aggData.by_departamento.slice(0, 10).map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
-              </Pie>
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(6,182,212,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString()} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-1.5 justify-center mt-2">
-            {aggData.by_departamento.slice(0, 10).map((d, i) => (
-              <span key={d.nombre} className="text-[9px] flex items-center gap-1">
-                <span className="w-2 h-2 rounded-full inline-block" style={{ background: PIE_COLORS[i % PIE_COLORS.length] }} />
-                {d.nombre} ({d.total})
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Dropshippers table */}
+      {/* DROPSHIPPERS TABLE */}
       <div>
-        <h3 className="text-sm font-bold text-cyan-400 mb-3">Top Dropshippers por Estado</h3>
+        <h3 className="text-sm font-bold t-primary mb-3">Dropshippers por Estado {isFiltered && filterType === "proveedor" ? `— ${filterValue}` : ""}</h3>
         <div className="table-container overflow-x-auto max-h-[400px] overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
-              <tr className="border-b border-cyan-500/20">
+              <tr className="border-b border-orange-500/20">
                 <th className="text-left py-2 px-2 text-gray-400">#</th>
                 <th className="text-left py-2 px-2 text-gray-400">Dropshipper</th>
                 <th className="text-right py-2 px-2 text-gray-400 font-bold">Total</th>
-                <th className="text-right py-2 px-2 text-green-400">Entreg.</th>
-                <th className="text-right py-2 px-2 text-red-400">Cancel.</th>
-                <th className="text-right py-2 px-2 text-blue-400">Guía Gen.</th>
-                <th className="text-right py-2 px-2 text-orange-400">Novedad</th>
-                <th className="text-right py-2 px-2 text-yellow-400">Pendiente</th>
+                <th className="text-right py-2 px-2 text-green-600">Entreg.</th>
+                <th className="text-right py-2 px-2 text-red-600">Cancel.</th>
+                <th className="text-right py-2 px-2 text-blue-600">Guía Gen.</th>
+                <th className="text-right py-2 px-2 text-orange-600">Novedad</th>
+                <th className="text-right py-2 px-2 text-yellow-600">Pendiente</th>
               </tr>
             </thead>
             <tbody>
-              {aggData.by_dropshipper.slice(0, 30).map((d, i) => (
-                <tr key={d.nombre} className="border-b border-gray-800/40 hover:bg-cyan-500/5">
-                  <td className="py-2 px-2 text-gray-500">{i + 1}</td>
-                  <td className="py-2 px-2 text-white font-medium truncate max-w-[200px]">{d.nombre}</td>
-                  <td className="py-2 px-2 text-right text-cyan-400 font-bold">{d.total}</td>
-                  <td className="py-2 px-2 text-right text-green-400">{d.estados["ENTREGADO"] || 0}</td>
-                  <td className="py-2 px-2 text-right text-red-400">{d.estados["CANCELADO"] || 0}</td>
-                  <td className="py-2 px-2 text-right text-blue-400">{d.estados["GUIA_GENERADA"] || 0}</td>
-                  <td className="py-2 px-2 text-right text-orange-400">{(d.estados["NOVEDAD"] || 0) + (d.estados["NOVEDAD SOLUCIONADA"] || 0)}</td>
-                  <td className="py-2 px-2 text-right text-yellow-400">{(d.estados["PENDIENTE"] || 0) + (d.estados["PENDIENTE CONFIRMACION"] || 0)}</td>
+              {aggData.by_dropshipper.slice(0, 50).map((d, i) => (
+                <tr key={d.nombre} className={`border-b border-gray-800/40 hover:bg-orange-500/5 cursor-pointer ${filterType === "dropshipper" && filterValue === d.nombre ? "bg-orange-500/10" : ""}`}
+                  onClick={() => { setFilterType("dropshipper"); setFilterValue(d.nombre); }}>
+                  <td className="py-2 px-2 t-muted">{i + 1}</td>
+                  <td className="py-2 px-2 t-primary font-medium truncate max-w-[200px]">{d.nombre}</td>
+                  <td className="py-2 px-2 text-right text-orange-500 font-bold">{d.total}</td>
+                  <td className="py-2 px-2 text-right text-green-600">{d.estados["ENTREGADO"] || 0}</td>
+                  <td className="py-2 px-2 text-right text-red-600">{d.estados["CANCELADO"] || 0}</td>
+                  <td className="py-2 px-2 text-right text-blue-600">{d.estados["GUIA_GENERADA"] || 0}</td>
+                  <td className="py-2 px-2 text-right text-orange-600">{(d.estados["NOVEDAD"] || 0) + (d.estados["NOVEDAD SOLUCIONADA"] || 0)}</td>
+                  <td className="py-2 px-2 text-right text-yellow-600">{(d.estados["PENDIENTE"] || 0) + (d.estados["PENDIENTE CONFIRMACION"] || 0)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <p className="text-[10px] t-muted mt-1">Click en un dropshipper para filtrar todo el análisis</p>
       </div>
     </div>
     </ChartDownloadBtn>
