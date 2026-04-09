@@ -421,8 +421,17 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           body: JSON.stringify({ country, fecha_carga: fc, rows: batch }),
         });
         if (!res.ok) {
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.error || `Error en lote ${Math.floor(i / BATCH_SIZE) + 1}`);
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("json")) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `Error en lote ${Math.floor(i / BATCH_SIZE) + 1} (HTTP ${res.status})`);
+          } else {
+            // Probably redirected to login page
+            if (res.status === 401 || res.status === 403 || res.redirected) {
+              throw new Error("Sesión expirada. Volvé a iniciar sesión.");
+            }
+            throw new Error(`Error HTTP ${res.status} en lote ${Math.floor(i / BATCH_SIZE) + 1}`);
+          }
         }
       }
       // Set parsed data immediately + refresh from API
@@ -433,7 +442,9 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       });
       await fetchData();
     } catch (err: any) {
+      console.error("Upload failed:", err);
       setError(err.message || "Error al procesar archivo");
+      alert("Error: " + (err.message || "Error desconocido") + "\n\nAbrí la consola del navegador (F12) para más detalles.");
     } finally {
       setUploading(false);
       e.target.value = "";
