@@ -372,35 +372,47 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         ))}
       </div>
 
-      {/* TOP PRODUCTS — FULL WIDTH ON TOP */}
+      {/* TOP PRODUCTS — cards */}
       <div className="mb-6">
         <h3 className="text-sm font-bold t-primary mb-3">Top 20 Productos {isFiltered ? `— ${filterLabel}` : ""}</h3>
-        <ResponsiveContainer width="100%" height={420}>
-          <BarChart data={aggData.by_producto.slice(0, 20).map((p) => ({ name: p.nombre.length > 30 ? p.nombre.slice(0, 30) + "…" : p.nombre, ordenes: p.ordenes, cantidad: p.cantidad }))} layout="vertical" margin={{ left: 5 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
-            <XAxis type="number" tick={TICK_STYLE} />
-            <YAxis dataKey="name" type="category" tick={{ fill: "#1f2937", fontSize: 9 }} width={220} />
-            <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => Number(v).toLocaleString()} />
-            <Bar dataKey="ordenes" fill="#ea580c" radius={[0, 4, 4, 0]} barSize={14} name="Órdenes" />
-          </BarChart>
-        </ResponsiveContainer>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+          {aggData.by_producto.slice(0, 20).map((p, i) => (
+            <div key={p.nombre} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
+              <span className="text-xs font-bold text-orange-500 shrink-0 w-5">{i + 1}</span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] t-primary font-medium truncate" title={p.nombre}>{p.nombre}</p>
+                <div className="flex gap-2">
+                  <p className="text-xs font-bold text-orange-600">{p.ordenes.toLocaleString()} órd.</p>
+                  <p className="text-[10px] t-muted">{p.cantidad.toLocaleString()} uds.</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Status distribution + Daily — side by side */}
+      {/* Status distribution — cards + Daily chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         <div>
           <h3 className="text-sm font-bold t-primary mb-3">Distribución por Estado</h3>
-          <ResponsiveContainer width="100%" height={380}>
-            <BarChart data={statusChartData} layout="vertical" margin={{ left: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
-              <XAxis type="number" tick={TICK_STYLE} />
-              <YAxis dataKey="name" type="category" tick={TICK_STYLE_SM} width={160} />
-              <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(value, _name, props) => [Number(value).toLocaleString(), (props as any).payload?.fullName || ""]} />
-              <Bar dataKey="value" radius={[0, 4, 4, 0]} barSize={14}>
-                {statusChartData.map((d, i) => <Cell key={i} fill={d.fill} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="grid grid-cols-2 gap-2">
+            {allStatuses.map((s) => {
+              const val = aggData.by_status[s] || 0;
+              const pct = aggData.total_orders > 0 ? ((val / aggData.total_orders) * 100).toFixed(1) : "0";
+              return (
+                <div key={s} className="flex items-center gap-2 px-2 py-1.5 rounded-lg border border-gray-200" style={{ background: "var(--bg-card)" }}>
+                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: STATUS_COLORS[s] || "#6B7280" }} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] t-primary font-medium truncate" title={s}>{s}</p>
+                    <div className="flex items-baseline gap-1.5">
+                      <p className="text-xs font-bold" style={{ color: STATUS_COLORS[s] || "#6B7280" }}>{val.toLocaleString()}</p>
+                      <p className="text-[9px] t-muted">{pct}%</p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
         <div>
           <h3 className="text-sm font-bold t-primary mb-3">Guías por Día</h3>
@@ -415,7 +427,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
               <Bar dataKey="cancelado" fill="#dc2626" radius={[4, 4, 0, 0]} name="Cancelado" />
             </BarChart>
           </ResponsiveContainer>
-          {/* Departamentos below daily chart */}
+          {/* Departamentos */}
           <h3 className="text-sm font-bold t-primary mt-6 mb-3">Distribución Geográfica</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {aggData.by_departamento.slice(0, 12).map((d, i) => (
