@@ -273,9 +273,9 @@ function DataTable({ rows, columns, highlightHours }: {
   function rowBg(r: GuideRow): string | undefined {
     if (!highlightHours) return undefined;
     const h = hoursFromProcessing(r.fecha_procesamiento);
-    if (h > 168) return "rgba(127,29,29,0.25)";
-    if (h > 120) return "rgba(220,38,38,0.18)";
-    if (h > 72) return "rgba(217,119,6,0.15)";
+    if (h >= 168) return "rgba(220,38,38,0.15)";   // rojo
+    if (h >= 120) return "rgba(249,115,22,0.12)";   // naranja
+    if (h >= 72) return "rgba(250,204,21,0.12)";    // amarillo
     return undefined;
   }
 
@@ -552,8 +552,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     { key: "novedad", label: "Novedad" },
     { key: "horas", label: "Horas Transporte", render: (r: GuideRow) => {
       const h = hoursFromProcessing(r.fecha_procesamiento);
-      const color = h > 120 ? "#dc2626" : h > 72 ? "#d97706" : undefined;
-      return <span style={{ color, fontWeight: color ? 700 : 400 }}>{h}h</span>;
+      return <span style={{ color: semaforoColor(h), fontWeight: h >= 72 ? 700 : 400 }}>{h}h</span>;
     }},
   ];
 
@@ -573,25 +572,19 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     { key: "total_orden", label: "Total Orden", render: (r: GuideRow) => r.total_orden ? `$${r.total_orden.toLocaleString()}` : "—" },
   ];
 
-  const paradasColumns = [
-    { key: "guia", label: "Guia" },
-    { key: "transportadora", label: "Transportadora" },
-    { key: "estatus", label: "Estado" },
-    { key: "fecha_procesamiento", label: "Fecha Procesamiento" },
-    { key: "horas", label: "Horas Transporte", render: (r: any) => {
-      const h = r.horasTransporte || hoursFromProcessing(r.fecha_procesamiento);
-      const color = h > 168 ? "#7f1d1d" : h > 120 ? "#dc2626" : h > 72 ? "#d97706" : undefined;
-      return <span style={{ color, fontWeight: 700 }}>{h}h</span>;
-    }},
-    { key: "diasSinCambio", label: "Días en transp.", render: (r: any) => {
-      const d = r.diasSinCambio || 0;
-      const color = d >= 7 ? "#7f1d1d" : d >= 5 ? "#dc2626" : d >= 3 ? "#d97706" : "#ea580c";
-      return <span className="font-bold" style={{ color }}>{d} días</span>;
-    }},
-    { key: "dropshipper", label: "Dropshipper" },
-    { key: "ciudad_destino", label: "Ciudad" },
-    { key: "telefono", label: "Telefono" },
-  ];
+  // Semaforo colors for paradas
+  function semaforoColor(horas: number): string {
+    if (horas >= 168) return "#dc2626"; // rojo — 7+ días
+    if (horas >= 120) return "#f97316"; // naranja — 5+ días
+    if (horas >= 72) return "#facc15";  // amarillo — 3+ días
+    return "#22c55e"; // verde — ok
+  }
+  function semaforoBg(horas: number): string {
+    if (horas >= 168) return "rgba(220,38,38,0.15)";
+    if (horas >= 120) return "rgba(249,115,22,0.12)";
+    if (horas >= 72) return "rgba(250,204,21,0.12)";
+    return "transparent";
+  }
 
   /* ───── status distribution chart data ───── */
   const statusChartData = useMemo(() =>
@@ -614,6 +607,108 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             <p className="text-lg font-bold" style={{ color: STATUS_COLORS[b.name] || "#ea580c" }}>{b.count}</p>
           </div>
         ))}
+      </div>
+    );
+  }
+
+  /* ───── ParadasTab sub-component ───── */
+  function ParadasTab({ rows: pRows }: { rows: any[] }) {
+    const [fTransp, setFTransp] = useState("all");
+    const [fCiudad, setFCiudad] = useState("all");
+    const [fDias, setFDias] = useState("all");
+
+    const transportadoras = useMemo(() => Array.from(new Set(pRows.map((r: any) => r.transportadora))).sort(), [pRows]);
+    const ciudades = useMemo(() => Array.from(new Set(pRows.map((r: any) => r.ciudad_destino).filter(Boolean))).sort(), [pRows]);
+
+    const filtered = useMemo(() => {
+      let f = pRows;
+      if (fTransp !== "all") f = f.filter((r: any) => r.transportadora === fTransp);
+      if (fCiudad !== "all") f = f.filter((r: any) => r.ciudad_destino === fCiudad);
+      if (fDias === "3-5") f = f.filter((r: any) => r.diasSinCambio >= 3 && r.diasSinCambio < 5);
+      else if (fDias === "5-7") f = f.filter((r: any) => r.diasSinCambio >= 5 && r.diasSinCambio < 7);
+      else if (fDias === "7+") f = f.filter((r: any) => r.diasSinCambio >= 7);
+      return f;
+    }, [pRows, fTransp, fCiudad, fDias]);
+
+    return (
+      <div className="space-y-4">
+        {/* KPIs */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          <KpiCard label="Total Paradas +72hs" value={pRows.length} color="red" />
+          {countBy(pRows, (r: any) => r.transportadora).map((b: any) => (
+            <KpiCard key={b.name} label={b.name} value={b.count} color="orange" sub="por transportadora" />
+          ))}
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-2 p-3 rounded-xl border border-orange-500/20" style={{ background: "var(--bg-card-hover)" }}>
+          <select value={fTransp} onChange={(e) => setFTransp(e.target.value)} className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/20 t-primary" style={{ background: "var(--bg-input)" }}>
+            <option value="all">Todas las transportadoras</option>
+            {transportadoras.map((t: string) => <option key={t} value={t}>{t}</option>)}
+          </select>
+          <select value={fCiudad} onChange={(e) => setFCiudad(e.target.value)} className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/20 t-primary" style={{ background: "var(--bg-input)" }}>
+            <option value="all">Todas las ciudades</option>
+            {ciudades.map((c: string) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select value={fDias} onChange={(e) => setFDias(e.target.value)} className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/20 t-primary" style={{ background: "var(--bg-input)" }}>
+            <option value="all">Todos los días</option>
+            <option value="3-5">3-5 días (amarillo)</option>
+            <option value="5-7">5-7 días (naranja)</option>
+            <option value="7+">7+ días (rojo)</option>
+          </select>
+          {(fTransp !== "all" || fCiudad !== "all" || fDias !== "all") && (
+            <button onClick={() => { setFTransp("all"); setFCiudad("all"); setFDias("all"); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">Limpiar</button>
+          )}
+          <span className="text-xs t-secondary self-center ml-auto">{filtered.length} guías</span>
+        </div>
+
+        {/* Semaforo legend */}
+        <div className="flex flex-wrap gap-4 text-[10px] t-secondary">
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#facc15" }} /> 3-5 días (72-120hs)</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#f97316" }} /> 5-7 días (120-168hs)</span>
+          <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-full" style={{ background: "#dc2626" }} /> 7+ días (+168hs)</span>
+        </div>
+
+        {/* Table */}
+        <div className="table-container overflow-x-auto max-h-[600px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
+              <tr className="border-b border-orange-500/20">
+                <th className="text-left py-2 px-2 text-gray-400">Guía</th>
+                <th className="text-left py-2 px-2 text-gray-400">Transportadora</th>
+                <th className="text-left py-2 px-2 text-gray-400">Estado</th>
+                <th className="text-left py-2 px-2 text-gray-400">Fecha Proc.</th>
+                <th className="text-right py-2 px-2 text-gray-400">Horas</th>
+                <th className="text-right py-2 px-2 text-gray-400">Días</th>
+                <th className="text-left py-2 px-2 text-gray-400">Dropshipper</th>
+                <th className="text-left py-2 px-2 text-gray-400">Ciudad</th>
+                <th className="text-left py-2 px-2 text-gray-400">Departamento</th>
+                <th className="text-left py-2 px-2 text-gray-400">Teléfono</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((r: any, i: number) => {
+                const h = r.horasTransporte || 0;
+                const d = r.diasSinCambio || 0;
+                const color = semaforoColor(h);
+                return (
+                  <tr key={`${r.guia}-${i}`} className="border-b border-gray-800/40" style={{ background: semaforoBg(h) }}>
+                    <td className="py-2 px-2 t-primary font-medium">{r.guia}</td>
+                    <td className="py-2 px-2 t-secondary">{r.transportadora}</td>
+                    <td className="py-2 px-2"><span style={{ color: STATUS_COLORS[r.estatus] || "#6b7280" }}>{r.estatus}</span></td>
+                    <td className="py-2 px-2 t-secondary">{r.fecha_procesamiento}</td>
+                    <td className="py-2 px-2 text-right font-bold" style={{ color }}>{h}h</td>
+                    <td className="py-2 px-2 text-right font-bold" style={{ color }}>{d} días</td>
+                    <td className="py-2 px-2 t-secondary truncate max-w-[150px]">{r.dropshipper}</td>
+                    <td className="py-2 px-2 t-secondary">{r.ciudad_destino}</td>
+                    <td className="py-2 px-2 t-secondary">{r.departamento_destino}</td>
+                    <td className="py-2 px-2 t-secondary">{r.telefono}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   }
@@ -858,25 +953,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       )}
 
       {/* ── PARADAS +72hs TAB ── */}
-      {tab === "paradas" && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            <KpiCard label="Total Paradas +72hs" value={paradasRows.length} color="red" />
-            {countBy(paradasRows, (r) => r.transportadora).map((b) => (
-              <KpiCard key={b.name} label={b.name} value={b.count} color="orange" sub="por transportadora" />
-            ))}
-          </div>
-
-          {/* Color legend */}
-          <div className="flex flex-wrap gap-3 text-[10px]">
-            <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ background: "rgba(217,119,6,0.35)" }} /> 72-120hs</span>
-            <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ background: "rgba(220,38,38,0.35)" }} /> 120-168hs</span>
-            <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded" style={{ background: "rgba(127,29,29,0.45)" }} /> +168hs (7 dias)</span>
-          </div>
-
-          <DataTable rows={paradasRows as any} columns={paradasColumns} highlightHours />
-        </div>
-      )}
+      {tab === "paradas" && <ParadasTab rows={paradasRows} />}
     </div>
   );
 }
