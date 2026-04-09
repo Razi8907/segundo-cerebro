@@ -28,6 +28,21 @@ const STATUS_ORDER = [
 interface RawRow {
   estatus: string; fecha: string; proveedor: string; provId: number;
   dropshipper: string; producto: string; cantidad: number; departamento: string;
+  ciudad: string; transportadora: string; precioFlete: number;
+}
+
+interface LogisticsData {
+  tasa_entrega: number;
+  tasa_devolucion: number;
+  tasa_en_proceso: number;
+  tasa_cancelado: number;
+  total_entregado: number;
+  total_devolucion: number;
+  total_en_proceso: number;
+  total_cancelado: number;
+  by_transportadora: { nombre: string; total: number; entregado: number; devolucion: number; pctEntrega: number; fletePromedio: number }[];
+  by_departamento_flete: { departamento: string; total: number; fletePromedio: number; fleteMin: number; fleteMax: number; entregado: number; pctEntrega: number }[];
+  by_ciudad_flete: { ciudad: string; departamento: string; total: number; fletePromedio: number }[];
 }
 
 interface AggData {
@@ -39,6 +54,7 @@ interface AggData {
   by_dropshipper: { nombre: string; total: number; estados: Record<string, number> }[];
   by_producto: { nombre: string; cantidad: number; ordenes: number }[];
   by_departamento: { nombre: string; total: number }[];
+  logistics: LogisticsData;
 }
 
 function parseExcel(file: File): Promise<RawRow[]> {
@@ -54,7 +70,8 @@ function parseExcel(file: File): Promise<RawRow[]> {
         const idx = (name: string) => header.indexOf(name);
         const iE = idx("ESTATUS"), iF = idx("FECHA"), iPN = idx("PROVEEDOR NOMBRE"),
           iPID = idx("PROVEEDOR ID"), iDS = idx("DROPSHIPPER"), iPR = idx("PRODUCTO"),
-          iC = idx("CANTIDAD"), iD = idx("DEPARTAMENTO DESTINO");
+          iC = idx("CANTIDAD"), iD = idx("DEPARTAMENTO DESTINO"), iCI = idx("CIUDAD DESTINO"),
+          iTR = idx("TRANSPORTADORA"), iFL = idx("PRECIO FLETE");
         const parsed: RawRow[] = [];
         for (let i = 1; i < rows.length; i++) {
           const r = rows[i];
@@ -63,6 +80,8 @@ function parseExcel(file: File): Promise<RawRow[]> {
             proveedor: String(r[iPN] || "Sin proveedor"), provId: Number(r[iPID]) || 0,
             dropshipper: String(r[iDS] || "Sin dropshipper"), producto: String(r[iPR] || "Sin producto"),
             cantidad: Number(r[iC]) || 1, departamento: String(r[iD] || "Sin departamento"),
+            ciudad: String(r[iCI] || ""), transportadora: String(r[iTR] || "Sin transportadora"),
+            precioFlete: Number(r[iFL]) || 0,
           });
         }
         resolve(parsed);
@@ -98,6 +117,68 @@ function aggregateRows(rows: RawRow[]): AggData {
     by_dept_map[r.departamento] = (by_dept_map[r.departamento] || 0) + 1;
   }
   const fechas = Object.keys(by_date_map).sort();
+
+  // Logistics calculations
+  const ENTREGA_STATES = ["ENTREGADO"];
+  const DEV_STATES = ["DEVOLUCION", "EN PROCESO DE DEVOLUCION", "RECHAZADO", "REINGRESO A BODEGA"];
+  const PROCESO_STATES = ["GUIA_GENERADA", "EN BODEGA ORIGEN", "RECOGIDO POR TRANSPORTADORA", "MANIFIESTO", "EN BODEGA DESTINO", "EN REPARTO", "SALIDA A RUTA", "RUTEADO PARA SU ENTREGA", "NOVEDAD", "NOVEDAD SOLUCIONADA", "GESTIONADO OPERATIVA", "PACTADO", "REPACTADO LISTO PARA DESPACHO", "MAL RUTEO"];
+  const total_entregado = ENTREGA_STATES.reduce((s, st) => s + (by_status[st] || 0), 0);
+  const total_devolucion = DEV_STATES.reduce((s, st) => s + (by_status[st] || 0), 0);
+  const total_cancelado = by_status["CANCELADO"] || 0;
+  const total_en_proceso = PROCESO_STATES.reduce((s, st) => s + (by_status[st] || 0), 0);
+  const n = rows.length || 1;
+
+  // By transportadora
+  const trans_map: Record<string, { total: number; entregado: number; devolucion: number; fletes: number[] }> = {};
+  // By dept flete
+  const dept_flete_map: Record<string, { total: number; entregado: number; fletes: number[] }> = {};
+  // By ciudad flete
+  const city_flete_map: Record<string, { dept: string; total: number; fletes: number[] }> = {};
+
+  for (const r of rows) {
+    if (!trans_map[r.transportadora]) trans_map[r.transportadora] = { total: 0, entregado: 0, devolucion: 0, fletes: [] };
+    trans_map[r.transportadora].total++;
+    if (ENTREGA_STATES.includes(r.estatus)) trans_map[r.transportadora].entregado++;
+    if (DEV_STATES.includes(r.estatus)) trans_map[r.transportadora].devolucion++;
+    if (r.precioFlete > 0) trans_map[r.transportadora].fletes.push(r.precioFlete);
+
+    if (!dept_flete_map[r.departamento]) dept_flete_map[r.departamento] = { total: 0, entregado: 0, fletes: [] };
+    dept_flete_map[r.departamento].total++;
+    if (ENTREGA_STATES.includes(r.estatus)) dept_flete_map[r.departamento].entregado++;
+    if (r.precioFlete > 0) dept_flete_map[r.departamento].fletes.push(r.precioFlete);
+
+    const cityKey = `${r.ciudad}|${r.departamento}`;
+    if (!city_flete_map[cityKey]) city_flete_map[cityKey] = { dept: r.departamento, total: 0, fletes: [] };
+    city_flete_map[cityKey].total++;
+    if (r.precioFlete > 0) city_flete_map[cityKey].fletes.push(r.precioFlete);
+  }
+
+  const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+  const logistics: LogisticsData = {
+    tasa_entrega: (total_entregado / n) * 100,
+    tasa_devolucion: (total_devolucion / n) * 100,
+    tasa_en_proceso: (total_en_proceso / n) * 100,
+    tasa_cancelado: (total_cancelado / n) * 100,
+    total_entregado, total_devolucion, total_en_proceso, total_cancelado,
+    by_transportadora: Object.entries(trans_map).map(([nombre, v]) => ({
+      nombre, total: v.total, entregado: v.entregado, devolucion: v.devolucion,
+      pctEntrega: v.total > 0 ? (v.entregado / v.total) * 100 : 0,
+      fletePromedio: Math.round(avg(v.fletes)),
+    })).sort((a, b) => b.total - a.total),
+    by_departamento_flete: Object.entries(dept_flete_map).map(([departamento, v]) => ({
+      departamento, total: v.total, entregado: v.entregado,
+      fletePromedio: Math.round(avg(v.fletes)),
+      fleteMin: v.fletes.length > 0 ? Math.round(Math.min(...v.fletes)) : 0,
+      fleteMax: v.fletes.length > 0 ? Math.round(Math.max(...v.fletes)) : 0,
+      pctEntrega: v.total > 0 ? (v.entregado / v.total) * 100 : 0,
+    })).sort((a, b) => b.total - a.total),
+    by_ciudad_flete: Object.entries(city_flete_map).map(([key, v]) => ({
+      ciudad: key.split("|")[0], departamento: v.dept, total: v.total,
+      fletePromedio: Math.round(avg(v.fletes)),
+    })).filter((c) => c.ciudad && c.total >= 3).sort((a, b) => b.total - a.total),
+  };
+
   return {
     total_orders: rows.length,
     date_range: { from: fechas[0] || "", to: fechas[fechas.length - 1] || "" },
@@ -107,6 +188,7 @@ function aggregateRows(rows: RawRow[]): AggData {
     by_dropshipper: Object.entries(by_ds_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.total - a.total),
     by_producto: Object.entries(by_prod_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.ordenes - a.ordenes),
     by_departamento: Object.entries(by_dept_map).map(([nombre, total]) => ({ nombre, total })).sort((a, b) => b.total - a.total),
+    logistics,
   };
 }
 
@@ -423,6 +505,164 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         </div>
         <p className="text-[10px] t-muted mt-1">Click en un dropshipper para filtrar todo el análisis</p>
       </div>
+
+      {/* ═══ LOGISTICS SECTION ═══ */}
+      {aggData.logistics && (
+        <div className="mt-8 pt-6 border-t-2 border-orange-500/20">
+          <h2 className="text-lg font-bold t-primary mb-1">🚚 Logística {isFiltered ? `— ${filterLabel}` : ""}</h2>
+          <p className="text-xs t-secondary mb-5">Tasas de entrega, devolución y costos de flete por localidad</p>
+
+          {/* Logistics KPIs */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <div className="rounded-xl p-4 border border-green-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted uppercase">Tasa de Entrega</p>
+              <p className="text-2xl font-bold text-green-600">{aggData.logistics.tasa_entrega.toFixed(1)}%</p>
+              <p className="text-xs t-secondary">{aggData.logistics.total_entregado.toLocaleString()} entregados</p>
+            </div>
+            <div className="rounded-xl p-4 border border-red-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted uppercase">Tasa de Devolución</p>
+              <p className="text-2xl font-bold text-red-600">{aggData.logistics.tasa_devolucion.toFixed(1)}%</p>
+              <p className="text-xs t-secondary">{aggData.logistics.total_devolucion.toLocaleString()} devueltos</p>
+            </div>
+            <div className="rounded-xl p-4 border border-blue-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted uppercase">En Proceso</p>
+              <p className="text-2xl font-bold text-blue-600">{aggData.logistics.tasa_en_proceso.toFixed(1)}%</p>
+              <p className="text-xs t-secondary">{aggData.logistics.total_en_proceso.toLocaleString()} en tránsito</p>
+            </div>
+            <div className="rounded-xl p-4 border border-gray-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted uppercase">Cancelados</p>
+              <p className="text-2xl font-bold text-gray-600">{aggData.logistics.tasa_cancelado.toFixed(1)}%</p>
+              <p className="text-xs t-secondary">{aggData.logistics.total_cancelado.toLocaleString()} cancelados</p>
+            </div>
+          </div>
+
+          {/* Transportadoras */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold t-primary mb-3">Rendimiento por Transportadora</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {aggData.logistics.by_transportadora.map((t) => (
+                <div key={t.nombre} className="p-4 rounded-xl border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-bold t-primary">{t.nombre}</h4>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/10 text-orange-600 font-medium">{t.total.toLocaleString()} guías</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3 text-center mb-3">
+                    <div>
+                      <p className="text-[10px] t-muted">Entregados</p>
+                      <p className="text-lg font-bold text-green-600">{t.pctEntrega.toFixed(1)}%</p>
+                      <p className="text-[10px] t-secondary">{t.entregado}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] t-muted">Devueltos</p>
+                      <p className="text-lg font-bold text-red-600">{t.total > 0 ? ((t.devolucion / t.total) * 100).toFixed(1) : 0}%</p>
+                      <p className="text-[10px] t-secondary">{t.devolucion}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] t-muted">Flete Prom.</p>
+                      <p className="text-lg font-bold text-orange-600">${t.fletePromedio.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  {/* Progress bar */}
+                  <div className="h-2 rounded-full overflow-hidden flex" style={{ background: "#e5e7eb" }}>
+                    <div className="h-full bg-green-500" style={{ width: `${t.pctEntrega}%` }} />
+                    <div className="h-full bg-red-500" style={{ width: `${t.total > 0 ? (t.devolucion / t.total) * 100 : 0}%` }} />
+                  </div>
+                  <div className="flex gap-3 mt-1 text-[9px] t-muted">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" />Entregado</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" />Devuelto</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "#e5e7eb" }} />En proceso</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Flete by Department */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold t-primary mb-3">Costo de Flete por Departamento</h3>
+            <ResponsiveContainer width="100%" height={Math.min(aggData.logistics.by_departamento_flete.length * 28, 500)}>
+              <BarChart data={aggData.logistics.by_departamento_flete.map((d) => ({
+                name: d.departamento.length > 25 ? d.departamento.slice(0, 25) + "…" : d.departamento,
+                "Flete Promedio": d.fletePromedio, guias: d.total,
+              }))} layout="vertical" margin={{ left: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
+                <XAxis type="number" tick={TICK_STYLE} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
+                <YAxis dataKey="name" type="category" tick={{ fill: "#1f2937", fontSize: 9 }} width={190} />
+                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`$${Number(v).toLocaleString()}`, "Flete Promedio"]} />
+                <Bar dataKey="Flete Promedio" fill="#ea580c" radius={[0, 4, 4, 0]} barSize={14} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Detailed flete table by department */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold t-primary mb-3">Detalle Logístico por Departamento</h3>
+            <div className="table-container overflow-x-auto max-h-[400px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
+                  <tr className="border-b border-orange-500/20">
+                    <th className="text-left py-2 px-2 text-gray-400">Departamento</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Guías</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Flete Prom.</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Flete Mín.</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Flete Máx.</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Entregados</th>
+                    <th className="text-right py-2 px-2 text-gray-400">% Entrega</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {aggData.logistics.by_departamento_flete.map((d) => (
+                    <tr key={d.departamento} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                      <td className="py-2 px-2 t-primary font-medium">{d.departamento}</td>
+                      <td className="py-2 px-2 text-right t-secondary">{d.total.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right text-orange-600 font-bold">${d.fletePromedio.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right text-green-600">${d.fleteMin.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right text-red-600">${d.fleteMax.toLocaleString()}</td>
+                      <td className="py-2 px-2 text-right text-green-600">{d.entregado}</td>
+                      <td className="py-2 px-2 text-right">
+                        <span className={d.pctEntrega >= 15 ? "text-green-600 font-bold" : d.pctEntrega >= 10 ? "text-yellow-600" : "text-red-600"}>
+                          {d.pctEntrega.toFixed(1)}%
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Top cities by flete */}
+          {aggData.logistics.by_ciudad_flete.length > 0 && (
+            <div>
+              <h3 className="text-sm font-bold t-primary mb-3">Costo de Flete por Ciudad (Top 30)</h3>
+              <div className="table-container overflow-x-auto max-h-[350px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
+                    <tr className="border-b border-orange-500/20">
+                      <th className="text-left py-2 px-2 text-gray-400">#</th>
+                      <th className="text-left py-2 px-2 text-gray-400">Ciudad</th>
+                      <th className="text-left py-2 px-2 text-gray-400">Departamento</th>
+                      <th className="text-right py-2 px-2 text-gray-400">Guías</th>
+                      <th className="text-right py-2 px-2 text-gray-400">Flete Promedio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {aggData.logistics.by_ciudad_flete.slice(0, 30).map((c, i) => (
+                      <tr key={`${c.ciudad}-${c.departamento}`} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                        <td className="py-2 px-2 t-muted">{i + 1}</td>
+                        <td className="py-2 px-2 t-primary font-medium">{c.ciudad}</td>
+                        <td className="py-2 px-2 t-secondary">{c.departamento}</td>
+                        <td className="py-2 px-2 text-right t-secondary">{c.total}</td>
+                        <td className="py-2 px-2 text-right text-orange-600 font-bold">${c.fletePromedio.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
     </ChartDownloadBtn>
   );
