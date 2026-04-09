@@ -18,6 +18,7 @@ import ProductsAnalysis from "../components/ProductsAnalysis";
 import DropshipperManager from "../components/DropshipperManager";
 import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
+import OperationalUpload from "../components/OperationalUpload";
 import ThemeToggle from "../components/ThemeToggle";
 import type { MesFilter } from "../types";
 
@@ -129,6 +130,7 @@ export default function ArgentinaDashboard() {
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="ar" />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
+            <OperationalUpload country="ar" />
             <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
             <ProductGoalPlanner proveedores={proveedores} />
           </>
