@@ -170,15 +170,52 @@ function parseExcel(file: File, country: string): Promise<GuideRow[]> {
         const ws = wb.Sheets[sheetName];
         const allRows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
-        // Row 0 = title, Row 1 = custom header, Row 2 = Dropi header, Row 3+ = data
-        const dataRows = allRows.slice(3);
+        // Find the header row (the one that starts with "FECHA DE REPORTE")
+        let headerIdx = -1;
+        for (let i = 0; i < Math.min(10, allRows.length); i++) {
+          const firstCell = String(allRows[i]?.[0] || "");
+          if (firstCell === "FECHA DE REPORTE") {
+            headerIdx = i;
+            break;
+          }
+        }
+        if (headerIdx === -1) throw new Error("No se encontró la fila de encabezado (FECHA DE REPORTE)");
+
+        // Build column map dynamically from the header row
+        const headerRow = allRows[headerIdx].map((c: any) => String(c || "").trim());
+        const colIdx = (name: string) => headerRow.indexOf(name);
+
+        const dynamicMap: { field: string; idx: number }[] = [
+          { field: "guia", idx: colIdx("NÚMERO GUIA") },
+          { field: "fecha", idx: colIdx("FECHA") },
+          { field: "dropshipper", idx: colIdx("DROPSHIPPER") },
+          { field: "nombre_tienda", idx: colIdx("NOMBRE TIENDA") },
+          { field: "proveedor_nombre", idx: colIdx("PROVEEDOR NOMBRE") },
+          { field: "transportadora", idx: colIdx("TRANSPORTADORA") },
+          { field: "estatus", idx: colIdx("ESTATUS") },
+          { field: "fecha_procesamiento", idx: colIdx("FECHA EN PROCESAMIENDO") },
+          { field: "fecha_ultimo_movimiento", idx: colIdx("FECHA DE ÚLTIMO MOVIMIENTO") },
+          { field: "hora_ultimo_movimiento", idx: colIdx("HORA DE ÚLTIMO MOVIMIENTO") },
+          { field: "ciudad_destino", idx: colIdx("CIUDAD DESTINO") },
+          { field: "departamento_destino", idx: colIdx("DEPARTAMENTO DESTINO") },
+          { field: "nombre_cliente", idx: colIdx("NOMBRE CLIENTE") },
+          { field: "telefono", idx: colIdx("TELÉFONO") },
+          { field: "novedad", idx: colIdx("NOVEDAD") },
+          { field: "concepto_ultimo_movimiento", idx: colIdx("CONCEPTO ÚLTIMO MOVIMIENTO") },
+          { field: "comercial_asignado", idx: colIdx("COMERCIAL ASIGNADO") },
+          { field: "total_orden", idx: colIdx("TOTAL DE LA ORDEN") },
+          { field: "ganancia_entregado", idx: colIdx("GANANCIA SI ES ENTREGADO") },
+          { field: "productos", idx: colIdx("PRODUCTOS") },
+        ].filter((c) => c.idx >= 0);
+
+        const dataRows = allRows.slice(headerIdx + 1);
         const fc = todayStr();
         const parsed: GuideRow[] = [];
 
         for (const r of dataRows) {
           if (!r || r.length < 3) continue;
           const row: any = { fecha_carga: fc, country };
-          for (const col of COL_MAP) {
+          for (const col of dynamicMap) {
             const val = r[col.idx];
             if (col.field === "total_orden" || col.field === "ganancia_entregado") {
               row[col.field] = Number(val) || 0;
