@@ -13,6 +13,9 @@ interface User {
   active: boolean;
   access_start_hour: number;
   access_end_hour: number;
+  access_comercial: boolean;
+  access_operaciones: boolean;
+  access_finanzas: boolean;
   created_at: string;
 }
 
@@ -24,6 +27,9 @@ const emptyForm = {
   can_download: false,
   access_start_hour: 0,
   access_end_hour: 24,
+  access_comercial: true,
+  access_operaciones: true,
+  access_finanzas: true,
 };
 
 export default function AdminPage() {
@@ -97,7 +103,7 @@ export default function AdminPage() {
     }
   }
 
-  async function handleToggle(id: string, field: "active" | "can_download", value: boolean) {
+  async function handleToggle(id: string, field: "active" | "can_download" | "access_comercial" | "access_operaciones" | "access_finanzas", value: boolean) {
     try {
       const res = await fetch("/api/admin/users", {
         method: "PUT",
@@ -323,6 +329,33 @@ export default function AdminPage() {
               </button>
             </div>
 
+            {/* Sector permissions */}
+            <div className="flex flex-wrap gap-4">
+              {([
+                { key: "access_comercial", label: "📊 Comercial" },
+                { key: "access_operaciones", label: "🏭 Operaciones" },
+                { key: "access_finanzas", label: "💰 Finanzas" },
+              ] as const).map((s) => (
+                <div key={s.key} className="flex items-center gap-2">
+                  <label className="text-sm" style={{ color: "var(--text-secondary)" }}>{s.label}:</label>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, [s.key]: !(form as any)[s.key] })}
+                    className="w-10 h-5 rounded-full transition-colors relative"
+                    style={{
+                      background: (form as any)[s.key] ? "#16a34a" : "var(--bg-input)",
+                      border: "1px solid var(--bg-input-border)",
+                    }}
+                  >
+                    <span
+                      className="absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-transform"
+                      style={{ left: (form as any)[s.key] ? "calc(100% - 18px)" : "2px" }}
+                    />
+                  </button>
+                </div>
+              ))}
+            </div>
+
             <select
               value={form.access_start_hour}
               onChange={(e) => setForm({ ...form, access_start_hour: Number(e.target.value) })}
@@ -390,6 +423,9 @@ export default function AdminPage() {
                   <th className="text-left px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Email</th>
                   <th className="text-left px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Rol</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Descarga</th>
+                  <th className="text-center px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Comercial</th>
+                  <th className="text-center px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Operaciones</th>
+                  <th className="text-center px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Finanzas</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Horario</th>
                   <th className="text-center px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Activo</th>
                   <th className="text-right px-4 py-3 font-semibold" style={{ color: "var(--text-primary)" }}>Acciones</th>
@@ -558,6 +594,23 @@ export default function AdminPage() {
                             />
                           </button>
                         </td>
+                        {(["access_comercial", "access_operaciones", "access_finanzas"] as const).map((field) => (
+                          <td key={field} className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => handleToggle(user.id, field as any, (user as any)[field])}
+                              className="w-9 h-5 rounded-full transition-colors relative cursor-pointer"
+                              style={{
+                                background: (user as any)[field] ? "#16a34a" : "var(--bg-input)",
+                                border: "1px solid var(--bg-input-border)",
+                              }}
+                            >
+                              <span
+                                className="absolute top-0.5 w-3.5 h-3.5 rounded-full bg-white transition-all"
+                                style={{ left: (user as any)[field] ? "calc(100% - 18px)" : "2px" }}
+                              />
+                            </button>
+                          </td>
+                        ))}
                         <td
                           className="px-4 py-3 text-center text-xs"
                           style={{ color: "var(--text-secondary)" }}

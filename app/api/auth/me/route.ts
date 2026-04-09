@@ -21,6 +21,9 @@ export async function GET(req: NextRequest) {
         name: payload.name,
         role: payload.role,
         can_download: payload.can_download,
+        access_comercial: payload.access_comercial ?? true,
+        access_operaciones: payload.access_operaciones ?? true,
+        access_finanzas: payload.access_finanzas ?? true,
       },
     });
   } catch {

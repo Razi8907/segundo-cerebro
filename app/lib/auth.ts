@@ -15,6 +15,9 @@ export interface TokenPayload {
   can_download: boolean;
   access_start_hour?: number;
   access_end_hour?: number;
+  access_comercial?: boolean;
+  access_operaciones?: boolean;
+  access_finanzas?: boolean;
 }
 
 export async function signToken(payload: TokenPayload): Promise<string> {

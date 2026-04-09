@@ -83,6 +83,9 @@ export async function POST(req: NextRequest) {
       can_download: user.can_download,
       access_start_hour: user.access_start_hour,
       access_end_hour: user.access_end_hour,
+      access_comercial: user.access_comercial ?? true,
+      access_operaciones: user.access_operaciones ?? true,
+      access_finanzas: user.access_finanzas ?? true,
     });
 
     // Set cookie and return user info

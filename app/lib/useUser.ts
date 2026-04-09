@@ -8,6 +8,9 @@ interface User {
   name: string;
   role: "admin" | "viewer";
   can_download: boolean;
+  access_comercial: boolean;
+  access_operaciones: boolean;
+  access_finanzas: boolean;
 }
 
 export function useUser() {
@@ -22,5 +25,12 @@ export function useUser() {
       .finally(() => setLoading(false));
   }, []);
 
-  return { user, loading, canDownload: user?.can_download ?? false };
+  return {
+    user,
+    loading,
+    canDownload: user?.can_download ?? false,
+    canComercial: user?.access_comercial ?? true,
+    canOperaciones: user?.access_operaciones ?? true,
+    canFinanzas: user?.access_finanzas ?? true,
+  };
 }

@@ -20,6 +20,7 @@ import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OperationsDashboard from "../components/OperationsDashboard";
 import ThemeToggle from "../components/ThemeToggle";
+import { useUser } from "../lib/useUser";
 import type { MesFilter } from "../types";
 
 function getResumenByMes(mes: MesFilter, allData: any) {
@@ -48,6 +49,7 @@ type Sector = "comercial" | "operaciones" | "finanzas";
 export default function ParaguayDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
   const [sector, setSector] = useState<Sector>("comercial");
+  const { canComercial, canOperaciones, canFinanzas } = useUser();
   const { data: allData, updatedAt } = useDashboardData("py");
   const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers, seguimiento_abril } = allData;
   const kpis = getResumenByMes(mesFilter, allData);
@@ -113,10 +115,10 @@ export default function ParaguayDashboard() {
       <div className="border-b" style={{ borderColor: "var(--bg-card-border)", background: "var(--bg-card)" }}>
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex gap-0">
           {([
-            { key: "comercial" as Sector, label: "📊 Comercial", icon: "" },
-            { key: "operaciones" as Sector, label: "🏭 Operaciones", icon: "" },
-            { key: "finanzas" as Sector, label: "💰 Finanzas", icon: "" },
-          ]).map((s) => (
+            { key: "comercial" as Sector, label: "📊 Comercial", allowed: canComercial },
+            { key: "operaciones" as Sector, label: "🏭 Operaciones", allowed: canOperaciones },
+            { key: "finanzas" as Sector, label: "💰 Finanzas", allowed: canFinanzas },
+          ]).filter((s) => s.allowed).map((s) => (
             <button
               key={s.key}
               onClick={() => setSector(s.key)}
