@@ -270,12 +270,7 @@ function DataTable({ rows, columns, highlightHours }: {
   const totalPages = Math.ceil(rows.length / pageSize);
   const pageRows = rows.slice(page * pageSize, (page + 1) * pageSize);
 
-  function rowBg(r: GuideRow): string | undefined {
-    if (!highlightHours) return undefined;
-    const h = hoursFromProcessing(r.fecha_procesamiento);
-    if (h >= 168) return "rgba(220,38,38,0.15)";   // rojo
-    if (h >= 120) return "rgba(249,115,22,0.12)";   // naranja
-    if (h >= 72) return "rgba(250,204,21,0.12)";    // amarillo
+  function rowBg(): string | undefined {
     return undefined;
   }
 
@@ -579,10 +574,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     if (horas >= 72) return "#facc15";  // amarillo — 3+ días
     return "#22c55e"; // verde — ok
   }
-  function semaforoBg(horas: number): string {
-    if (horas >= 168) return "rgba(220,38,38,0.15)";
-    if (horas >= 120) return "rgba(249,115,22,0.12)";
-    if (horas >= 72) return "rgba(250,204,21,0.12)";
+  function semaforoBg(_horas: number): string {
     return "transparent";
   }
 
