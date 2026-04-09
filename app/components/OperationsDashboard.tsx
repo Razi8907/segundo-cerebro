@@ -1050,7 +1050,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       )}
 
       {/* ── PARADAS +72hs TAB ── */}
-      {tab === "paradas" && <ParadasTab rows={paradasRows} />
+      {tab === "paradas" && <ParadasTab rows={paradasRows} />}
     </div>
   );
 }
