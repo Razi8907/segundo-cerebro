@@ -384,41 +384,46 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         setUploading(false);
         return;
       }
-      const res = await fetch("/api/data/operations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          country,
-          fecha_carga: todayStr(),
-          rows: parsed.map((r) => ({
-            guia: r.guia,
-            fecha_reporte: r.fecha,
-            fecha_orden: r.fecha,
-            dropshipper: r.dropshipper,
-            tienda: r.nombre_tienda,
-            proveedor: r.proveedor_nombre,
-            proveedor_id: 0,
-            transportadora: r.transportadora,
-            estatus: r.estatus,
-            fecha_procesamiento: r.fecha_procesamiento,
-            fecha_ultimo_movimiento: r.fecha_ultimo_movimiento,
-            hora_ultimo_movimiento: r.hora_ultimo_movimiento,
-            ciudad_destino: r.ciudad_destino,
-            departamento_destino: r.departamento_destino,
-            cliente: r.nombre_cliente,
-            telefono: r.telefono,
-            novedad: r.novedad,
-            concepto_ultimo_mov: r.concepto_ultimo_movimiento,
-            comercial: r.comercial_asignado,
-            valor_orden: r.total_orden,
-            ganancia_si_entregado: r.ganancia_entregado,
-            producto: r.productos,
-          })),
-        }),
-      });
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || "Error al subir datos");
+      // Map to API format
+      const apiRows = parsed.map((r) => ({
+        guia: r.guia,
+        fecha_reporte: r.fecha,
+        fecha_orden: r.fecha,
+        dropshipper: r.dropshipper,
+        tienda: r.nombre_tienda,
+        proveedor: r.proveedor_nombre,
+        proveedor_id: 0,
+        transportadora: r.transportadora,
+        estatus: r.estatus,
+        fecha_procesamiento: r.fecha_procesamiento,
+        fecha_ultimo_movimiento: r.fecha_ultimo_movimiento,
+        hora_ultimo_movimiento: r.hora_ultimo_movimiento,
+        ciudad_destino: r.ciudad_destino,
+        departamento_destino: r.departamento_destino,
+        cliente: r.nombre_cliente,
+        telefono: r.telefono,
+        novedad: r.novedad,
+        concepto_ultimo_mov: r.concepto_ultimo_movimiento,
+        comercial: r.comercial_asignado,
+        valor_orden: r.total_orden,
+        ganancia_si_entregado: r.ganancia_entregado,
+        producto: r.productos,
+      }));
+
+      // Upload in batches of 300 to avoid payload/timeout limits
+      const BATCH_SIZE = 300;
+      const fc = todayStr();
+      for (let i = 0; i < apiRows.length; i += BATCH_SIZE) {
+        const batch = apiRows.slice(i, i + BATCH_SIZE);
+        const res = await fetch("/api/data/operations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ country, fecha_carga: fc, rows: batch }),
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Error en lote ${Math.floor(i / BATCH_SIZE) + 1}`);
+        }
       }
       // Set parsed data immediately + refresh from API
       setRows((prev) => {
