@@ -17,6 +17,7 @@ import DailyTracker from "../components/DailyTracker";
 import ProductsAnalysis from "../components/ProductsAnalysis";
 import DropshipperManager from "../components/DropshipperManager";
 import ReportGenerator from "../components/ReportGenerator";
+import OperationalUpload from "../components/OperationalUpload";
 import ThemeToggle from "../components/ThemeToggle";
 import type { MesFilter } from "../types";
 
@@ -126,6 +127,7 @@ export default function ParaguayDashboard() {
         {isAbril ? (
           <>
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="py" />
+            <OperationalUpload country="py" />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
             <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
