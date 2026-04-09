@@ -43,8 +43,11 @@ function getResumenByMes(mes: MesFilter, allData: any) {
   return r[mes];
 }
 
+type Sector = "comercial" | "operaciones" | "finanzas";
+
 export default function ArgentinaDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
+  const [sector, setSector] = useState<Sector>("comercial");
   const { data: allData, updatedAt } = useDashboardData("ar");
   const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers, seguimiento_abril } = allData;
   const kpis = getResumenByMes(mesFilter, allData);
@@ -106,12 +109,36 @@ export default function ArgentinaDashboard() {
         </div>
       </header>
 
+      {/* Sector tabs */}
+      <div className="border-b" style={{ borderColor: "var(--bg-card-border)", background: "var(--bg-card)" }}>
+        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex gap-0">
+          {([
+            { key: "comercial" as Sector, label: "📊 Comercial" },
+            { key: "operaciones" as Sector, label: "🏭 Operaciones" },
+            { key: "finanzas" as Sector, label: "💰 Finanzas" },
+          ]).map((s) => (
+            <button
+              key={s.key}
+              onClick={() => setSector(s.key)}
+              className={`px-5 py-3 text-sm font-medium border-b-2 transition-all ${
+                sector === s.key
+                  ? "border-orange-500 text-orange-500"
+                  : "border-transparent t-muted hover:text-orange-400 hover:border-orange-500/30"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
+        {sector === "comercial" && <>
         {/* Period indicator */}
         <div className="text-center">
-          <span className={`text-sm font-medium ${isAbril ? "text-green-400" : "text-sky-400"}`}>
+          <span className={`text-sm font-medium ${isAbril ? "text-green-400" : "text-orange-400"}`}>
             {mesLabels[mesFilter]}
-            {isAbril && " — 12,000 movilizadas / 16,000 ingresadas"}
+            {isAbril && ` — ${meta_info.meta_movilizadas_abril.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_abril.toLocaleString()} ingresadas`}
           </span>
         </div>
 
@@ -163,6 +190,23 @@ export default function ArgentinaDashboard() {
           seguimientoAbril={seguimiento_abril}
           country="ar"
         />
+        </>}
+
+        {sector === "operaciones" && (
+          <div className="glass-card p-8 text-center">
+            <span className="text-4xl mb-4 block">🏭</span>
+            <h2 className="text-xl font-bold t-primary mb-2">Operaciones</h2>
+            <p className="t-secondary text-sm">Sección en construcción. Subí la información de operaciones para activar el dashboard.</p>
+          </div>
+        )}
+
+        {sector === "finanzas" && (
+          <div className="glass-card p-8 text-center">
+            <span className="text-4xl mb-4 block">💰</span>
+            <h2 className="text-xl font-bold t-primary mb-2">Finanzas</h2>
+            <p className="t-secondary text-sm">Sección en construcción. Subí la información financiera para activar el dashboard.</p>
+          </div>
+        )}
 
         <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
           Dropi Argentina &middot; Segundo Cerebro Dashboard &middot; Datos Q1 2026
