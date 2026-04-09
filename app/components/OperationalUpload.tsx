@@ -211,7 +211,16 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   useEffect(() => {
     fetch(`/api/data/operational?country=${country}`)
       .then((r) => r.json())
-      .then((res) => { if (res.data) { setSavedAgg(res.data); setUploadedAt(res.uploaded_at); } })
+      .then((res) => {
+        if (res.data) {
+          setSavedAgg(res.data);
+          setUploadedAt(res.uploaded_at);
+          // Load saved raw rows for filtering
+          if (res.data.raw_rows && Array.isArray(res.data.raw_rows)) {
+            setRawRows(res.data.raw_rows);
+          }
+        }
+      })
       .catch(() => {});
   }, [country]);
 
@@ -225,9 +234,10 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
       const agg = aggregateRows(rows);
       setSavedAgg(agg);
       setFilterType("all"); setFilterValue("");
+      // Save aggregation + raw rows for persistent filtering
       await fetch("/api/data/operational", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country, data: agg, raw_count: agg.total_orders }),
+        body: JSON.stringify({ country, data: { ...agg, raw_rows: rows }, raw_count: agg.total_orders }),
       });
       setUploadedAt(new Date().toISOString());
     } catch (err) {
@@ -238,33 +248,21 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
     e.target.value = "";
   }, [country]);
 
-  // Full aggregation (no filter) — from savedAgg or rawRows
+  // Full aggregation (no filter)
   const fullAgg = useMemo(() => {
     if (rawRows.length > 0) return aggregateRows(rawRows);
     return savedAgg;
   }, [rawRows, savedAgg]);
 
-  // Filtered aggregation
+  // Filtered aggregation — always re-aggregate from raw rows
   const aggData = useMemo(() => {
     if (!fullAgg) return null;
     if (filterType === "all" || !filterValue) return fullAgg;
-    if (rawRows.length === 0) {
-      // No raw rows, filter from savedAgg tables
-      if (filterType === "proveedor") {
-        const p = fullAgg.by_proveedor.find((x) => x.nombre === filterValue);
-        if (!p) return fullAgg;
-        return { ...fullAgg, total_orders: p.total, by_status: p.estados, by_proveedor: [p] };
-      }
-      if (filterType === "dropshipper") {
-        const d = fullAgg.by_dropshipper.find((x) => x.nombre === filterValue);
-        if (!d) return fullAgg;
-        return { ...fullAgg, total_orders: d.total, by_status: d.estados, by_dropshipper: [d] };
-      }
-      return fullAgg;
-    }
+    if (rawRows.length === 0) return fullAgg;
     const filtered = filterType === "proveedor"
       ? rawRows.filter((r) => r.proveedor === filterValue)
       : rawRows.filter((r) => r.dropshipper === filterValue);
+    if (filtered.length === 0) return fullAgg;
     return aggregateRows(filtered);
   }, [fullAgg, rawRows, filterType, filterValue]);
 
