@@ -126,24 +126,27 @@ function aggregateRows(rows: RawRow[]): AggData {
   const total_devolucion = DEV_STATES.reduce((s, st) => s + (by_status[st] || 0), 0);
   const total_cancelado = by_status["CANCELADO"] || 0;
   const total_en_proceso = PROCESO_STATES.reduce((s, st) => s + (by_status[st] || 0), 0);
-  const n = rows.length || 1;
+  // Base for delivery/return rates excludes cancelled orders
+  const nSinCancelados = (rows.length - total_cancelado) || 1;
 
   // By transportadora
-  const trans_map: Record<string, { total: number; entregado: number; devolucion: number; fletes: number[] }> = {};
+  const trans_map: Record<string, { total: number; totalSinCanc: number; entregado: number; devolucion: number; fletes: number[] }> = {};
   // By dept flete
-  const dept_flete_map: Record<string, { total: number; entregado: number; fletes: number[] }> = {};
+  const dept_flete_map: Record<string, { total: number; totalSinCanc: number; entregado: number; fletes: number[] }> = {};
   // By ciudad flete
   const city_flete_map: Record<string, { dept: string; total: number; fletes: number[] }> = {};
 
   for (const r of rows) {
-    if (!trans_map[r.transportadora]) trans_map[r.transportadora] = { total: 0, entregado: 0, devolucion: 0, fletes: [] };
+    if (!trans_map[r.transportadora]) trans_map[r.transportadora] = { total: 0, totalSinCanc: 0, entregado: 0, devolucion: 0, fletes: [] };
     trans_map[r.transportadora].total++;
+    if (r.estatus !== "CANCELADO") trans_map[r.transportadora].totalSinCanc++;
     if (ENTREGA_STATES.includes(r.estatus)) trans_map[r.transportadora].entregado++;
     if (DEV_STATES.includes(r.estatus)) trans_map[r.transportadora].devolucion++;
     if (r.precioFlete > 0) trans_map[r.transportadora].fletes.push(r.precioFlete);
 
-    if (!dept_flete_map[r.departamento]) dept_flete_map[r.departamento] = { total: 0, entregado: 0, fletes: [] };
+    if (!dept_flete_map[r.departamento]) dept_flete_map[r.departamento] = { total: 0, totalSinCanc: 0, entregado: 0, fletes: [] };
     dept_flete_map[r.departamento].total++;
+    if (r.estatus !== "CANCELADO") dept_flete_map[r.departamento].totalSinCanc++;
     if (ENTREGA_STATES.includes(r.estatus)) dept_flete_map[r.departamento].entregado++;
     if (r.precioFlete > 0) dept_flete_map[r.departamento].fletes.push(r.precioFlete);
 
@@ -156,14 +159,14 @@ function aggregateRows(rows: RawRow[]): AggData {
   const avg = (arr: number[]) => arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
 
   const logistics: LogisticsData = {
-    tasa_entrega: (total_entregado / n) * 100,
-    tasa_devolucion: (total_devolucion / n) * 100,
-    tasa_en_proceso: (total_en_proceso / n) * 100,
-    tasa_cancelado: (total_cancelado / n) * 100,
+    tasa_entrega: (total_entregado / nSinCancelados) * 100,
+    tasa_devolucion: (total_devolucion / nSinCancelados) * 100,
+    tasa_en_proceso: (total_en_proceso / nSinCancelados) * 100,
+    tasa_cancelado: (total_cancelado / (rows.length || 1)) * 100,
     total_entregado, total_devolucion, total_en_proceso, total_cancelado,
     by_transportadora: Object.entries(trans_map).map(([nombre, v]) => ({
       nombre, total: v.total, entregado: v.entregado, devolucion: v.devolucion,
-      pctEntrega: v.total > 0 ? (v.entregado / v.total) * 100 : 0,
+      pctEntrega: v.totalSinCanc > 0 ? (v.entregado / v.totalSinCanc) * 100 : 0,
       fletePromedio: Math.round(avg(v.fletes)),
     })).sort((a, b) => b.total - a.total),
     by_departamento_flete: Object.entries(dept_flete_map).map(([departamento, v]) => ({
@@ -171,7 +174,7 @@ function aggregateRows(rows: RawRow[]): AggData {
       fletePromedio: Math.round(avg(v.fletes)),
       fleteMin: v.fletes.length > 0 ? Math.round(Math.min(...v.fletes)) : 0,
       fleteMax: v.fletes.length > 0 ? Math.round(Math.max(...v.fletes)) : 0,
-      pctEntrega: v.total > 0 ? (v.entregado / v.total) * 100 : 0,
+      pctEntrega: v.totalSinCanc > 0 ? (v.entregado / v.totalSinCanc) * 100 : 0,
     })).sort((a, b) => b.total - a.total),
     by_ciudad_flete: Object.entries(city_flete_map).map(([key, v]) => ({
       ciudad: key.split("|")[0], departamento: v.dept, total: v.total,
@@ -575,23 +578,6 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                 </div>
               ))}
             </div>
-          </div>
-
-          {/* Flete by Department */}
-          <div className="mb-6">
-            <h3 className="text-sm font-bold t-primary mb-3">Costo de Flete por Departamento</h3>
-            <ResponsiveContainer width="100%" height={Math.min(aggData.logistics.by_departamento_flete.length * 28, 500)}>
-              <BarChart data={aggData.logistics.by_departamento_flete.map((d) => ({
-                name: d.departamento.length > 25 ? d.departamento.slice(0, 25) + "…" : d.departamento,
-                "Flete Promedio": d.fletePromedio, guias: d.total,
-              }))} layout="vertical" margin={{ left: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
-                <XAxis type="number" tick={TICK_STYLE} tickFormatter={(v) => `$${(v / 1000).toFixed(0)}K`} />
-                <YAxis dataKey="name" type="category" tick={{ fill: "#1f2937", fontSize: 9 }} width={190} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v) => [`$${Number(v).toLocaleString()}`, "Flete Promedio"]} />
-                <Bar dataKey="Flete Promedio" fill="#ea580c" radius={[0, 4, 4, 0]} barSize={14} />
-              </BarChart>
-            </ResponsiveContainer>
           </div>
 
           {/* Detailed flete table by department */}
