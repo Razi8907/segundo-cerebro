@@ -296,7 +296,33 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       const res = await fetch(`/api/data/operations?country=${country}`);
       if (res.ok) {
         const data = await res.json();
-        setRows(Array.isArray(data) ? data : data.rows || []);
+        const rawRows = Array.isArray(data) ? data : data.rows || [];
+        // Map DB fields → component fields
+        const mapped: GuideRow[] = rawRows.map((r: any) => ({
+          guia: r.guia || "",
+          fecha: r.fecha_reporte || r.fecha_orden || "",
+          dropshipper: r.dropshipper || "",
+          nombre_tienda: r.tienda || "",
+          proveedor_nombre: r.proveedor || "",
+          transportadora: r.transportadora || "",
+          estatus: r.estatus || "",
+          fecha_procesamiento: r.fecha_procesamiento || "",
+          fecha_ultimo_movimiento: r.fecha_ultimo_movimiento || "",
+          hora_ultimo_movimiento: r.hora_ultimo_movimiento || "",
+          ciudad_destino: r.ciudad_destino || "",
+          departamento_destino: r.departamento_destino || "",
+          nombre_cliente: r.cliente || "",
+          telefono: r.telefono || "",
+          novedad: r.novedad || "",
+          concepto_ultimo_movimiento: r.concepto_ultimo_mov || "",
+          comercial_asignado: r.comercial || "",
+          total_orden: Number(r.valor_orden) || 0,
+          ganancia_entregado: Number(r.ganancia_si_entregado) || 0,
+          productos: r.producto || "",
+          fecha_carga: r.fecha_carga || "",
+          country: r.country || country,
+        }));
+        setRows(mapped);
       }
     } catch (e) {
       console.error("Error fetching operations:", e);
@@ -324,9 +350,45 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       const res = await fetch("/api/data/operations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country, rows: parsed }),
+        body: JSON.stringify({
+          country,
+          fecha_carga: todayStr(),
+          rows: parsed.map((r) => ({
+            guia: r.guia,
+            fecha_reporte: r.fecha,
+            fecha_orden: r.fecha,
+            dropshipper: r.dropshipper,
+            tienda: r.nombre_tienda,
+            proveedor: r.proveedor_nombre,
+            proveedor_id: 0,
+            transportadora: r.transportadora,
+            estatus: r.estatus,
+            fecha_procesamiento: r.fecha_procesamiento,
+            fecha_ultimo_movimiento: r.fecha_ultimo_movimiento,
+            hora_ultimo_movimiento: r.hora_ultimo_movimiento,
+            ciudad_destino: r.ciudad_destino,
+            departamento_destino: r.departamento_destino,
+            cliente: r.nombre_cliente,
+            telefono: r.telefono,
+            novedad: r.novedad,
+            concepto_ultimo_mov: r.concepto_ultimo_movimiento,
+            comercial: r.comercial_asignado,
+            valor_orden: r.total_orden,
+            ganancia_si_entregado: r.ganancia_entregado,
+            producto: r.productos,
+          })),
+        }),
       });
-      if (!res.ok) throw new Error("Error al subir datos");
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || "Error al subir datos");
+      }
+      // Set parsed data immediately + refresh from API
+      setRows((prev) => {
+        const existingGuias = new Set(parsed.map((r) => `${r.guia}-${r.fecha_carga}`));
+        const kept = prev.filter((r) => !existingGuias.has(`${r.guia}-${r.fecha_carga}`));
+        return [...kept, ...parsed];
+      });
       await fetchData();
     } catch (err: any) {
       setError(err.message || "Error al procesar archivo");
