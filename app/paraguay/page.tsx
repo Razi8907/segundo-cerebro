@@ -18,6 +18,7 @@ import ProductsAnalysis from "../components/ProductsAnalysis";
 import DropshipperManager from "../components/DropshipperManager";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
+import OperationsDashboard from "../components/OperationsDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import type { MesFilter } from "../types";
 
@@ -192,11 +193,7 @@ export default function ParaguayDashboard() {
         </>}
 
         {sector === "operaciones" && (
-          <div className="glass-card p-8 text-center">
-            <span className="text-4xl mb-4 block">🏭</span>
-            <h2 className="text-xl font-bold t-primary mb-2">Operaciones</h2>
-            <p className="t-secondary text-sm">Sección en construcción. Subí la información de operaciones para activar el dashboard.</p>
-          </div>
+          <OperationsDashboard country="py" />
         )}
 
         {sector === "finanzas" && (
