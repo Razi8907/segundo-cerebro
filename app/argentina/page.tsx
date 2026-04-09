@@ -128,9 +128,9 @@ export default function ArgentinaDashboard() {
           <>
             <ArgentinaPlanAbril />
             <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="ar" />
+            <OperationalUpload country="ar" />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
-            <OperationalUpload country="ar" />
             <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
             <ProductGoalPlanner proveedores={proveedores} />
           </>
