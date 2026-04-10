@@ -422,9 +422,9 @@ export default function ArgentinaPlanAbril() {
                 ))}
                 <tr className="border-t-2 border-sky-500/30 font-bold">
                   <td className="py-2 px-3 text-white">TOTAL PROYECTADO</td>
-                  <td className="py-2 px-3 text-right text-sky-400 text-sm">16,150</td>
+                  <td className="py-2 px-3 text-right text-sky-400 text-sm">12,700</td>
                   <td className="py-2 px-3 text-right text-gray-400">100%</td>
-                  <td className="py-2 px-3 text-center text-[10px] text-green-400">+0.9% margen</td>
+                  <td className="py-2 px-3 text-center text-[10px] text-green-400">+0.3% margen</td>
                 </tr>
               </tbody>
             </table>
@@ -909,8 +909,8 @@ export default function ArgentinaPlanAbril() {
           {/* Big number */}
           <div className="text-center py-6">
             <p className="text-xs text-gray-400 uppercase mb-2">Proyeccion Total Abril</p>
-            <p className="text-6xl font-black" style={{ background: "linear-gradient(90deg, #74ACDF, #F6B40E)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>16,150</p>
-            <p className="text-sm text-gray-400 mt-1">ordenes ingresadas | +5,742 vs Marzo (+55%) | 0.9% margen de seguridad</p>
+            <p className="text-6xl font-black" style={{ background: "linear-gradient(90deg, #74ACDF, #F6B40E)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>12,700</p>
+            <p className="text-sm text-gray-400 mt-1">ordenes ingresadas | +2,284 vs Marzo (+22%) | 0.3% margen de seguridad</p>
           </div>
 
           {/* Strategy composition */}
