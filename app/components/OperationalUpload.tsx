@@ -52,6 +52,8 @@ interface AggData {
   by_date: { fecha: string; total: number; estados: Record<string, number> }[];
   by_proveedor: { nombre: string; id: number; total: number; estados: Record<string, number> }[];
   by_dropshipper: { nombre: string; total: number; estados: Record<string, number> }[];
+  by_ds_daily: { ds: string; fecha: string; ordenes: number }[];
+  by_ds_producto: { ds: string; producto: string; ordenes: number }[];
   by_producto: { nombre: string; cantidad: number; ordenes: number }[];
   by_departamento: { nombre: string; total: number }[];
   logistics: LogisticsData;
@@ -99,6 +101,8 @@ function aggregateRows(rows: RawRow[]): AggData {
   const by_ds_map: Record<string, { total: number; estados: Record<string, number> }> = {};
   const by_prod_map: Record<string, { cantidad: number; ordenes: number }> = {};
   const by_dept_map: Record<string, number> = {};
+  const ds_daily_map: Record<string, { ds: string; fecha: string; ordenes: number }> = {};
+  const ds_prod_map: Record<string, { ds: string; producto: string; ordenes: number }> = {};
 
   for (const r of rows) {
     by_status[r.estatus] = (by_status[r.estatus] || 0) + 1;
@@ -115,6 +119,16 @@ function aggregateRows(rows: RawRow[]): AggData {
     by_prod_map[r.producto].cantidad += r.cantidad;
     by_prod_map[r.producto].ordenes++;
     by_dept_map[r.departamento] = (by_dept_map[r.departamento] || 0) + 1;
+
+    // DS daily tracking
+    const dsDayKey = `${r.dropshipper}||${r.fecha}`;
+    if (!ds_daily_map[dsDayKey]) ds_daily_map[dsDayKey] = { ds: r.dropshipper, fecha: r.fecha, ordenes: 0 };
+    ds_daily_map[dsDayKey].ordenes++;
+
+    // DS product tracking
+    const dsProdKey = `${r.dropshipper}||${r.producto}`;
+    if (!ds_prod_map[dsProdKey]) ds_prod_map[dsProdKey] = { ds: r.dropshipper, producto: r.producto, ordenes: 0 };
+    ds_prod_map[dsProdKey].ordenes++;
   }
   const fechas = Object.keys(by_date_map).sort();
 
@@ -189,6 +203,8 @@ function aggregateRows(rows: RawRow[]): AggData {
     by_date: fechas.map((f) => ({ fecha: f, ...by_date_map[f] })),
     by_proveedor: Object.entries(by_prov_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.total - a.total),
     by_dropshipper: Object.entries(by_ds_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.total - a.total),
+    by_ds_daily: Object.values(ds_daily_map).sort((a, b) => a.fecha.localeCompare(b.fecha) || b.ordenes - a.ordenes),
+    by_ds_producto: Object.values(ds_prod_map).sort((a, b) => b.ordenes - a.ordenes),
     by_producto: Object.entries(by_prod_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.ordenes - a.ordenes),
     by_departamento: Object.entries(by_dept_map).map(([nombre, total]) => ({ nombre, total })).sort((a, b) => b.total - a.total),
     logistics,
@@ -206,6 +222,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   const [uploadedAt, setUploadedAt] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [filterType, setFilterType] = useState<"all" | "proveedor" | "dropshipper">("all");
+  const [selectedDS, setSelectedDS] = useState<string>("");
   const [filterValue, setFilterValue] = useState<string>("");
 
   useEffect(() => {
@@ -369,6 +386,138 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
           </div>
         ))}
       </div>
+
+      {/* ═══ DROPSHIPPER DAILY TRACKING ═══ */}
+      {aggData.by_ds_daily.length > 0 && (() => {
+        // Build DS daily data with trend detection
+        const dsNames = Array.from(new Set(aggData.by_ds_daily.map((d) => d.ds)));
+        const fechas = Array.from(new Set(aggData.by_ds_daily.map((d) => d.fecha))).sort();
+
+        // Per DS: daily orders + trend
+        const dsAnalysis = dsNames.map((ds) => {
+          const daily = fechas.map((f) => {
+            const entry = aggData.by_ds_daily.find((d) => d.ds === ds && d.fecha === f);
+            return { fecha: f, ordenes: entry?.ordenes || 0 };
+          });
+          const total = daily.reduce((s, d) => s + d.ordenes, 0);
+          const daysActive = daily.filter((d) => d.ordenes > 0).length;
+          const avg = daysActive > 0 ? total / daysActive : 0;
+
+          // Trend: compare last 2 days with average
+          const lastDays = daily.filter((d) => d.ordenes > 0).slice(-3);
+          const lastAvg = lastDays.length > 0 ? lastDays.reduce((s, d) => s + d.ordenes, 0) / lastDays.length : 0;
+          const trend = avg > 0 ? ((lastAvg - avg) / avg) * 100 : 0;
+          const alert = trend < -30 && total > 10; // Dropping >30% and has significant volume
+
+          // Products for this DS
+          const productos = aggData.by_ds_producto
+            .filter((p) => p.ds === ds)
+            .sort((a, b) => b.ordenes - a.ordenes)
+            .slice(0, 5);
+
+          return { ds, daily, total, daysActive, avg: Math.round(avg), lastAvg: Math.round(lastAvg), trend: Math.round(trend), alert, productos };
+        })
+        .filter((d) => d.total > 5) // Only show DS with >5 orders
+        .sort((a, b) => b.total - a.total);
+
+        const alertDS = dsAnalysis.filter((d) => d.alert);
+
+        return (
+          <div className="mb-6">
+            <h3 className="text-sm font-bold t-primary mb-3">📈 Seguimiento Diario por Dropshipper {isFiltered ? `— ${filterLabel}` : ""}</h3>
+
+            {/* Alert for dropping DS */}
+            {alertDS.length > 0 && !isFiltered && (
+              <div className="mb-3 p-3 rounded-xl border border-red-500/30" style={{ background: "rgba(220,38,38,0.05)" }}>
+                <p className="text-xs font-bold text-red-600 mb-1">⚠️ Dropshippers bajando volumen ({alertDS.length})</p>
+                <div className="flex flex-wrap gap-2">
+                  {alertDS.map((d) => (
+                    <button key={d.ds} onClick={() => setSelectedDS(d.ds)}
+                      className="text-[10px] px-2 py-1 rounded-lg border border-red-500/20 text-red-600 hover:bg-red-500/10">
+                      {d.ds.split("(")[0].trim()} <span className="font-bold">{d.trend}%</span> (prom {d.avg} → {d.lastAvg})
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* DS table with daily breakdown */}
+            <div className="table-container overflow-x-auto max-h-[500px] overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
+                  <tr className="border-b border-orange-500/20">
+                    <th className="text-left py-2 px-2 text-gray-400 sticky left-0" style={{ background: "rgba(22,33,62,0.98)" }}>Dropshipper</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Total</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Prom/día</th>
+                    <th className="text-right py-2 px-2 text-gray-400">Tendencia</th>
+                    {fechas.map((f) => (
+                      <th key={f} className="text-right py-2 px-2 text-gray-400 whitespace-nowrap">{f.replace(/-2026$/, "").replace(/-04-/, "/")}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {dsAnalysis.slice(0, 30).map((d) => (
+                    <tr key={d.ds} className={`border-b border-gray-800/40 hover:bg-orange-500/5 cursor-pointer ${selectedDS === d.ds ? "bg-orange-500/10" : ""}`}
+                      onClick={() => setSelectedDS(selectedDS === d.ds ? "" : d.ds)}>
+                      <td className="py-2 px-2 t-primary font-medium whitespace-nowrap sticky left-0 max-w-[180px] truncate" style={{ background: "var(--bg-card)" }} title={d.ds}>
+                        {d.alert && <span className="mr-1">⚠️</span>}{d.ds.length > 25 ? d.ds.slice(0, 25) + "…" : d.ds}
+                      </td>
+                      <td className="py-2 px-2 text-right text-orange-500 font-bold">{d.total}</td>
+                      <td className="py-2 px-2 text-right t-secondary">{d.avg}</td>
+                      <td className="py-2 px-2 text-right">
+                        <span style={{ color: d.trend > 10 ? "#16a34a" : d.trend < -30 ? "#dc2626" : d.trend < -10 ? "#d97706" : "#6b7280" }} className="font-bold">
+                          {d.trend > 0 ? "+" : ""}{d.trend}%
+                        </span>
+                      </td>
+                      {d.daily.map((day) => (
+                        <td key={day.fecha} className="py-2 px-2 text-right" style={{ color: day.ordenes === 0 ? "#9ca3af" : day.ordenes >= d.avg ? "#16a34a" : day.ordenes < d.avg * 0.5 ? "#dc2626" : "#d97706" }}>
+                          {day.ordenes || "—"}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-[10px] t-muted mt-1">Click en un dropshipper para ver sus productos. Verde = arriba del promedio, Rojo = menos del 50% del promedio.</p>
+
+            {/* Selected DS products */}
+            {selectedDS && (() => {
+              const dsInfo = dsAnalysis.find((d) => d.ds === selectedDS);
+              if (!dsInfo) return null;
+              return (
+                <div className="mt-3 p-4 rounded-xl border border-orange-500/20" style={{ background: "var(--bg-card)" }}>
+                  <div className="flex justify-between items-start mb-3">
+                    <div>
+                      <h4 className="text-sm font-bold text-orange-500">{dsInfo.ds}</h4>
+                      <p className="text-[10px] t-muted">Total: {dsInfo.total} órdenes · Prom: {dsInfo.avg}/día · Tendencia: {dsInfo.trend > 0 ? "+" : ""}{dsInfo.trend}%</p>
+                    </div>
+                    <button onClick={() => setSelectedDS("")} className="text-xs t-muted hover:text-red-500">✕</button>
+                  </div>
+                  <h5 className="text-xs font-medium t-primary mb-2">Productos que vende</h5>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                    {dsInfo.productos.map((p, i) => (
+                      <div key={p.producto} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-500/10" style={{ background: "var(--bg-card-hover)" }}>
+                        <span className="text-xs font-bold text-orange-500 w-4">{i + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-[10px] t-primary font-medium truncate" title={p.producto}>{p.producto}</p>
+                          <p className="text-xs font-bold text-orange-600">{p.ordenes} órdenes</p>
+                        </div>
+                      </div>
+                    ))}
+                    {dsInfo.productos.length === 0 && <p className="text-xs t-muted">Sin productos registrados</p>}
+                  </div>
+                  {dsInfo.alert && (
+                    <div className="mt-3 p-2 rounded-lg border border-red-500/20 text-xs text-red-600" style={{ background: "rgba(220,38,38,0.05)" }}>
+                      ⚠️ Este dropshipper está bajando. Promedio general: {dsInfo.avg}/día → últimos días: {dsInfo.lastAvg}/día ({dsInfo.trend}%). Verificar si hay problema de stock en sus productos.
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        );
+      })()}
 
       {/* Status distribution — cards + Daily chart */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
