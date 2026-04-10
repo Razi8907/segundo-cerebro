@@ -149,19 +149,23 @@ export default function DailyTracker({
       return { ...d, color };
     });
 
-    // Day-of-week pattern for projection
+    // Projection using actual April average for remaining days
     const abrilProjected: { fecha: number; ordenes: number | null; proyectado: number; dia_semana: string }[] = [];
+    // Use April's own average if we have data, otherwise fall back to March pattern
+    const proyBase = diasCargados > 0 ? Math.round(promedioAbril) : metaInfo.marzo_promedio_diario;
     for (let i = 1; i <= 30; i++) {
       const existing = abrilData.find((d) => d.fecha === i);
       const dow = DIAS_SEMANA_ABRIL[i - 1];
-      const projected = dowAvg[dow] || metaInfo.marzo_promedio_diario;
       abrilProjected.push({
         fecha: i,
         ordenes: existing ? existing.ordenes : null,
-        proyectado: existing ? existing.ordenes : Math.round(projected * (META_TOTAL / metaInfo.marzo_total_ordenes)),
+        proyectado: existing ? existing.ordenes : proyBase,
         dia_semana: dow,
       });
     }
+
+    // Projected movilizadas based on actual April data
+    const proyMovilizadas = diasCargados > 0 ? Math.round(proyeccionFinal * (metaInfo.meta_movilizadas_abril / META_TOTAL)) : 0;
 
     // Weekly breakdown for April
     const META_MOV = metaInfo.meta_movilizadas_abril;
@@ -229,6 +233,7 @@ export default function DailyTracker({
       coloredAbril,
       abrilProjected,
       weeklyData,
+      proyMovilizadas,
     };
   }, [marzoData, abrilData, META_DIARIA, META_TOTAL, metaInfo]);
 
@@ -429,23 +434,25 @@ export default function DailyTracker({
       </p>
 
       {/* KPIs row - solo Abril */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
-        <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Meta Diaria</p>
-          <p className="text-lg font-bold text-orange-400">{META_DIARIA.toLocaleString()}</p>
-          <p className="text-[10px] text-gray-500">Para {(metaInfo.meta_movilizadas_abril / 1000).toFixed(0)}K mov.</p>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
         <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Abril Acum.</p>
+          <p className="text-[10px] text-gray-400 uppercase">Acumulado Abril</p>
           <p className="text-lg font-bold text-blue-400">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</p>
-          <p className="text-[10px] text-gray-500">{analysis.diasCargados} días cargados</p>
+          <p className="text-[10px] text-gray-500">{analysis.diasCargados} días · Prom: {analysis.diasCargados > 0 ? Math.round(analysis.promedioAbril).toLocaleString() : "—"}/día</p>
         </div>
         <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Proy. Final Abril</p>
+          <p className="text-[10px] text-gray-400 uppercase">Proy. Ingresadas</p>
           <p className={`text-lg font-bold ${analysis.pctMeta >= 90 ? "text-green-400" : analysis.pctMeta >= 70 ? "text-yellow-400" : "text-red-400"}`}>
             {analysis.proyeccionFinal > 0 ? analysis.proyeccionFinal.toLocaleString() : "—"}
           </p>
-          <p className="text-[10px] text-gray-500">{analysis.pctMeta > 0 ? `${analysis.pctMeta.toFixed(1)}% de meta` : "Sin datos"}</p>
+          <p className="text-[10px] text-gray-500">{analysis.pctMeta > 0 ? `${analysis.pctMeta.toFixed(1)}% de meta (${META_TOTAL.toLocaleString()})` : "Sin datos"}</p>
+        </div>
+        <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Proy. Movilizadas</p>
+          <p className={`text-lg font-bold ${analysis.proyMovilizadas >= metaInfo.meta_movilizadas_abril * 0.9 ? "text-green-400" : analysis.proyMovilizadas >= metaInfo.meta_movilizadas_abril * 0.7 ? "text-yellow-400" : "text-orange-400"}`}>
+            {analysis.proyMovilizadas > 0 ? analysis.proyMovilizadas.toLocaleString() : "—"}
+          </p>
+          <p className="text-[10px] text-gray-500">Meta: {metaInfo.meta_movilizadas_abril.toLocaleString()} mov.</p>
         </div>
         <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Necesario/día rest.</p>
@@ -454,14 +461,26 @@ export default function DailyTracker({
           </p>
           <p className="text-[10px] text-gray-500">{analysis.diasRestantes} días restantes</p>
         </div>
-        <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Gap vs Marzo</p>
-          <p className="text-lg font-bold text-purple-400">
-            +{(META_DIARIA - metaInfo.marzo_promedio_diario).toLocaleString()}
-          </p>
-          <p className="text-[10px] text-gray-500">/día vs prom. Marzo</p>
-        </div>
       </div>
+      {/* Progress bar toward meta */}
+      {analysis.diasCargados > 0 && (
+        <div className="mb-6">
+          <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+            <span>Progreso: {analysis.abrilTotal.toLocaleString()} / {META_TOTAL.toLocaleString()} ingresadas</span>
+            <span>{((analysis.abrilTotal / META_TOTAL) * 100).toFixed(1)}%</span>
+          </div>
+          <div className="h-2.5 rounded-full overflow-hidden" style={{ background: "rgba(249,115,22,0.15)" }}>
+            <div className="h-full rounded-full transition-all" style={{
+              width: `${Math.min((analysis.abrilTotal / META_TOTAL) * 100, 100)}%`,
+              background: analysis.pctMeta >= 90 ? "#10B981" : analysis.pctMeta >= 70 ? "#F59E0B" : "#EF4444",
+            }} />
+          </div>
+          <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+            <span>Proy. final: {analysis.proyeccionFinal.toLocaleString()} ing. → {analysis.proyMovilizadas.toLocaleString()} mov.</span>
+            <span>{analysis.pctMeta >= 100 ? "✅ Se alcanza la meta" : `Faltan ${(META_TOTAL - analysis.abrilTotal).toLocaleString()} ingresadas`}</span>
+          </div>
+        </div>
+      )}
 
       {/* Input form for Abril */}
       <div className="mb-6 p-4 rounded-xl border border-green-500/20" style={{ background: "rgba(16,185,129,0.03)" }}>
