@@ -177,8 +177,8 @@ const SEMANA1 = [
 ];
 
 const KPIS_SEMANALES = [
-  { kpi: "Ordenes Ingresadas totales", metaSem: "4,000", metaMes: "16,000", freq: "Diaria" },
-  { kpi: "Ordenes Movilizadas", metaSem: "3,000", metaMes: "12,000", freq: "Diaria" },
+  { kpi: "Ordenes Ingresadas totales", metaSem: "3,167", metaMes: "12,667", freq: "Diaria" },
+  { kpi: "Ordenes Movilizadas", metaSem: "2,375", metaMes: "9,500", freq: "Diaria" },
   { kpi: "% Movilizacion", metaSem: "75%", metaMes: "75%", freq: "Semanal" },
   { kpi: "DS activos con >100 ordenes", metaSem: "5+", metaMes: "20+", freq: "Semanal" },
   { kpi: "DS Tier 1 contactados", metaSem: "4/4", metaMes: "4/4 con plan activo", freq: "Sem 1" },
@@ -216,7 +216,7 @@ export default function ArgentinaPlanAbril() {
             📋 Plan Comercial Abril 2026 — Argentina
           </h2>
           <p className="text-xs text-gray-400">
-            Meta: <span className="text-sky-400 font-bold">16,000</span> ingresadas / <span className="text-yellow-400 font-bold">12,000</span> movilizadas &middot; Gap vs Marzo: +5,597 (+54%) &middot; Inicio: Lunes 6 de Abril
+            Meta: <span className="text-sky-400 font-bold">12,667</span> ingresadas / <span className="text-yellow-400 font-bold">9,500</span> movilizadas &middot; Gap vs Marzo: +2,251 (+22%) &middot; Inicio: Lunes 6 de Abril
           </p>
         </div>
         <div className="flex gap-1 flex-wrap">
@@ -250,7 +250,7 @@ export default function ArgentinaPlanAbril() {
               </div>
               <div className="rounded-lg p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.03)" }}>
                 <p className="text-xs text-red-400 uppercase font-bold mb-1">El desafio</p>
-                <p>Meta Abril: <span className="text-white font-bold">16,000 ordenes ingresadas</span> (+54% vs Marzo) para lograr 12,000 movilizadas. Esto significa generar <span className="text-red-400 font-bold">5,597 ordenes adicionales</span> por mes. No es un crecimiento incremental, es un salto.</p>
+                <p>Meta Abril: <span className="text-white font-bold">12,667 ordenes ingresadas</span> (+22% vs Marzo) para lograr 9,500 movilizadas. Esto significa generar <span className="text-red-400 font-bold">2,251 ordenes adicionales</span> por mes.</p>
               </div>
               <div className="rounded-lg p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.03)" }}>
                 <p className="text-xs text-green-400 uppercase font-bold mb-1">Por que es posible</p>
@@ -267,7 +267,7 @@ export default function ArgentinaPlanAbril() {
 
           {/* 5 Estrategias escritas */}
           <div className="space-y-4">
-            <h3 className="text-base font-bold text-white">2. Las 5 Estrategias para llegar a 16,000</h3>
+            <h3 className="text-base font-bold text-white">2. Las 5 Estrategias para llegar a 12,667</h3>
 
             {/* E1 */}
             <div className="rounded-xl border border-green-500/20 overflow-hidden">
@@ -433,7 +433,7 @@ export default function ArgentinaPlanAbril() {
           {/* Mensaje final */}
           <div className="rounded-xl p-4 border border-sky-500/20" style={{ background: "rgba(116,172,223,0.05)" }}>
             <p className="text-sm text-gray-300 leading-relaxed">
-              El objetivo de 16,000 ordenes es ambicioso pero alcanzable. La buena noticia: el ecosistema <span className="text-green-400 font-medium">no esta perdiendo dropshippers, los esta redistribuyendo</span>. Los vendedores mas fuertes estan migrando a proveedores con mejor oferta. Nuestra tarea es <span className="text-white font-medium">acelerar esa tendencia, rescatar a los que se cayeron, y asegurar que el stock y las condiciones esten a la altura del crecimiento</span>.
+              El objetivo de 12,667 ordenes es alcanzable. La buena noticia: el ecosistema <span className="text-green-400 font-medium">no esta perdiendo dropshippers, los esta redistribuyendo</span>. Los vendedores mas fuertes estan migrando a proveedores con mejor oferta. Nuestra tarea es <span className="text-white font-medium">acelerar esa tendencia, rescatar a los que se cayeron, y asegurar que el stock y las condiciones esten a la altura del crecimiento</span>.
             </p>
             <p className="text-sm text-gray-400 mt-2">
               Los primeros 10 dias son criticos: si contactamos a los DS clave y aseguramos stock, el momentum de Marzo se convierte en la base de Abril. Si no actuamos rapido, el impulso se pierde.
@@ -452,7 +452,7 @@ export default function ArgentinaPlanAbril() {
               { label: "Feb Ing", val: "9,389", color: "#9ca3af" },
               { label: "Mar Ing", val: "10,403", color: "#9ca3af" },
               { label: "Q1 Total", val: "30,512", color: "#74ACDF" },
-              { label: "META ABR", val: "16,000", color: "#F6B40E" },
+              { label: "META ABR", val: "12,667", color: "#F6B40E" },
               { label: "Gap vs Mar", val: "+5,597", color: "#EF4444" },
             ].map((k) => (
               <div key={k.label} className="rounded-xl p-3 border border-gray-800 text-center" style={{ background: "rgba(15,52,96,0.15)" }}>
@@ -702,7 +702,7 @@ export default function ArgentinaPlanAbril() {
                   <tr className="border-t-2 border-sky-500/30 font-bold">
                     <td className="py-2 px-2 text-white">TOTAL</td>
                     <td className="py-2 px-2 text-right text-sky-400">95</td>
-                    <td className="py-2 px-2 text-right text-orange-400">16,000</td>
+                    <td className="py-2 px-2 text-right text-orange-400">12,667</td>
                     <td className="py-2 px-2 text-gray-400">76 existentes + 19 nuevos/reactivados</td>
                   </tr>
                 </tbody>
@@ -735,7 +735,7 @@ export default function ArgentinaPlanAbril() {
                 <Bar yAxisId="left" dataKey="Meta Ing" fill="#74ACDF" radius={[3, 3, 0, 0]} barSize={12} name="Meta Ing/dia" />
                 <Bar yAxisId="left" dataKey="Meta Mov" fill="#F6B40E" radius={[3, 3, 0, 0]} barSize={12} name="Meta Mov/dia" />
                 <Line yAxisId="right" type="monotone" dataKey="Acum Ing" stroke="#10B981" strokeWidth={2} dot={false} name="Acum Ingresadas" />
-                <ReferenceLine yAxisId="right" y={16000} stroke="#EF4444" strokeDasharray="4 4" label={{ value: "Meta: 16,000", fill: "#EF4444", fontSize: 10, position: "right" }} />
+                <ReferenceLine yAxisId="right" y={12667} stroke="#EF4444" strokeDasharray="4 4" label={{ value: "Meta: 12,667", fill: "#EF4444", fontSize: 10, position: "right" }} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -754,7 +754,7 @@ export default function ArgentinaPlanAbril() {
                     <span className="text-sky-400 font-bold">{semTotal.toLocaleString()} ing/sem</span>
                     <span className="text-gray-400">~{Math.round(semTotal / sem.dias.length).toLocaleString()}/dia</span>
                     <span className="text-green-400">Acum: {acum.toLocaleString()}</span>
-                    <span className="text-gray-500">{((acum / 16000) * 100).toFixed(0)}% meta</span>
+                    <span className="text-gray-500">{((acum / 12667) * 100).toFixed(0)}% meta</span>
                   </div>
                 </div>
                 <div className={`grid gap-0`} style={{ gridTemplateColumns: `repeat(${sem.dias.length}, 1fr)` }}>
