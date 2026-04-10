@@ -6,17 +6,34 @@ import { verifyToken, COOKIE_NAME } from "../../../lib/auth";
 export async function GET(req: NextRequest) {
   const country = req.nextUrl.searchParams.get("country") || "py";
 
-  const { data, error } = await getSupabase()
-    .from("operations_data")
-    .select("*")
-    .eq("country", country)
-    .order("fecha_carga", { ascending: false });
+  // Paginate to get all rows (Supabase default limit is 1000)
+  const PAGE_SIZE = 1000;
+  const allRows: any[] = [];
+  let from = 0;
+  let hasMore = true;
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  while (hasMore) {
+    const { data, error } = await getSupabase()
+      .from("operations_data")
+      .select("*")
+      .eq("country", country)
+      .order("fecha_carga", { ascending: false })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (data && data.length > 0) {
+      allRows.push(...data);
+      from += PAGE_SIZE;
+      hasMore = data.length === PAGE_SIZE;
+    } else {
+      hasMore = false;
+    }
   }
 
-  return NextResponse.json({ rows: data || [], count: data?.length || 0 });
+  return NextResponse.json({ rows: allRows, count: allRows.length });
 }
 
 // POST /api/data/operations — upload daily data (accumulative)
