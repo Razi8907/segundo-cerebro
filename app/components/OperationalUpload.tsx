@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, ComposedChart, Line,
 } from "recharts";
 import ChartDownloadBtn from "./ChartDownloadBtn";
 
@@ -481,10 +481,15 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
             </div>
             <p className="text-[10px] t-muted mt-1">Click en un dropshipper para ver sus productos. Verde = arriba del promedio, Rojo = menos del 50% del promedio.</p>
 
-            {/* Selected DS products */}
+            {/* Selected DS detail: chart + products */}
             {selectedDS && (() => {
               const dsInfo = dsAnalysis.find((d) => d.ds === selectedDS);
               if (!dsInfo) return null;
+              const chartData = dsInfo.daily.map((d) => ({
+                fecha: d.fecha.replace(/-2026$/, "").replace(/-04-/, "/").replace(/^0/, ""),
+                ordenes: d.ordenes,
+                promedio: dsInfo.avg,
+              }));
               return (
                 <div className="mt-3 p-4 rounded-xl border border-orange-500/20" style={{ background: "var(--bg-card)" }}>
                   <div className="flex justify-between items-start mb-3">
@@ -494,7 +499,38 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                     </div>
                     <button onClick={() => setSelectedDS("")} className="text-xs t-muted hover:text-red-500">✕</button>
                   </div>
-                  <h5 className="text-xs font-medium t-primary mb-2">Productos que vende</h5>
+
+                  {dsInfo.alert && (
+                    <div className="mb-3 p-2 rounded-lg border border-red-500/20 text-xs text-red-600" style={{ background: "rgba(220,38,38,0.05)" }}>
+                      ⚠️ Bajando volumen. Promedio: {dsInfo.avg}/día → últimos días: {dsInfo.lastAvg}/día ({dsInfo.trend}%). Verificar stock de sus productos.
+                    </div>
+                  )}
+
+                  {/* Daily chart */}
+                  <h5 className="text-xs font-medium t-primary mb-2">Movimiento diario</h5>
+                  <ResponsiveContainer width="100%" height={200}>
+                    <ComposedChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#d1d5db" />
+                      <XAxis dataKey="fecha" tick={{ fill: "#374151", fontSize: 10 }} />
+                      <YAxis tick={{ fill: "#374151", fontSize: 10 }} />
+                      <Tooltip contentStyle={{ backgroundColor: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "8px", color: "#1f2937", fontSize: 11 }} />
+                      <Bar dataKey="ordenes" radius={[4, 4, 0, 0]} name="Órdenes">
+                        {chartData.map((d, i) => (
+                          <Cell key={i} fill={d.ordenes >= dsInfo.avg ? "#16a34a" : d.ordenes > 0 && d.ordenes < dsInfo.avg * 0.5 ? "#dc2626" : d.ordenes > 0 ? "#d97706" : "#d1d5db"} />
+                        ))}
+                      </Bar>
+                      <Line type="monotone" dataKey="promedio" stroke="#ea580c" strokeWidth={2} strokeDasharray="6 3" dot={false} name="Promedio" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                  <div className="flex gap-4 mt-1 text-[9px] t-muted justify-center">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "#16a34a" }} />Arriba del promedio</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "#d97706" }} />Debajo del promedio</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ background: "#dc2626" }} />Menos del 50%</span>
+                    <span className="flex items-center gap-1"><span className="w-4 border-t-2 border-dashed" style={{ borderColor: "#ea580c" }} />Promedio ({dsInfo.avg}/día)</span>
+                  </div>
+
+                  {/* Products */}
+                  <h5 className="text-xs font-medium t-primary mt-4 mb-2">Productos que vende — verificar stock</h5>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                     {dsInfo.productos.map((p, i) => (
                       <div key={p.producto} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-orange-500/10" style={{ background: "var(--bg-card-hover)" }}>
@@ -507,11 +543,6 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                     ))}
                     {dsInfo.productos.length === 0 && <p className="text-xs t-muted">Sin productos registrados</p>}
                   </div>
-                  {dsInfo.alert && (
-                    <div className="mt-3 p-2 rounded-lg border border-red-500/20 text-xs text-red-600" style={{ background: "rgba(220,38,38,0.05)" }}>
-                      ⚠️ Este dropshipper está bajando. Promedio general: {dsInfo.avg}/día → últimos días: {dsInfo.lastAvg}/día ({dsInfo.trend}%). Verificar si hay problema de stock en sus productos.
-                    </div>
-                  )}
                 </div>
               );
             })()}
