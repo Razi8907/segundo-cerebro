@@ -27,47 +27,47 @@ import ChartDownloadBtn from "./ChartDownloadBtn";
 
 // --- PROVEEDORES ---
 const PROV_CRECIMIENTO = [
-  { nombre: "TIENDAOFERTAS", ene: 392, feb: 551, mar: 2585, meta: 4000, ds: "pascu.ecom (927), urielparedes (411), caiorodrigo (239)", estrategia: "Prioridad #1. Escalar pascu y uriel, captar nuevos DS" },
-  { nombre: "MERX Lab e Imp", ene: 817, feb: 1688, mar: 2007, meta: 2800, ds: "multiventas (832), mdelarosa (748)", estrategia: "Ampliar catalogo para multiventas y mdelarosa" },
-  { nombre: "MARIOGONZALEZ", ene: 1030, feb: 905, mar: 1356, meta: 2200, ds: "joao.oliveira (544), mercaplus.chile (237), casanoblear (227)", estrategia: "Explotar mercado Chile (mercaplus), sostener joao" },
-  { nombre: "MerxLaboratorio", ene: 2, feb: 62, mar: 804, meta: 1200, ds: "multiventas (714) — casi todo de 1 DS", estrategia: "Diversificar base DS, muy concentrado" },
-  { nombre: "RaulGonzalez", ene: 221, feb: 694, mar: 350, meta: 600, ds: "multiventas, mdelarosa activos", estrategia: "Crecio en Feb, cayo en Mar. Investigar" },
+  { nombre: "TIENDAOFERTAS", ene: 392, feb: 551, mar: 2585, meta: 3150, ds: "pascu.ecom (927), urielparedes (411), caiorodrigo (239)", estrategia: "Prioridad #1. Escalar pascu y uriel, captar nuevos DS" },
+  { nombre: "MERX Lab e Imp", ene: 817, feb: 1688, mar: 2007, meta: 2200, ds: "multiventas (832), mdelarosa (748)", estrategia: "Ampliar catalogo para multiventas y mdelarosa" },
+  { nombre: "MARIOGONZALEZ", ene: 1030, feb: 905, mar: 1356, meta: 1750, ds: "joao.oliveira (544), mercaplus.chile (237), casanoblear (227)", estrategia: "Explotar mercado Chile (mercaplus), sostener joao" },
+  { nombre: "MerxLaboratorio", ene: 2, feb: 62, mar: 804, meta: 950, ds: "multiventas (714) — casi todo de 1 DS", estrategia: "Diversificar base DS, muy concentrado" },
+  { nombre: "RaulGonzalez", ene: 221, feb: 694, mar: 350, meta: 450, ds: "multiventas, mdelarosa activos", estrategia: "Crecio en Feb, cayo en Mar. Investigar" },
 ];
 
 const PROV_CAIDA = [
-  { nombre: "OscarCoronado", ene: 2707, feb: 1880, mar: 942, meta: 1500, ds: "guilherme 638>78, yurihenri cayo, caiorodrigo migro a TIENDAOFERTAS", estrategia: "Reactivar guilherme, buscar nuevos DS, mejorar oferta vs TIENDAOFERTAS" },
-  { nombre: "MaicolPerez", ene: 2535, feb: 1701, mar: 1294, meta: 1800, ds: "guilherme 1104>52, mayor caida de un solo DS en todo Q1", estrategia: "Entender por que guilherme salio, renovar catalogo" },
-  { nombre: "TN", ene: 953, feb: 564, mar: 228, meta: 450, ds: "abstra33 219>22, guilherme 362>0", estrategia: "Captar DS nuevos, los historicos migraron" },
+  { nombre: "OscarCoronado", ene: 2707, feb: 1880, mar: 942, meta: 1200, ds: "guilherme 638>78, yurihenri cayo, caiorodrigo migro a TIENDAOFERTAS", estrategia: "Reactivar guilherme, buscar nuevos DS, mejorar oferta vs TIENDAOFERTAS" },
+  { nombre: "MaicolPerez", ene: 2535, feb: 1701, mar: 1294, meta: 1400, ds: "guilherme 1104>52, mayor caida de un solo DS en todo Q1", estrategia: "Entender por que guilherme salio, renovar catalogo" },
+  { nombre: "TN", ene: 953, feb: 564, mar: 228, meta: 350, ds: "abstra33 219>22, guilherme 362>0", estrategia: "Captar DS nuevos, los historicos migraron" },
 ];
 
 const PROV_DORMIDOS = [
-  { nombre: "DaniiDiaz", pico: 243, mar: 3, meta: 150, accion: "Reactivar, tuvo buen volumen en Ene" },
-  { nombre: "LizDiaz", pico: 267, mar: 3, meta: 120, accion: "Pool DS compartido con DaniiDiaz" },
-  { nombre: "FLUENSTORE", pico: 421, mar: 58, meta: 200, accion: "lackagente se fue. Buscar reemplazo" },
-  { nombre: "DropLabs / camilapinho", pico: 178, mar: 0, meta: 80, accion: "Evaluar si vale la pena reactivar" },
+  { nombre: "DaniiDiaz", pico: 243, mar: 3, meta: 100, accion: "Reactivar, tuvo buen volumen en Ene" },
+  { nombre: "LizDiaz", pico: 267, mar: 3, meta: 100, accion: "Pool DS compartido con DaniiDiaz" },
+  { nombre: "FLUENSTORE", pico: 421, mar: 58, meta: 150, accion: "lackagente se fue. Buscar reemplazo" },
+  { nombre: "DropLabs / camilapinho", pico: 178, mar: 0, meta: 50, accion: "Evaluar si vale la pena reactivar" },
 ];
 
 // --- DROPSHIPPERS ---
 const TIER1 = [
-  { nombre: "multiventasxargentina", ene: 16, feb: 401, mar: 1831, meta: 2500, pctMov: 67, pctEnt: 38, proveedores: "MERX Lab (832), MerxLab (714), TIENDAOFERTAS (285)", plan: "Canal directo, stock garantizado, mejorar tasa entrega (38% es baja)" },
-  { nombre: "pascu.ecom", ene: 0, feb: 0, mar: 927, meta: 1500, pctMov: 37, pctEnt: 50, proveedores: "TIENDAOFERTAS (927) — exclusivo", plan: "Prioridad maxima retener, ofrecer 2do proveedor, subir tasa mov" },
-  { nombre: "mdelarosa.bmm", ene: 62, feb: 484, mar: 771, meta: 1000, pctMov: 69, pctEnt: 56, proveedores: "MERX Lab (748), MerxLab (23)", plan: "Expandir a mas proveedores, tiene tasa entrega razonable" },
-  { nombre: "joao.oliveira", ene: 11, feb: 16, mar: 544, meta: 800, pctMov: 83, pctEnt: 25, proveedores: "MARIOGONZALEZ (544) — concentrado", plan: "MEJOR tasa mov (83%), pero baja entrega. Mejorar logistica" },
-  { nombre: "urielparedes219", ene: 166, feb: 272, mar: 411, meta: 600, pctMov: 95, pctEnt: 0, proveedores: "TIENDAOFERTAS (411)", plan: "95% mov (!). Modelo a replicar. Analizar que productos vende" },
+  { nombre: "multiventasxargentina", ene: 16, feb: 401, mar: 1831, meta: 1950, pctMov: 67, pctEnt: 38, proveedores: "MERX Lab (832), MerxLab (714), TIENDAOFERTAS (285)", plan: "Canal directo, stock garantizado, mejorar tasa entrega (38% es baja)" },
+  { nombre: "pascu.ecom", ene: 0, feb: 0, mar: 927, meta: 1200, pctMov: 37, pctEnt: 50, proveedores: "TIENDAOFERTAS (927) — exclusivo", plan: "Prioridad maxima retener, ofrecer 2do proveedor, subir tasa mov" },
+  { nombre: "mdelarosa.bmm", ene: 62, feb: 484, mar: 771, meta: 800, pctMov: 69, pctEnt: 56, proveedores: "MERX Lab (748), MerxLab (23)", plan: "Expandir a mas proveedores, tiene tasa entrega razonable" },
+  { nombre: "joao.oliveira", ene: 11, feb: 16, mar: 544, meta: 650, pctMov: 83, pctEnt: 25, proveedores: "MARIOGONZALEZ (544) — concentrado", plan: "MEJOR tasa mov (83%), pero baja entrega. Mejorar logistica" },
+  { nombre: "urielparedes219", ene: 166, feb: 272, mar: 411, meta: 450, pctMov: 95, pctEnt: 0, proveedores: "TIENDAOFERTAS (411)", plan: "95% mov (!). Modelo a replicar. Analizar que productos vende" },
 ];
 
 const TIER2 = [
-  { nombre: "guilherme (recuperar)", mar: 272, meta: 500, via: "Recuperar parcial (era 2,326 en Ene). Objetivo conservador." },
-  { nombre: "caiorodrigo55", mar: 239, meta: 400, via: "Migro de Oscar a TIENDAOFERTAS. Reconstruyendo." },
-  { nombre: "mercaplus.chile.cl", mar: 237, meta: 400, via: "Nuevo. Mercado Chile = nueva geografia. Alto potencial." },
-  { nombre: "casanoblear", mar: 227, meta: 350, via: "Nuevo en Mar. Buen %mov. Validar continuidad." },
-  { nombre: "yurihenri (recuperar)", mar: 165, meta: 300, via: "Era 1,061 en Ene. Meta conservadora. Sigue activo." },
-  { nombre: "damdmr399", mar: 138, meta: 200, via: "Estable y confiable. Empujar para superar 200." },
-  { nombre: "briancativa", mar: 142, meta: 200, via: "AlejandroSeijas. Conectar con proveedores mas grandes." },
-  { nombre: "juanideituzaingo", mar: 108, meta: 250, via: "1>22>108. Crecimiento explosivo. Alto potencial." },
+  { nombre: "guilherme (recuperar)", mar: 272, meta: 400, via: "Recuperar parcial (era 2,326 en Ene). Objetivo conservador." },
+  { nombre: "caiorodrigo55", mar: 239, meta: 300, via: "Migro de Oscar a TIENDAOFERTAS. Reconstruyendo." },
+  { nombre: "mercaplus.chile.cl", mar: 237, meta: 300, via: "Nuevo. Mercado Chile = nueva geografia. Alto potencial." },
+  { nombre: "casanoblear", mar: 227, meta: 250, via: "Nuevo en Mar. Buen %mov. Validar continuidad." },
+  { nombre: "yurihenri (recuperar)", mar: 165, meta: 250, via: "Era 1,061 en Ene. Meta conservadora. Sigue activo." },
+  { nombre: "damdmr399", mar: 138, meta: 150, via: "Estable y confiable. Empujar para superar 200." },
+  { nombre: "briancativa", mar: 142, meta: 150, via: "AlejandroSeijas. Conectar con proveedores mas grandes." },
+  { nombre: "juanideituzaingo", mar: 108, meta: 200, via: "1>22>108. Crecimiento explosivo. Alto potencial." },
   { nombre: "neriz459", mar: 4, meta: 100, via: "70 en Feb. Cayo en Mar. Reactivar." },
-  { nombre: "gustavohenriq", mar: 73, meta: 150, via: "Nuevo en Mar. TIENDAOFERTAS. Escalar." },
-  { nombre: "rickyhesleyft15", mar: 69, meta: 120, via: "Nuevo en Mar. TIENDAOFERTAS. Potencial alto." },
+  { nombre: "gustavohenriq", mar: 73, meta: 100, via: "Nuevo en Mar. TIENDAOFERTAS. Escalar." },
+  { nombre: "rickyhesleyft15", mar: 69, meta: 100, via: "Nuevo en Mar. TIENDAOFERTAS. Potencial alto." },
   { nombre: "shoppronto.co", mar: 62, meta: 100, via: "Nuevo en Mar. TIENDAOFERTAS. Crecimiento esperado." },
 ];
 
@@ -89,36 +89,36 @@ const TIERS_MODELO = [
 // --- CALENDARIO ---
 const CALENDARIO_DIAS = [
   { sem: "Sem 0", dias: [
-    { dia: "Mar", fecha: "1-Abr", metaIng: 495, metaMov: 371 },
-    { dia: "Mie", fecha: "2-Abr", metaIng: 495, metaMov: 371 },
-    { dia: "Jue", fecha: "3-Abr", metaIng: 495, metaMov: 371 },
-    { dia: "Vie", fecha: "4-Abr", metaIng: 497, metaMov: 373 },
+    { dia: "Mar", fecha: "1-Abr", metaIng: 388, metaMov: 291 },
+    { dia: "Mie", fecha: "2-Abr", metaIng: 388, metaMov: 291 },
+    { dia: "Jue", fecha: "3-Abr", metaIng: 388, metaMov: 291 },
+    { dia: "Vie", fecha: "4-Abr", metaIng: 388, metaMov: 291 },
   ]},
   { sem: "Sem 1", dias: [
-    { dia: "Lun", fecha: "7-Abr", metaIng: 524, metaMov: 393 },
-    { dia: "Mar", fecha: "8-Abr", metaIng: 524, metaMov: 393 },
-    { dia: "Mie", fecha: "9-Abr", metaIng: 524, metaMov: 393 },
-    { dia: "Jue", fecha: "10-Abr", metaIng: 524, metaMov: 393 },
-    { dia: "Vie", fecha: "11-Abr", metaIng: 524, metaMov: 393 },
+    { dia: "Lun", fecha: "7-Abr", metaIng: 411, metaMov: 308 },
+    { dia: "Mar", fecha: "8-Abr", metaIng: 411, metaMov: 308 },
+    { dia: "Mie", fecha: "9-Abr", metaIng: 411, metaMov: 308 },
+    { dia: "Jue", fecha: "10-Abr", metaIng: 411, metaMov: 308 },
+    { dia: "Vie", fecha: "11-Abr", metaIng: 411, metaMov: 308 },
   ]},
   { sem: "Sem 2", dias: [
-    { dia: "Lun", fecha: "14-Abr", metaIng: 725, metaMov: 544 },
-    { dia: "Mar", fecha: "15-Abr", metaIng: 725, metaMov: 544 },
-    { dia: "Mie", fecha: "16-Abr", metaIng: 725, metaMov: 544 },
-    { dia: "Jue", fecha: "17-Abr", metaIng: 725, metaMov: 544 },
-    { dia: "Vie", fecha: "18-Abr", metaIng: 725, metaMov: 544 },
+    { dia: "Lun", fecha: "14-Abr", metaIng: 569, metaMov: 427 },
+    { dia: "Mar", fecha: "15-Abr", metaIng: 569, metaMov: 427 },
+    { dia: "Mie", fecha: "16-Abr", metaIng: 569, metaMov: 427 },
+    { dia: "Jue", fecha: "17-Abr", metaIng: 569, metaMov: 427 },
+    { dia: "Vie", fecha: "18-Abr", metaIng: 569, metaMov: 427 },
   ]},
   { sem: "Sem 3", dias: [
-    { dia: "Lun", fecha: "21-Abr", metaIng: 927, metaMov: 695 },
-    { dia: "Mar", fecha: "22-Abr", metaIng: 927, metaMov: 695 },
-    { dia: "Mie", fecha: "23-Abr", metaIng: 927, metaMov: 695 },
-    { dia: "Jue", fecha: "24-Abr", metaIng: 927, metaMov: 695 },
-    { dia: "Vie", fecha: "25-Abr", metaIng: 927, metaMov: 695 },
+    { dia: "Lun", fecha: "21-Abr", metaIng: 727, metaMov: 545 },
+    { dia: "Mar", fecha: "22-Abr", metaIng: 727, metaMov: 545 },
+    { dia: "Mie", fecha: "23-Abr", metaIng: 727, metaMov: 545 },
+    { dia: "Jue", fecha: "24-Abr", metaIng: 727, metaMov: 545 },
+    { dia: "Vie", fecha: "25-Abr", metaIng: 727, metaMov: 545 },
   ]},
   { sem: "Sem 4", dias: [
-    { dia: "Lun", fecha: "28-Abr", metaIng: 1048, metaMov: 786 },
-    { dia: "Mar", fecha: "29-Abr", metaIng: 1048, metaMov: 786 },
-    { dia: "Mie", fecha: "30-Abr", metaIng: 1048, metaMov: 786 },
+    { dia: "Lun", fecha: "28-Abr", metaIng: 822, metaMov: 616 },
+    { dia: "Mar", fecha: "29-Abr", metaIng: 822, metaMov: 616 },
+    { dia: "Mie", fecha: "30-Abr", metaIng: 822, metaMov: 616 },
   ]},
 ];
 
@@ -203,7 +203,7 @@ export default function ArgentinaPlanAbril() {
     { key: "dropshippers", label: "Dropshippers" },
     { key: "calendario", label: "Calendario" },
     { key: "stock", label: "Stock & KPIs" },
-    { key: "resumen", label: "Road to 16K" },
+    { key: "resumen", label: "Road to 9.5K" },
   ];
 
   return (
@@ -405,11 +405,11 @@ export default function ArgentinaPlanAbril() {
               </thead>
               <tbody>
                 {[
-                  { name: "E1. Escalar crecientes", meta: 10800, pct: 67, pri: "MAXIMA", color: "#10B981" },
-                  { name: "E2. Frenar caida top 2", meta: 3300, pct: 20, pri: "ALTA", color: "#F59E0B" },
-                  { name: "E3. Rescatar DS inactivos", meta: 500, pct: 3, pri: "MEDIA", color: "#8B5CF6" },
-                  { name: "E4. Reactivar dormidos", meta: 550, pct: 3, pri: "BAJA", color: "#F97316" },
-                  { name: "E5. Captar nuevos DS", meta: 1000, pct: 6, pri: "ALTA", color: "#74ACDF" },
+                  { name: "E1. Escalar crecientes", meta: 8450, pct: 67, pri: "MAXIMA", color: "#10B981" },
+                  { name: "E2. Frenar caida top 2", meta: 2600, pct: 20, pri: "ALTA", color: "#F59E0B" },
+                  { name: "E3. Rescatar DS inactivos", meta: 400, pct: 3, pri: "MEDIA", color: "#8B5CF6" },
+                  { name: "E4. Reactivar dormidos", meta: 450, pct: 4, pri: "BAJA", color: "#F97316" },
+                  { name: "E5. Captar nuevos DS", meta: 800, pct: 6, pri: "ALTA", color: "#74ACDF" },
                 ].map((e) => (
                   <tr key={e.name} className="border-t border-gray-800/50">
                     <td className="py-2 px-3 text-white font-medium">{e.name}</td>
@@ -903,7 +903,7 @@ export default function ArgentinaPlanAbril() {
         </div>
       )}
 
-      {/* ═══ ROAD TO 16K ═══ */}
+      {/* ═══ ROAD TO 9.5K ═══ */}
       {tab === "resumen" && (
         <div className="space-y-6">
           {/* Big number */}
@@ -941,11 +941,11 @@ export default function ArgentinaPlanAbril() {
               <h3 className="text-sm font-medium text-gray-300 mb-3">Progreso Base (Marzo) vs Meta</h3>
               <div className="space-y-4">
                 {[
-                  { name: "E1: Escalar crecientes", base: 7102, meta: 10800, color: "#10B981" },
-                  { name: "E2: Frenar caida", base: 2464, meta: 3300, color: "#F59E0B" },
-                  { name: "E3: Rescatar DS", base: 0, meta: 500, color: "#8B5CF6" },
-                  { name: "E4: Reactivar dormidos", base: 292, meta: 550, color: "#F97316" },
-                  { name: "E5: Nuevos DS", base: 0, meta: 1000, color: "#74ACDF" },
+                  { name: "E1: Escalar crecientes", base: 7102, meta: 8450, color: "#10B981" },
+                  { name: "E2: Frenar caida", base: 2464, meta: 2600, color: "#F59E0B" },
+                  { name: "E3: Rescatar DS", base: 0, meta: 400, color: "#8B5CF6" },
+                  { name: "E4: Reactivar dormidos", base: 292, meta: 450, color: "#F97316" },
+                  { name: "E5: Nuevos DS", base: 0, meta: 800, color: "#74ACDF" },
                 ].map((e) => (
                   <div key={e.name}>
                     <div className="flex items-center justify-between text-xs mb-1">
@@ -954,7 +954,7 @@ export default function ArgentinaPlanAbril() {
                     </div>
                     <div className="w-full h-4 rounded-full bg-gray-800 overflow-hidden relative">
                       <div className="h-full rounded-full absolute top-0 left-0 opacity-40" style={{ width: `${(e.base / 10800) * 100}%`, background: e.color }} />
-                      <div className="h-full rounded-full absolute top-0 left-0" style={{ width: `${(e.meta / 10800) * 100}%`, background: e.color, opacity: 0.7 }} />
+                      <div className="h-full rounded-full absolute top-0 left-0" style={{ width: `${(e.meta / 8450) * 100}%`, background: e.color, opacity: 0.7 }} />
                       <span className="absolute right-2 top-0 h-full flex items-center text-[9px] text-white font-bold">{e.meta.toLocaleString()}</span>
                     </div>
                     <div className="flex justify-between text-[9px] text-gray-500 mt-0.5">
