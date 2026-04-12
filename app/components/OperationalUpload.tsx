@@ -489,6 +489,20 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-orange-500/30">
+                    <td className="py-2 px-2 t-primary font-bold sticky left-0" style={{ background: "var(--bg-card)" }}>TOTAL</td>
+                    <td className="py-2 px-2"></td>
+                    <td className="py-2 px-2"></td>
+                    <td className="py-2 px-2 text-right text-orange-500 font-bold">{dsAnalysis.reduce((s, d) => s + d.total, 0).toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right t-secondary">{dsAnalysis.length > 0 ? Math.round(dsAnalysis.reduce((s, d) => s + d.avg, 0) / dsAnalysis.length) : 0}</td>
+                    <td className="py-2 px-2"></td>
+                    {fechas.map((f) => {
+                      const dayTotal = dsAnalysis.reduce((s, d) => s + (d.daily.find((dd) => dd.fecha === f)?.ordenes || 0), 0);
+                      return <td key={f} className="py-2 px-2 text-right text-orange-500 font-bold">{dayTotal.toLocaleString()}</td>;
+                    })}
+                  </tr>
+                </tfoot>
               </table>
             </div>
             <p className="text-[10px] t-muted mt-1">Click en un dropshipper para ver sus productos. Verde = arriba del promedio, Rojo = menos del 50% del promedio.</p>
