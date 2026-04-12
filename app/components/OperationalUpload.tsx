@@ -391,6 +391,100 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         ))}
       </div>
 
+      {/* ═══ PARETO DROPSHIPPERS ═══ */}
+      {aggData.by_dropshipper.length > 0 && (() => {
+        const sorted = [...aggData.by_dropshipper].sort((a, b) => b.total - a.total);
+        const totalOrdenes = sorted.reduce((s, d) => s + d.total, 0);
+        const totalDS = sorted.length;
+
+        // Find pareto: DS that make 80% of orders
+        let acum = 0;
+        let paretoCount = 0;
+        const paretoDS: typeof sorted = [];
+        const noParetoDS: typeof sorted = [];
+        for (const ds of sorted) {
+          acum += ds.total;
+          if (acum <= totalOrdenes * 0.8) {
+            paretoCount++;
+            paretoDS.push(ds);
+          } else if (paretoDS.length === 0 || acum - ds.total < totalOrdenes * 0.8) {
+            paretoCount++;
+            paretoDS.push(ds);
+          } else {
+            noParetoDS.push(ds);
+          }
+        }
+        // Make sure at least the ones up to 80% are in pareto
+        if (paretoDS.length === 0 && sorted.length > 0) {
+          paretoDS.push(sorted[0]);
+          paretoCount = 1;
+        }
+        const paretoOrdenes = paretoDS.reduce((s, d) => s + d.total, 0);
+        const paretoPct = totalOrdenes > 0 ? ((paretoOrdenes / totalOrdenes) * 100).toFixed(1) : "0";
+        const paretoDSPct = totalDS > 0 ? ((paretoCount / totalDS) * 100).toFixed(1) : "0";
+
+        return (
+          <div className="mb-6 p-4 rounded-xl border border-orange-500/20" style={{ background: "var(--bg-card)" }}>
+            <h3 className="text-sm font-bold t-primary mb-3">📊 Ley de Pareto — Dropshippers {isFiltered ? `(${filterLabel})` : ""}</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">DS Activos</p>
+                <p className="text-2xl font-bold text-blue-500">{totalDS}</p>
+                <p className="text-[10px] t-muted">{totalOrdenes.toLocaleString()} órdenes</p>
+              </div>
+              <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">Hacen el 80% (Pareto)</p>
+                <p className="text-2xl font-bold text-green-500">{paretoCount}</p>
+                <p className="text-[10px] t-muted">{paretoDSPct}% de los DS → {paretoPct}% órdenes</p>
+              </div>
+              <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">No hacen Pareto</p>
+                <p className="text-2xl font-bold text-orange-500">{totalDS - paretoCount}</p>
+                <p className="text-[10px] t-muted">{(100 - Number(paretoDSPct)).toFixed(1)}% de los DS → {(100 - Number(paretoPct)).toFixed(1)}% órdenes</p>
+              </div>
+              <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">Prom por DS Pareto</p>
+                <p className="text-2xl font-bold text-purple-500">{paretoCount > 0 ? Math.round(paretoOrdenes / paretoCount) : 0}</p>
+                <p className="text-[10px] t-muted">vs {totalDS - paretoCount > 0 ? Math.round((totalOrdenes - paretoOrdenes) / (totalDS - paretoCount)) : 0} prom resto</p>
+              </div>
+            </div>
+
+            {/* Pareto DS list */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-xs font-bold text-green-500 mb-2">Top Pareto ({paretoCount} DS = {paretoPct}% órdenes)</h4>
+                <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                  {paretoDS.map((d, i) => (
+                    <div key={d.nombre} className="flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-green-500/5">
+                      <span className="t-primary truncate max-w-[200px]"><span className="text-green-500 font-bold mr-1">{i + 1}.</span>{d.nombre}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-500 font-bold">{d.total}</span>
+                        <span className="t-muted text-[10px]">{totalOrdenes > 0 ? ((d.total / totalOrdenes) * 100).toFixed(1) : 0}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-orange-500 mb-2">Fuera de Pareto ({totalDS - paretoCount} DS = {(100 - Number(paretoPct)).toFixed(1)}% órdenes)</h4>
+                <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                  {noParetoDS.slice(0, 20).map((d, i) => (
+                    <div key={d.nombre} className="flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-orange-500/5">
+                      <span className="t-secondary truncate max-w-[200px]"><span className="text-orange-500 mr-1">{i + 1}.</span>{d.nombre}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-orange-500">{d.total}</span>
+                        <span className="t-muted text-[10px]">{totalOrdenes > 0 ? ((d.total / totalOrdenes) * 100).toFixed(1) : 0}%</span>
+                      </div>
+                    </div>
+                  ))}
+                  {noParetoDS.length > 20 && <p className="text-[10px] t-muted px-2">+{noParetoDS.length - 20} más...</p>}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ═══ DROPSHIPPER DAILY TRACKING ═══ */}
       {aggData.by_ds_daily.length > 0 && (() => {
         // Build DS daily data with trend detection
