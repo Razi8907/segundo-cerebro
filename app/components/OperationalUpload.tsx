@@ -458,10 +458,16 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
       const agg = aggregateRows(rows);
       setSavedAgg(agg);
       setFilterType("all"); setFilterValue("");
-      // Save aggregation + raw rows for persistent filtering
+      // Save aggregation (without raw_rows to avoid payload size limits)
+      // Raw rows are kept in component state for filtering
+      const saveData = { ...agg };
+      // Only include raw_rows if under 5000 rows (Vercel payload limit)
+      if (rows.length <= 5000) {
+        (saveData as any).raw_rows = rows;
+      }
       await fetch("/api/data/operational", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country, data: { ...agg, raw_rows: rows }, raw_count: agg.total_orders }),
+        body: JSON.stringify({ country, data: saveData, raw_count: agg.total_orders }),
       });
       setUploadedAt(new Date().toISOString());
     } catch (err) {
