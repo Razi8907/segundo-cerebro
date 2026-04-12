@@ -220,6 +220,151 @@ const TICK_STYLE = { fill: "#374151", fontSize: 10 };
 const TICK_STYLE_SM = { fill: "#374151", fontSize: 9 };
 const TOOLTIP_STYLE = { backgroundColor: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "8px", color: "#1f2937", fontSize: 11 };
 
+/* ═══ STOCK PROJECTION SUB-COMPONENT ═══ */
+function StockProjection({ country, aggData }: { country: string; aggData: AggData }) {
+  const [stockData, setStockData] = useState<any[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editVal, setEditVal] = useState("");
+
+  useEffect(() => {
+    fetch(`/api/data/stock?country=${country}`)
+      .then((r) => r.json())
+      .then((res) => { if (res.products) setStockData(res.products); })
+      .catch(() => {});
+  }, [country]);
+
+  const diasCargados = aggData.by_date.length;
+  const diasRestantes = 30 - diasCargados;
+
+  const projections = useMemo(() => {
+    if (!stockData.length || !aggData.by_producto.length) return [];
+    return stockData.map((s) => {
+      const prod = aggData.by_producto.find((p) => p.nombre === s.product_name);
+      const ordenes = prod?.ordenes || 0;
+      const unidades = prod?.cantidad || ordenes;
+      const demandaDiaria = diasCargados > 0 ? unidades / diasCargados : 0;
+      const demandaRestante = Math.round(demandaDiaria * diasRestantes);
+      const demandaTotal = Math.round(demandaDiaria * 30);
+      const diasDeStock = demandaDiaria > 0 ? Math.round(s.stock_actual / demandaDiaria) : 999;
+      const alcanza = s.stock_actual >= demandaRestante;
+      const deficit = alcanza ? 0 : demandaRestante - s.stock_actual;
+      return {
+        ...s, ordenes, unidades, demandaDiaria: Math.round(demandaDiaria),
+        demandaRestante, demandaTotal, diasDeStock, alcanza, deficit,
+      };
+    }).sort((a: any, b: any) => a.diasDeStock - b.diasDeStock);
+  }, [stockData, aggData, diasCargados, diasRestantes]);
+
+  async function updateStock(productId: string, newStock: number) {
+    await fetch("/api/data/stock", {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ country, product_id: productId, stock_actual: newStock }),
+    });
+    setStockData((prev) => prev.map((p) => p.product_id === productId ? { ...p, stock_actual: newStock } : p));
+    setEditing(null);
+  }
+
+  if (!stockData.length) return null;
+
+  const criticos = projections.filter((p: any) => p.diasDeStock < 5);
+  const alertas = projections.filter((p: any) => p.diasDeStock >= 5 && p.diasDeStock < 10);
+
+  return (
+    <div className="mb-6 p-4 rounded-xl border border-purple-500/20" style={{ background: "var(--bg-card)" }}>
+      <h3 className="text-sm font-bold t-primary mb-1">📦 Proyección de Stock — Abril {country === "py" ? "Paraguay" : "Argentina"}</h3>
+      <p className="text-[10px] t-muted mb-4">{diasCargados} días cargados · {diasRestantes} días restantes · Click en stock para editar</p>
+
+      {/* Alertas críticas */}
+      {criticos.length > 0 && (
+        <div className="mb-3 p-3 rounded-xl border-2 border-red-500" style={{ background: "rgba(220,38,38,0.06)" }}>
+          <p className="text-xs font-bold text-red-600 mb-1">🚨 STOCK CRÍTICO — {criticos.length} producto{criticos.length > 1 ? "s" : ""}</p>
+          <div className="flex flex-wrap gap-2">
+            {criticos.map((p: any) => (
+              <span key={p.product_id} className="text-[10px] px-2 py-1 rounded-lg border border-red-500/30 text-red-600">
+                {p.product_name}: <strong>{p.stock_actual} uds</strong> ({p.diasDeStock} días) — faltan {p.deficit}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {alertas.length > 0 && (
+        <div className="mb-3 p-3 rounded-xl border border-yellow-500/30" style={{ background: "rgba(250,204,21,0.06)" }}>
+          <p className="text-xs font-bold text-yellow-600 mb-1">⚠️ Stock bajo — {alertas.length} producto{alertas.length > 1 ? "s" : ""}</p>
+          <div className="flex flex-wrap gap-2">
+            {alertas.map((p: any) => (
+              <span key={p.product_id} className="text-[10px] px-2 py-1 rounded-lg border border-yellow-500/20 text-yellow-600">
+                {p.product_name}: <strong>{p.stock_actual} uds</strong> ({p.diasDeStock} días)
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Table */}
+      <div className="table-container overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
+            <tr className="border-b border-purple-500/20">
+              <th className="text-center py-2 px-2 text-gray-400">Estado</th>
+              <th className="text-left py-2 px-2 text-gray-400">Producto</th>
+              <th className="text-left py-2 px-2 text-gray-400">Proveedor</th>
+              <th className="text-right py-2 px-2 text-gray-400">Vendidos</th>
+              <th className="text-right py-2 px-2 text-gray-400">Dem/día</th>
+              <th className="text-right py-2 px-2 text-gray-400">Dem. restante</th>
+              <th className="text-right py-2 px-2 text-gray-400">Proy. total abril</th>
+              <th className="text-right py-2 px-2 text-gray-400">Stock actual</th>
+              <th className="text-right py-2 px-2 text-gray-400">Días de stock</th>
+              <th className="text-right py-2 px-2 text-gray-400">Déficit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {projections.map((p: any) => {
+              const color = p.diasDeStock < 5 ? "#dc2626" : p.diasDeStock < 10 ? "#d97706" : "#16a34a";
+              const emoji = p.diasDeStock < 5 ? "🔴" : p.diasDeStock < 10 ? "🟡" : "🟢";
+              return (
+                <tr key={p.product_id} className="border-b border-gray-800/40">
+                  <td className="py-2 px-2 text-center">{emoji}</td>
+                  <td className="py-2 px-2 t-primary font-medium">{p.product_name}</td>
+                  <td className="py-2 px-2 t-secondary text-[10px]">{p.proveedor}</td>
+                  <td className="py-2 px-2 text-right t-secondary">{p.unidades}</td>
+                  <td className="py-2 px-2 text-right t-secondary">{p.demandaDiaria}</td>
+                  <td className="py-2 px-2 text-right text-orange-500 font-bold">{p.demandaRestante}</td>
+                  <td className="py-2 px-2 text-right t-secondary">{p.demandaTotal}</td>
+                  <td className="py-2 px-2 text-right">
+                    {editing === p.product_id ? (
+                      <div className="flex items-center gap-1 justify-end">
+                        <input type="number" value={editVal} onChange={(e) => setEditVal(e.target.value)}
+                          className="w-16 px-1 py-0.5 text-xs rounded border border-orange-500/30 t-primary" style={{ background: "var(--bg-input)" }}
+                          onKeyDown={(e) => e.key === "Enter" && updateStock(p.product_id, Number(editVal))} autoFocus />
+                        <button onClick={() => updateStock(p.product_id, Number(editVal))} className="text-green-500 text-[10px]">✓</button>
+                        <button onClick={() => setEditing(null)} className="text-red-500 text-[10px]">✕</button>
+                      </div>
+                    ) : (
+                      <button onClick={() => { setEditing(p.product_id); setEditVal(String(p.stock_actual)); }}
+                        className="font-bold hover:underline cursor-pointer" style={{ color }}>
+                        {p.stock_actual}
+                      </button>
+                    )}
+                  </td>
+                  <td className="py-2 px-2 text-right font-bold" style={{ color }}>{p.diasDeStock >= 999 ? "∞" : `${p.diasDeStock}d`}</td>
+                  <td className="py-2 px-2 text-right font-bold" style={{ color: p.deficit > 0 ? "#dc2626" : "#16a34a" }}>
+                    {p.deficit > 0 ? `-${p.deficit}` : "✓"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="flex gap-4 mt-2 text-[9px] t-muted">
+        <span>🟢 Stock suficiente (10+ días)</span>
+        <span>🟡 Stock bajo (5-10 días)</span>
+        <span>🔴 Crítico (&lt;5 días)</span>
+      </div>
+    </div>
+  );
+}
+
 export default function OperationalUpload({ country }: { country: "py" | "ar" }) {
   const [rawRows, setRawRows] = useState<RawRow[]>([]);
   const [savedAgg, setSavedAgg] = useState<AggData | null>(null);
@@ -920,6 +1065,9 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
           ))}
         </div>
       </div>
+
+      {/* ═══ STOCK PROJECTION ═══ */}
+      <StockProjection country={country} aggData={aggData} />
 
       {/* ═══ LOGISTICS SECTION ═══ */}
       {aggData.logistics && (
