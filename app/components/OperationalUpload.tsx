@@ -485,6 +485,87 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         );
       })()}
 
+      {/* ═══ PARETO PROVEEDORES ═══ */}
+      {aggData.by_proveedor.length > 0 && (() => {
+        const sorted = [...aggData.by_proveedor].sort((a, b) => b.total - a.total);
+        const totalOrdenes = sorted.reduce((s, d) => s + d.total, 0);
+        const totalProv = sorted.length;
+
+        let acum = 0;
+        const paretoProv: typeof sorted = [];
+        const noParetoProv: typeof sorted = [];
+        for (const p of sorted) {
+          acum += p.total;
+          if (paretoProv.length === 0 || acum - p.total < totalOrdenes * 0.8) {
+            paretoProv.push(p);
+          } else {
+            noParetoProv.push(p);
+          }
+        }
+        const paretoOrdenes = paretoProv.reduce((s, d) => s + d.total, 0);
+        const paretoPct = totalOrdenes > 0 ? ((paretoOrdenes / totalOrdenes) * 100).toFixed(1) : "0";
+        const paretoProvPct = totalProv > 0 ? ((paretoProv.length / totalProv) * 100).toFixed(1) : "0";
+
+        return (
+          <div className="mb-6 p-4 rounded-xl border border-blue-500/20" style={{ background: "var(--bg-card)" }}>
+            <h3 className="text-sm font-bold t-primary mb-3">📊 Ley de Pareto — Proveedores {isFiltered ? `(${filterLabel})` : ""}</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">Proveedores Activos</p>
+                <p className="text-2xl font-bold text-blue-500">{totalProv}</p>
+                <p className="text-[10px] t-muted">{totalOrdenes.toLocaleString()} órdenes</p>
+              </div>
+              <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">Hacen el 80% (Pareto)</p>
+                <p className="text-2xl font-bold text-green-500">{paretoProv.length}</p>
+                <p className="text-[10px] t-muted">{paretoProvPct}% de provs → {paretoPct}% órdenes</p>
+              </div>
+              <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">No hacen Pareto</p>
+                <p className="text-2xl font-bold text-orange-500">{totalProv - paretoProv.length}</p>
+                <p className="text-[10px] t-muted">{(100 - Number(paretoProvPct)).toFixed(1)}% de provs → {(100 - Number(paretoPct)).toFixed(1)}% órdenes</p>
+              </div>
+              <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
+                <p className="text-[10px] t-muted uppercase">Prom por Prov Pareto</p>
+                <p className="text-2xl font-bold text-purple-500">{paretoProv.length > 0 ? Math.round(paretoOrdenes / paretoProv.length) : 0}</p>
+                <p className="text-[10px] t-muted">vs {noParetoProv.length > 0 ? Math.round((totalOrdenes - paretoOrdenes) / noParetoProv.length) : 0} prom resto</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-xs font-bold text-green-500 mb-2">Top Pareto ({paretoProv.length} provs = {paretoPct}% órdenes)</h4>
+                <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                  {paretoProv.map((p, i) => (
+                    <div key={p.nombre} className="flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-green-500/5">
+                      <span className="t-primary truncate max-w-[200px]"><span className="text-green-500 font-bold mr-1">{i + 1}.</span>{p.nombre}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-500 font-bold">{p.total}</span>
+                        <span className="t-muted text-[10px]">{totalOrdenes > 0 ? ((p.total / totalOrdenes) * 100).toFixed(1) : 0}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-orange-500 mb-2">Fuera de Pareto ({noParetoProv.length} provs = {(100 - Number(paretoPct)).toFixed(1)}% órdenes)</h4>
+                <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                  {noParetoProv.map((p, i) => (
+                    <div key={p.nombre} className="flex items-center justify-between px-2 py-1 rounded text-xs hover:bg-orange-500/5">
+                      <span className="t-secondary truncate max-w-[200px]"><span className="text-orange-500 mr-1">{i + 1}.</span>{p.nombre}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-orange-500">{p.total}</span>
+                        <span className="t-muted text-[10px]">{totalOrdenes > 0 ? ((p.total / totalOrdenes) * 100).toFixed(1) : 0}%</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ═══ DROPSHIPPER DAILY TRACKING ═══ */}
       {aggData.by_ds_daily.length > 0 && (() => {
         // Build DS daily data with trend detection
