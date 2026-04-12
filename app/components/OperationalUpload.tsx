@@ -236,24 +236,61 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
   const diasCargados = aggData.by_date.length;
   const diasRestantes = 30 - diasCargados;
 
+  // Find Pareto DS (80% of orders)
+  const paretoDS = useMemo(() => {
+    const sorted = [...aggData.by_dropshipper].sort((a, b) => b.total - a.total);
+    const totalOrd = sorted.reduce((s, d) => s + d.total, 0);
+    let acum = 0;
+    const pareto: string[] = [];
+    for (const ds of sorted) {
+      if (pareto.length > 0 && acum >= totalOrd * 0.8) break;
+      acum += ds.total;
+      pareto.push(ds.nombre);
+    }
+    return pareto;
+  }, [aggData.by_dropshipper]);
+
+  // Get products sold ONLY by Pareto DS
+  const paretoProducts = useMemo(() => {
+    if (!aggData.by_ds_producto?.length) return [];
+    const prodMap: Record<string, { nombre: string; ordenes: number; cantidad: number }> = {};
+    for (const dp of aggData.by_ds_producto) {
+      if (!paretoDS.includes(dp.ds)) continue;
+      if (!prodMap[dp.producto]) prodMap[dp.producto] = { nombre: dp.producto, ordenes: 0, cantidad: 0 };
+      prodMap[dp.producto].ordenes += dp.ordenes;
+      prodMap[dp.producto].cantidad += dp.ordenes;
+    }
+    return Object.values(prodMap).sort((a, b) => b.ordenes - a.ordenes);
+  }, [aggData.by_ds_producto, paretoDS]);
+
   const projections = useMemo(() => {
-    if (!stockData.length || !aggData.by_producto.length) return [];
-    return stockData.map((s) => {
-      const prod = aggData.by_producto.find((p) => p.nombre === s.product_name);
-      const ordenes = prod?.ordenes || 0;
-      const unidades = prod?.cantidad || ordenes;
-      const demandaDiaria = diasCargados > 0 ? unidades / diasCargados : 0;
+    if (!paretoProducts.length) return [];
+    // Use top 20 products from Pareto DS
+    const topProds = paretoProducts.slice(0, 20);
+    return topProds.map((prod) => {
+      const stock = stockData.find((s) => s.product_name === prod.nombre);
+      const stockActual = stock?.stock_actual ?? null;
+      const productId = stock?.product_id || "";
+      const proveedor = stock?.proveedor || "";
+      const demandaDiaria = diasCargados > 0 ? prod.cantidad / diasCargados : 0;
       const demandaRestante = Math.round(demandaDiaria * diasRestantes);
       const demandaTotal = Math.round(demandaDiaria * 30);
-      const diasDeStock = demandaDiaria > 0 ? Math.round(s.stock_actual / demandaDiaria) : 999;
-      const alcanza = s.stock_actual >= demandaRestante;
-      const deficit = alcanza ? 0 : demandaRestante - s.stock_actual;
+      const diasDeStock = stockActual !== null && demandaDiaria > 0 ? Math.round(stockActual / demandaDiaria) : null;
+      const deficit = stockActual !== null ? Math.max(0, demandaRestante - stockActual) : null;
       return {
-        ...s, ordenes, unidades, demandaDiaria: Math.round(demandaDiaria),
-        demandaRestante, demandaTotal, diasDeStock, alcanza, deficit,
+        product_id: productId, product_name: prod.nombre, proveedor,
+        stock_actual: stockActual, ordenes: prod.ordenes, unidades: prod.cantidad,
+        demandaDiaria: Math.round(demandaDiaria), demandaRestante, demandaTotal,
+        diasDeStock, deficit, hasStock: stockActual !== null,
       };
-    }).sort((a: any, b: any) => a.diasDeStock - b.diasDeStock);
-  }, [stockData, aggData, diasCargados, diasRestantes]);
+    }).sort((a: any, b: any) => {
+      // Stock cargado primero, ordenado por días de stock
+      if (a.hasStock && !b.hasStock) return -1;
+      if (!a.hasStock && b.hasStock) return 1;
+      if (a.hasStock && b.hasStock) return (a.diasDeStock ?? 999) - (b.diasDeStock ?? 999);
+      return b.ordenes - a.ordenes;
+    });
+  }, [paretoProducts, stockData, diasCargados, diasRestantes]);
 
   async function updateStock(productId: string, newStock: number) {
     await fetch("/api/data/stock", {
@@ -264,15 +301,18 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
     setEditing(null);
   }
 
-  if (!stockData.length) return null;
+  if (!projections.length) return null;
 
-  const criticos = projections.filter((p: any) => p.diasDeStock < 5);
-  const alertas = projections.filter((p: any) => p.diasDeStock >= 5 && p.diasDeStock < 10);
+  const criticos = projections.filter((p: any) => p.hasStock && p.diasDeStock !== null && p.diasDeStock < 5);
+  const alertas = projections.filter((p: any) => p.hasStock && p.diasDeStock !== null && p.diasDeStock >= 5 && p.diasDeStock < 10);
+  const sinStock = projections.filter((p: any) => !p.hasStock);
 
   return (
     <div className="mb-6 p-4 rounded-xl border border-purple-500/20" style={{ background: "var(--bg-card)" }}>
-      <h3 className="text-sm font-bold t-primary mb-1">📦 Proyección de Stock — Abril {country === "py" ? "Paraguay" : "Argentina"}</h3>
-      <p className="text-[10px] t-muted mb-4">{diasCargados} días cargados · {diasRestantes} días restantes · Click en stock para editar</p>
+      <h3 className="text-sm font-bold t-primary mb-1">📦 Proyección de Stock — Productos del Pareto</h3>
+      <p className="text-[10px] t-muted mb-4">{diasCargados} días cargados · {diasRestantes} días restantes · Productos de los DS que generan el 80% · Click en stock para editar
+        {sinStock.length > 0 && <span className="text-orange-500 ml-1">· {sinStock.length} sin stock cargado</span>}
+      </p>
 
       {/* Alertas críticas */}
       {criticos.length > 0 && (
@@ -319,8 +359,8 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
           </thead>
           <tbody>
             {projections.map((p: any) => {
-              const color = p.diasDeStock < 5 ? "#dc2626" : p.diasDeStock < 10 ? "#d97706" : "#16a34a";
-              const emoji = p.diasDeStock < 5 ? "🔴" : p.diasDeStock < 10 ? "🟡" : "🟢";
+              const color = !p.hasStock ? "#6b7280" : p.diasDeStock < 5 ? "#dc2626" : p.diasDeStock < 10 ? "#d97706" : "#16a34a";
+              const emoji = !p.hasStock ? "⚪" : p.diasDeStock < 5 ? "🔴" : p.diasDeStock < 10 ? "🟡" : "🟢";
               return (
                 <tr key={p.product_id} className="border-b border-gray-800/40">
                   <td className="py-2 px-2 text-center">{emoji}</td>
@@ -331,24 +371,40 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
                   <td className="py-2 px-2 text-right text-orange-500 font-bold">{p.demandaRestante}</td>
                   <td className="py-2 px-2 text-right t-secondary">{p.demandaTotal}</td>
                   <td className="py-2 px-2 text-right">
-                    {editing === p.product_id ? (
+                    {editing === p.product_name ? (
                       <div className="flex items-center gap-1 justify-end">
                         <input type="number" value={editVal} onChange={(e) => setEditVal(e.target.value)}
                           className="w-16 px-1 py-0.5 text-xs rounded border border-orange-500/30 t-primary" style={{ background: "var(--bg-input)" }}
-                          onKeyDown={(e) => e.key === "Enter" && updateStock(p.product_id, Number(editVal))} autoFocus />
-                        <button onClick={() => updateStock(p.product_id, Number(editVal))} className="text-green-500 text-[10px]">✓</button>
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              if (p.hasStock) { updateStock(p.product_id, Number(editVal)); }
+                              else {
+                                fetch("/api/data/stock", { method: "POST", headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ country, product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }),
+                                }).then(() => { setStockData((prev) => [...prev, { product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }]); setEditing(null); });
+                              }
+                            }
+                          }} autoFocus />
+                        <button onClick={() => {
+                          if (p.hasStock) { updateStock(p.product_id, Number(editVal)); }
+                          else {
+                            fetch("/api/data/stock", { method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ country, product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }),
+                            }).then(() => { setStockData((prev) => [...prev, { product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }]); setEditing(null); });
+                          }
+                        }} className="text-green-500 text-[10px]">✓</button>
                         <button onClick={() => setEditing(null)} className="text-red-500 text-[10px]">✕</button>
                       </div>
                     ) : (
-                      <button onClick={() => { setEditing(p.product_id); setEditVal(String(p.stock_actual)); }}
+                      <button onClick={() => { setEditing(p.product_name); setEditVal(String(p.stock_actual ?? 0)); }}
                         className="font-bold hover:underline cursor-pointer" style={{ color }}>
-                        {p.stock_actual}
+                        {p.hasStock ? p.stock_actual : "Cargar"}
                       </button>
                     )}
                   </td>
-                  <td className="py-2 px-2 text-right font-bold" style={{ color }}>{p.diasDeStock >= 999 ? "∞" : `${p.diasDeStock}d`}</td>
-                  <td className="py-2 px-2 text-right font-bold" style={{ color: p.deficit > 0 ? "#dc2626" : "#16a34a" }}>
-                    {p.deficit > 0 ? `-${p.deficit}` : "✓"}
+                  <td className="py-2 px-2 text-right font-bold" style={{ color }}>{!p.hasStock ? "—" : p.diasDeStock >= 999 ? "∞" : `${p.diasDeStock}d`}</td>
+                  <td className="py-2 px-2 text-right font-bold" style={{ color: !p.hasStock ? "#6b7280" : p.deficit > 0 ? "#dc2626" : "#16a34a" }}>
+                    {!p.hasStock ? "Sin dato" : p.deficit > 0 ? `-${p.deficit}` : "✓"}
                   </td>
                 </tr>
               );
@@ -360,6 +416,7 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
         <span>🟢 Stock suficiente (10+ días)</span>
         <span>🟡 Stock bajo (5-10 días)</span>
         <span>🔴 Crítico (&lt;5 días)</span>
+        <span>⚪ Sin stock cargado — click en "Cargar"</span>
       </div>
     </div>
   );
