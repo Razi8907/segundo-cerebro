@@ -28,7 +28,7 @@ const STATUS_ORDER = [
 interface RawRow {
   estatus: string; fecha: string; proveedor: string; provId: number;
   dropshipper: string; dropshipperId: string; dropshipperEmail: string; dropshipperCelular: string;
-  producto: string; cantidad: number; departamento: string;
+  producto: string; productoId: string; cantidad: number; departamento: string;
   ciudad: string; transportadora: string; precioFlete: number;
 }
 
@@ -55,7 +55,7 @@ interface AggData {
   by_dropshipper: { nombre: string; total: number; estados: Record<string, number> }[];
   by_ds_daily: { ds: string; dsId: string; dsEmail: string; dsCelular: string; fecha: string; ordenes: number }[];
   by_ds_producto: { ds: string; producto: string; ordenes: number }[];
-  by_producto: { nombre: string; cantidad: number; ordenes: number }[];
+  by_producto: { nombre: string; productoId: string; proveedor: string; cantidad: number; ordenes: number }[];
   by_departamento: { nombre: string; total: number }[];
   logistics: LogisticsData;
 }
@@ -73,7 +73,7 @@ function parseExcel(file: File): Promise<RawRow[]> {
         const idx = (name: string) => header.indexOf(name);
         const iE = idx("ESTATUS"), iF = idx("FECHA"), iPN = idx("PROVEEDOR NOMBRE"),
           iPID = idx("PROVEEDOR ID"), iDS = idx("DROPSHIPPER"), iDSID = idx("DROPSHIPPER ID"),
-          iDSEmail = idx("EMAIL"), iDSCel = idx("CELULAR"), iPR = idx("PRODUCTO"),
+          iDSEmail = idx("EMAIL"), iDSCel = idx("CELULAR"), iPR = idx("PRODUCTO"), iPRID = idx("PRODUCTO ID"),
           iC = idx("CANTIDAD"), iD = idx("DEPARTAMENTO DESTINO"), iCI = idx("CIUDAD DESTINO"),
           iTR = idx("TRANSPORTADORA"), iFL = idx("PRECIO FLETE");
         const parsed: RawRow[] = [];
@@ -84,7 +84,7 @@ function parseExcel(file: File): Promise<RawRow[]> {
             proveedor: String(r[iPN] || "Sin proveedor"), provId: Number(r[iPID]) || 0,
             dropshipper: String(r[iDS] || "Sin dropshipper"),
             dropshipperId: String(r[iDSID] || ""), dropshipperEmail: iDSEmail >= 0 ? String(r[iDSEmail] || "") : "", dropshipperCelular: iDSCel >= 0 ? String(r[iDSCel] || "") : "",
-            producto: String(r[iPR] || "Sin producto"),
+            producto: String(r[iPR] || "Sin producto"), productoId: iPRID >= 0 ? String(r[iPRID] || "") : "",
             cantidad: Number(r[iC]) || 1, departamento: String(r[iD] || "Sin departamento"),
             ciudad: String(r[iCI] || ""), transportadora: String(r[iTR] || "Sin transportadora"),
             precioFlete: Number(r[iFL]) || 0,
@@ -103,7 +103,7 @@ function aggregateRows(rows: RawRow[]): AggData {
   const by_date_map: Record<string, { total: number; estados: Record<string, number> }> = {};
   const by_prov_map: Record<string, { id: number; total: number; estados: Record<string, number> }> = {};
   const by_ds_map: Record<string, { total: number; estados: Record<string, number> }> = {};
-  const by_prod_map: Record<string, { cantidad: number; ordenes: number }> = {};
+  const by_prod_map: Record<string, { productoId: string; proveedor: string; cantidad: number; ordenes: number }> = {};
   const by_dept_map: Record<string, number> = {};
   const ds_daily_map: Record<string, { ds: string; dsId: string; dsEmail: string; dsCelular: string; fecha: string; ordenes: number }> = {};
   const ds_prod_map: Record<string, { ds: string; producto: string; ordenes: number }> = {};
@@ -119,7 +119,9 @@ function aggregateRows(rows: RawRow[]): AggData {
     if (!by_ds_map[r.dropshipper]) by_ds_map[r.dropshipper] = { total: 0, estados: {} };
     by_ds_map[r.dropshipper].total++;
     by_ds_map[r.dropshipper].estados[r.estatus] = (by_ds_map[r.dropshipper].estados[r.estatus] || 0) + 1;
-    if (!by_prod_map[r.producto]) by_prod_map[r.producto] = { cantidad: 0, ordenes: 0 };
+    if (!by_prod_map[r.producto]) by_prod_map[r.producto] = { productoId: r.productoId || "", proveedor: r.proveedor || "", cantidad: 0, ordenes: 0 };
+    if (r.productoId && !by_prod_map[r.producto].productoId) by_prod_map[r.producto].productoId = r.productoId;
+    if (r.proveedor && !by_prod_map[r.producto].proveedor) by_prod_map[r.producto].proveedor = r.proveedor;
     by_prod_map[r.producto].cantidad += r.cantidad;
     by_prod_map[r.producto].ordenes++;
     by_dept_map[r.departamento] = (by_dept_map[r.departamento] || 0) + 1;
@@ -250,41 +252,37 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
     return pareto;
   }, [aggData.by_dropshipper]);
 
-  // Get products sold ONLY by Pareto DS
+  // Get products sold by Pareto DS using by_ds_producto + enriched with by_producto data
   const paretoProducts = useMemo(() => {
     if (!aggData.by_ds_producto?.length) return [];
-    const prodMap: Record<string, { nombre: string; ordenes: number; cantidad: number }> = {};
+    const prodSet = new Set<string>();
     for (const dp of aggData.by_ds_producto) {
-      if (!paretoDS.includes(dp.ds)) continue;
-      if (!prodMap[dp.producto]) prodMap[dp.producto] = { nombre: dp.producto, ordenes: 0, cantidad: 0 };
-      prodMap[dp.producto].ordenes += dp.ordenes;
-      prodMap[dp.producto].cantidad += dp.ordenes;
+      if (paretoDS.includes(dp.ds)) prodSet.add(dp.producto);
     }
-    return Object.values(prodMap).sort((a, b) => b.ordenes - a.ordenes);
-  }, [aggData.by_ds_producto, paretoDS]);
+    // Get full product info from by_producto (has productoId, proveedor, cantidad)
+    return aggData.by_producto
+      .filter((p) => prodSet.has(p.nombre))
+      .slice(0, 20);
+  }, [aggData.by_ds_producto, aggData.by_producto, paretoDS]);
 
   const projections = useMemo(() => {
     if (!paretoProducts.length) return [];
-    // Use top 20 products from Pareto DS
-    const topProds = paretoProducts.slice(0, 20);
-    return topProds.map((prod) => {
-      const stock = stockData.find((s) => s.product_name === prod.nombre);
+    return paretoProducts.map((prod) => {
+      const stock = stockData.find((s) => s.product_name === prod.nombre || s.product_id === prod.productoId);
       const stockActual = stock?.stock_actual ?? null;
-      const productId = stock?.product_id || "";
-      const proveedor = stock?.proveedor || "";
       const demandaDiaria = diasCargados > 0 ? prod.cantidad / diasCargados : 0;
       const demandaRestante = Math.round(demandaDiaria * diasRestantes);
       const demandaTotal = Math.round(demandaDiaria * 30);
       const diasDeStock = stockActual !== null && demandaDiaria > 0 ? Math.round(stockActual / demandaDiaria) : null;
       const deficit = stockActual !== null ? Math.max(0, demandaRestante - stockActual) : null;
       return {
-        product_id: productId, product_name: prod.nombre, proveedor,
+        product_id: prod.productoId || stock?.product_id || "", product_name: prod.nombre,
+        proveedor: prod.proveedor || stock?.proveedor || "",
         stock_actual: stockActual, ordenes: prod.ordenes, unidades: prod.cantidad,
         demandaDiaria: Math.round(demandaDiaria), demandaRestante, demandaTotal,
         diasDeStock, deficit, hasStock: stockActual !== null,
       };
     }).sort((a: any, b: any) => {
-      // Stock cargado primero, ordenado por días de stock
       if (a.hasStock && !b.hasStock) return -1;
       if (!a.hasStock && b.hasStock) return 1;
       if (a.hasStock && b.hasStock) return (a.diasDeStock ?? 999) - (b.diasDeStock ?? 999);
@@ -346,6 +344,7 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
           <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
             <tr className="border-b border-purple-500/20">
               <th className="text-center py-2 px-2 text-gray-400">Estado</th>
+              <th className="text-left py-2 px-2 text-gray-400">ID</th>
               <th className="text-left py-2 px-2 text-gray-400">Producto</th>
               <th className="text-left py-2 px-2 text-gray-400">Proveedor</th>
               <th className="text-right py-2 px-2 text-gray-400">Vendidos</th>
@@ -364,6 +363,7 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
               return (
                 <tr key={p.product_id} className="border-b border-gray-800/40">
                   <td className="py-2 px-2 text-center">{emoji}</td>
+                  <td className="py-2 px-2 t-muted text-[10px]">{p.product_id || "—"}</td>
                   <td className="py-2 px-2 t-primary font-medium">{p.product_name}</td>
                   <td className="py-2 px-2 t-secondary text-[10px]">{p.proveedor}</td>
                   <td className="py-2 px-2 text-right t-secondary">{p.unidades}</td>
