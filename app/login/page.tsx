@@ -24,6 +24,7 @@ function LoginForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ email, password }),
       });
 
@@ -34,7 +35,9 @@ function LoginForm() {
         return;
       }
 
-      router.push("/");
+      // Redirect to last visited page or home
+      const returnTo = searchParams.get("from") || "/";
+      window.location.href = returnTo;
     } catch {
       setError("Error de conexión. Intenta de nuevo.");
     } finally {

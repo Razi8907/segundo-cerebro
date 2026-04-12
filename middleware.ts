@@ -17,7 +17,11 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
 
   if (!token) {
-    return NextResponse.redirect(new URL("/login", req.url));
+    const loginUrl = new URL("/login", req.url);
+    if (req.nextUrl.pathname !== "/") {
+      loginUrl.searchParams.set("from", req.nextUrl.pathname);
+    }
+    return NextResponse.redirect(loginUrl);
   }
 
   try {
@@ -64,8 +68,8 @@ export async function middleware(req: NextRequest) {
     const response = NextResponse.redirect(new URL("/login", req.url));
     response.cookies.set(COOKIE_NAME, "", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
+      secure: true,
+      sameSite: "strict",
       path: "/",
       maxAge: 0,
     });
