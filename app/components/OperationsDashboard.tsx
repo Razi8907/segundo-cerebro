@@ -63,6 +63,9 @@ interface GuideRow {
   guia: string;
   fecha: string;
   dropshipper: string;
+  dropshipper_id: string;
+  dropshipper_email: string;
+  dropshipper_celular: string;
   nombre_tienda: string;
   proveedor_nombre: string;
   transportadora: string;
@@ -139,6 +142,9 @@ const COL_MAP: { field: keyof GuideRow; idx: number }[] = [
   { field: "guia", idx: 2 },
   { field: "fecha", idx: 6 },
   { field: "dropshipper", idx: 8 },
+  { field: "dropshipper_id", idx: 7 },
+  { field: "dropshipper_email", idx: 12 },
+  { field: "dropshipper_celular", idx: 11 },
   { field: "nombre_tienda", idx: 14 },
   { field: "proveedor_nombre", idx: 17 },
   { field: "transportadora", idx: 36 },
@@ -189,6 +195,9 @@ function parseExcel(file: File, country: string): Promise<GuideRow[]> {
           { field: "guia", idx: colIdx("NÚMERO GUIA") },
           { field: "fecha", idx: colIdx("FECHA") },
           { field: "dropshipper", idx: colIdx("DROPSHIPPER") },
+          { field: "dropshipper_id", idx: colIdx("DROPSHIPPER ID") },
+          { field: "dropshipper_email", idx: colIdx("EMAIL") },
+          { field: "dropshipper_celular", idx: colIdx("CELULAR") },
           { field: "nombre_tienda", idx: colIdx("NOMBRE TIENDA") },
           { field: "proveedor_nombre", idx: colIdx("PROVEEDOR NOMBRE") },
           { field: "transportadora", idx: colIdx("TRANSPORTADORA") },
@@ -398,6 +407,9 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           guia: r.guia || "",
           fecha: r.fecha_reporte || r.fecha_orden || "",
           dropshipper: r.dropshipper || "",
+          dropshipper_id: r.dropshipper_id || "",
+          dropshipper_email: r.dropshipper_email || "",
+          dropshipper_celular: r.dropshipper_celular || "",
           nombre_tienda: r.tienda || "",
           proveedor_nombre: r.proveedor || "",
           transportadora: r.transportadora || "",
@@ -449,6 +461,9 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         fecha_reporte: r.fecha,
         fecha_orden: r.fecha,
         dropshipper: r.dropshipper,
+        dropshipper_id: r.dropshipper_id,
+        dropshipper_email: r.dropshipper_email,
+        dropshipper_celular: r.dropshipper_celular,
         tienda: r.nombre_tienda,
         proveedor: r.proveedor_nombre,
         proveedor_id: 0,
@@ -604,6 +619,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     { key: "guia", label: "Guia" },
     { key: "fecha", label: "Fecha" },
     { key: "dropshipper", label: "Dropshipper" },
+    { key: "dropshipper_id", label: "DS ID" },
     { key: "estatus", label: "Estado" },
     { key: "concepto_ultimo_movimiento", label: "Ultimo Movimiento" },
     { key: "ciudad_destino", label: "Ciudad" },
@@ -619,6 +635,8 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     { key: "guia", label: "Guia" },
     { key: "fecha", label: "Fecha" },
     { key: "dropshipper", label: "Dropshipper" },
+    { key: "dropshipper_id", label: "DS ID" },
+    { key: "dropshipper_email", label: "DS Email" },
     { key: "proveedor_nombre", label: "Proveedor" },
     { key: "transportadora", label: "Transportadora" },
     { key: "estatus", label: "Estado" },
