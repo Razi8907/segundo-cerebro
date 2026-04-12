@@ -27,7 +27,8 @@ const STATUS_ORDER = [
 
 interface RawRow {
   estatus: string; fecha: string; proveedor: string; provId: number;
-  dropshipper: string; producto: string; cantidad: number; departamento: string;
+  dropshipper: string; dropshipperId: string; dropshipperEmail: string; dropshipperCelular: string;
+  producto: string; cantidad: number; departamento: string;
   ciudad: string; transportadora: string; precioFlete: number;
 }
 
@@ -52,7 +53,7 @@ interface AggData {
   by_date: { fecha: string; total: number; estados: Record<string, number> }[];
   by_proveedor: { nombre: string; id: number; total: number; estados: Record<string, number> }[];
   by_dropshipper: { nombre: string; total: number; estados: Record<string, number> }[];
-  by_ds_daily: { ds: string; fecha: string; ordenes: number }[];
+  by_ds_daily: { ds: string; dsId: string; dsEmail: string; dsCelular: string; fecha: string; ordenes: number }[];
   by_ds_producto: { ds: string; producto: string; ordenes: number }[];
   by_producto: { nombre: string; cantidad: number; ordenes: number }[];
   by_departamento: { nombre: string; total: number }[];
@@ -71,7 +72,8 @@ function parseExcel(file: File): Promise<RawRow[]> {
         const header = rows[0] as string[];
         const idx = (name: string) => header.indexOf(name);
         const iE = idx("ESTATUS"), iF = idx("FECHA"), iPN = idx("PROVEEDOR NOMBRE"),
-          iPID = idx("PROVEEDOR ID"), iDS = idx("DROPSHIPPER"), iPR = idx("PRODUCTO"),
+          iPID = idx("PROVEEDOR ID"), iDS = idx("DROPSHIPPER"), iDSID = idx("DROPSHIPPER ID"),
+          iDSEmail = idx("EMAIL"), iDSCel = idx("CELULAR"), iPR = idx("PRODUCTO"),
           iC = idx("CANTIDAD"), iD = idx("DEPARTAMENTO DESTINO"), iCI = idx("CIUDAD DESTINO"),
           iTR = idx("TRANSPORTADORA"), iFL = idx("PRECIO FLETE");
         const parsed: RawRow[] = [];
@@ -80,7 +82,9 @@ function parseExcel(file: File): Promise<RawRow[]> {
           parsed.push({
             estatus: String(r[iE] || "DESCONOCIDO"), fecha: String(r[iF] || ""),
             proveedor: String(r[iPN] || "Sin proveedor"), provId: Number(r[iPID]) || 0,
-            dropshipper: String(r[iDS] || "Sin dropshipper"), producto: String(r[iPR] || "Sin producto"),
+            dropshipper: String(r[iDS] || "Sin dropshipper"),
+            dropshipperId: String(r[iDSID] || ""), dropshipperEmail: iDSEmail >= 0 ? String(r[iDSEmail] || "") : "", dropshipperCelular: iDSCel >= 0 ? String(r[iDSCel] || "") : "",
+            producto: String(r[iPR] || "Sin producto"),
             cantidad: Number(r[iC]) || 1, departamento: String(r[iD] || "Sin departamento"),
             ciudad: String(r[iCI] || ""), transportadora: String(r[iTR] || "Sin transportadora"),
             precioFlete: Number(r[iFL]) || 0,
@@ -101,7 +105,7 @@ function aggregateRows(rows: RawRow[]): AggData {
   const by_ds_map: Record<string, { total: number; estados: Record<string, number> }> = {};
   const by_prod_map: Record<string, { cantidad: number; ordenes: number }> = {};
   const by_dept_map: Record<string, number> = {};
-  const ds_daily_map: Record<string, { ds: string; fecha: string; ordenes: number }> = {};
+  const ds_daily_map: Record<string, { ds: string; dsId: string; dsEmail: string; dsCelular: string; fecha: string; ordenes: number }> = {};
   const ds_prod_map: Record<string, { ds: string; producto: string; ordenes: number }> = {};
 
   for (const r of rows) {
@@ -122,7 +126,7 @@ function aggregateRows(rows: RawRow[]): AggData {
 
     // DS daily tracking
     const dsDayKey = `${r.dropshipper}||${r.fecha}`;
-    if (!ds_daily_map[dsDayKey]) ds_daily_map[dsDayKey] = { ds: r.dropshipper, fecha: r.fecha, ordenes: 0 };
+    if (!ds_daily_map[dsDayKey]) ds_daily_map[dsDayKey] = { ds: r.dropshipper, dsId: r.dropshipperId || "", dsEmail: r.dropshipperEmail || "", dsCelular: r.dropshipperCelular || "", fecha: r.fecha, ordenes: 0 };
     ds_daily_map[dsDayKey].ordenes++;
 
     // DS product tracking
@@ -395,6 +399,10 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
 
         // Per DS: daily orders + trend
         const dsAnalysis = dsNames.map((ds) => {
+          const firstEntry = aggData.by_ds_daily.find((d) => d.ds === ds);
+          const dsId = firstEntry?.dsId || "";
+          const dsEmail = firstEntry?.dsEmail || "";
+          const dsCelular = firstEntry?.dsCelular || "";
           const daily = fechas.map((f) => {
             const entry = aggData.by_ds_daily.find((d) => d.ds === ds && d.fecha === f);
             return { fecha: f, ordenes: entry?.ordenes || 0 };
@@ -415,7 +423,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
             .sort((a, b) => b.ordenes - a.ordenes)
             .slice(0, 5);
 
-          return { ds, daily, total, daysActive, avg: Math.round(avg), lastAvg: Math.round(lastAvg), trend: Math.round(trend), alert, productos };
+          return { ds, dsId, dsEmail, dsCelular, daily, total, daysActive, avg: Math.round(avg), lastAvg: Math.round(lastAvg), trend: Math.round(trend), alert, productos };
         })
         .filter((d) => d.total > 5) // Only show DS with >5 orders
         .sort((a, b) => b.total - a.total);
@@ -447,6 +455,8 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                 <thead className="sticky top-0" style={{ background: "rgba(22,33,62,0.98)" }}>
                   <tr className="border-b border-orange-500/20">
                     <th className="text-left py-2 px-2 text-gray-400 sticky left-0" style={{ background: "rgba(22,33,62,0.98)" }}>Dropshipper</th>
+                    <th className="text-left py-2 px-2 text-gray-400">ID</th>
+                    <th className="text-left py-2 px-2 text-gray-400">Email</th>
                     <th className="text-right py-2 px-2 text-gray-400">Total</th>
                     <th className="text-right py-2 px-2 text-gray-400">Prom/día</th>
                     <th className="text-right py-2 px-2 text-gray-400">Tendencia</th>
@@ -462,6 +472,8 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                       <td className="py-2 px-2 t-primary font-medium whitespace-nowrap sticky left-0 max-w-[180px] truncate" style={{ background: "var(--bg-card)" }} title={d.ds}>
                         {d.alert && <span className="mr-1">⚠️</span>}{d.ds.length > 25 ? d.ds.slice(0, 25) + "…" : d.ds}
                       </td>
+                      <td className="py-2 px-2 t-muted text-[10px]">{d.dsId}</td>
+                      <td className="py-2 px-2 t-muted text-[10px] max-w-[150px] truncate" title={d.dsEmail}>{d.dsEmail}</td>
                       <td className="py-2 px-2 text-right text-orange-500 font-bold">{d.total}</td>
                       <td className="py-2 px-2 text-right t-secondary">{d.avg}</td>
                       <td className="py-2 px-2 text-right">
@@ -495,7 +507,12 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                   <div className="flex justify-between items-start mb-3">
                     <div>
                       <h4 className="text-sm font-bold text-orange-500">{dsInfo.ds}</h4>
-                      <p className="text-[10px] t-muted">Total: {dsInfo.total} órdenes · Prom: {dsInfo.avg}/día · Tendencia: {dsInfo.trend > 0 ? "+" : ""}{dsInfo.trend}%</p>
+                      <p className="text-[10px] t-muted">
+                        {dsInfo.dsId && <span>ID: {dsInfo.dsId} · </span>}
+                        {dsInfo.dsEmail && <span>{dsInfo.dsEmail} · </span>}
+                        {dsInfo.dsCelular && <span>Cel: {dsInfo.dsCelular} · </span>}
+                        Total: {dsInfo.total} órdenes · Prom: {dsInfo.avg}/día · Tendencia: {dsInfo.trend > 0 ? "+" : ""}{dsInfo.trend}%
+                      </p>
                     </div>
                     <button onClick={() => setSelectedDS("")} className="text-xs t-muted hover:text-red-500">✕</button>
                   </div>
