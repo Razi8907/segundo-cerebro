@@ -464,6 +464,10 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                     </div>
                   ))}
                 </div>
+                <div className="flex items-center justify-between px-2 py-2 mt-1 border-t border-green-500/20 text-xs font-bold">
+                  <span className="text-green-500">TOTAL</span>
+                  <span className="text-green-500">{paretoOrdenes.toLocaleString()} órdenes</span>
+                </div>
               </div>
               <div>
                 <h4 className="text-xs font-bold text-orange-500 mb-2">Fuera de Pareto ({totalDS - paretoCount} DS = {(100 - Number(paretoPct)).toFixed(1)}% órdenes)</h4>
@@ -478,6 +482,10 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                     </div>
                   ))}
                   {noParetoDS.length > 20 && <p className="text-[10px] t-muted px-2">+{noParetoDS.length - 20} más...</p>}
+                </div>
+                <div className="flex items-center justify-between px-2 py-2 mt-1 border-t border-orange-500/20 text-xs font-bold">
+                  <span className="text-orange-500">TOTAL</span>
+                  <span className="text-orange-500">{(totalOrdenes - paretoOrdenes).toLocaleString()} órdenes</span>
                 </div>
               </div>
             </div>
@@ -546,6 +554,10 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                     </div>
                   ))}
                 </div>
+                <div className="flex items-center justify-between px-2 py-2 mt-1 border-t border-green-500/20 text-xs font-bold">
+                  <span className="text-green-500">TOTAL</span>
+                  <span className="text-green-500">{paretoOrdenes.toLocaleString()} órdenes</span>
+                </div>
               </div>
               <div>
                 <h4 className="text-xs font-bold text-orange-500 mb-2">Fuera de Pareto ({noParetoProv.length} provs = {(100 - Number(paretoPct)).toFixed(1)}% órdenes)</h4>
@@ -559,6 +571,10 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                       </div>
                     </div>
                   ))}
+                </div>
+                <div className="flex items-center justify-between px-2 py-2 mt-1 border-t border-orange-500/20 text-xs font-bold">
+                  <span className="text-orange-500">TOTAL</span>
+                  <span className="text-orange-500">{(totalOrdenes - paretoOrdenes).toLocaleString()} órdenes</span>
                 </div>
               </div>
             </div>
