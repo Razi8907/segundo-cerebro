@@ -472,8 +472,8 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                       <td className="py-2 px-2 t-primary font-medium whitespace-nowrap sticky left-0 max-w-[180px] truncate" style={{ background: "var(--bg-card)" }} title={d.ds}>
                         {d.alert && <span className="mr-1">⚠️</span>}{d.ds.length > 25 ? d.ds.slice(0, 25) + "…" : d.ds}
                       </td>
-                      <td className="py-2 px-2 t-muted text-[10px]">{d.dsId}</td>
-                      <td className="py-2 px-2 t-muted text-[10px] max-w-[150px] truncate" title={d.dsEmail}>{d.dsEmail}</td>
+                      <td className="py-2 px-2 t-primary text-[10px]">{d.dsId}</td>
+                      <td className="py-2 px-2 t-primary text-[10px] max-w-[150px] truncate" title={d.dsEmail}>{d.dsEmail}</td>
                       <td className="py-2 px-2 text-right text-orange-500 font-bold">{d.total}</td>
                       <td className="py-2 px-2 text-right t-secondary">{d.avg}</td>
                       <td className="py-2 px-2 text-right">
