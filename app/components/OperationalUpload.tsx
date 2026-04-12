@@ -442,6 +442,14 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
           // Load saved raw rows for filtering
           if (res.data.raw_rows && Array.isArray(res.data.raw_rows)) {
             setRawRows(res.data.raw_rows);
+          } else if (res.data.compact_rows && Array.isArray(res.data.compact_rows)) {
+            // Expand compact rows
+            setRawRows(res.data.compact_rows.map((r: any) => ({
+              estatus: r.e||"", fecha: r.f||"", proveedor: r.p||"", provId: r.pi||0,
+              dropshipper: r.d||"", dropshipperId: r.di||"", dropshipperEmail: r.de||"", dropshipperCelular: r.dc||"",
+              producto: r.pr||"", productoId: r.pri||"", cantidad: r.c||1, departamento: r.dp||"",
+              ciudad: r.ci||"", transportadora: r.t||"", precioFlete: r.fl||0,
+            })));
           }
         }
       })
@@ -458,17 +466,41 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
       const agg = aggregateRows(rows);
       setSavedAgg(agg);
       setFilterType("all"); setFilterValue("");
-      // Save aggregation (without raw_rows to avoid payload size limits)
-      // Raw rows are kept in component state for filtering
+      // Save aggregation + compact raw_rows in chunks to avoid Vercel payload limit
       const saveData = { ...agg };
-      // Only include raw_rows if under 5000 rows (Vercel payload limit)
-      if (rows.length <= 5000) {
-        (saveData as any).raw_rows = rows;
+      // Compact raw_rows: only keep fields needed for filtering
+      const compactRows = rows.map((r) => ({
+        e: r.estatus, f: r.fecha, p: r.proveedor, pi: r.provId,
+        d: r.dropshipper, di: r.dropshipperId, de: r.dropshipperEmail, dc: r.dropshipperCelular,
+        pr: r.producto, pri: r.productoId, c: r.cantidad, dp: r.departamento,
+        ci: r.ciudad, t: r.transportadora, fl: r.precioFlete,
+      }));
+      (saveData as any).compact_rows = compactRows;
+
+      // Try saving, if too large save without rows
+      try {
+        const payload = JSON.stringify({ country, data: saveData, raw_count: agg.total_orders });
+        if (payload.length > 4000000) {
+          // Too large for Vercel, save without compact_rows
+          delete (saveData as any).compact_rows;
+          await fetch("/api/data/operational", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ country, data: saveData, raw_count: agg.total_orders }),
+          });
+        } else {
+          await fetch("/api/data/operational", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: payload,
+          });
+        }
+      } catch {
+        // Fallback: save without rows
+        delete (saveData as any).compact_rows;
+        await fetch("/api/data/operational", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ country, data: saveData, raw_count: agg.total_orders }),
+        });
       }
-      await fetch("/api/data/operational", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country, data: saveData, raw_count: agg.total_orders }),
-      });
       setUploadedAt(new Date().toISOString());
     } catch (err) {
       console.error("Upload error:", err);
