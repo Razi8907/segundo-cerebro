@@ -85,7 +85,7 @@ function parseExcel(file: File): Promise<RawRow[]> {
             dropshipper: String(r[iDS] || "Sin dropshipper"),
             dropshipperId: String(r[iDSID] || ""), dropshipperEmail: iDSEmail >= 0 ? String(r[iDSEmail] || "") : "", dropshipperCelular: iDSCel >= 0 ? String(r[iDSCel] || "") : "",
             producto: String(r[iPR] || "Sin producto"),
-            productoId: iPRID >= 0 ? String(r[iPRID] || "") : (String(r[iPR] || "").match(/^(\d+)-/) ? String(r[iPR] || "").replace(/-$/, "") : ""),
+            productoId: iPRID >= 0 && r[iPRID] ? String(r[iPRID]) : (String(r[iPR] || "").match(/^\d+-?$/) ? String(r[iPR] || "").replace(/-$/, "") : ""),
             cantidad: Number(r[iC]) || 1, departamento: String(r[iD] || "Sin departamento"),
             ciudad: String(r[iCI] || ""), transportadora: String(r[iTR] || "Sin transportadora"),
             precioFlete: Number(r[iFL]) || 0,
