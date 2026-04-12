@@ -607,7 +607,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
             </select>
           )}
           {isFiltered && (
-            <button onClick={() => { setFilterType("all"); setFilterValue(""); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">
+            <button onClick={() => { setFilterType("all"); setFilterValue(""); setSelectedDS(""); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">
               Limpiar filtro
             </button>
           )}
@@ -872,7 +872,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                 <p className="text-xs font-bold text-red-600 mb-1">⚠️ Dropshippers bajando volumen ({alertDS.length})</p>
                 <div className="flex flex-wrap gap-2">
                   {alertDS.map((d) => (
-                    <button key={d.ds} onClick={() => setSelectedDS(d.ds)}
+                    <button key={d.ds} onClick={() => { setSelectedDS(d.ds); setFilterType("dropshipper"); setFilterValue(d.ds); }}
                       className="text-[10px] px-2 py-1 rounded-lg border border-red-500/20 text-red-600 hover:bg-red-500/10">
                       {d.ds.split("(")[0].trim()} <span className="font-bold">{d.trend}%</span> (prom {d.avg} → {d.lastAvg})
                     </button>
@@ -900,7 +900,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                 <tbody>
                   {dsAnalysis.slice(0, 30).map((d) => (
                     <tr key={d.ds} className={`border-b border-gray-800/40 hover:bg-orange-500/5 cursor-pointer ${selectedDS === d.ds ? "bg-orange-500/10" : ""}`}
-                      onClick={() => setSelectedDS(selectedDS === d.ds ? "" : d.ds)}>
+                      onClick={() => { const newDS = selectedDS === d.ds ? "" : d.ds; setSelectedDS(newDS); if (newDS) { setFilterType("dropshipper"); setFilterValue(newDS); } else { setFilterType("all"); setFilterValue(""); } }}>
                       <td className="py-2 px-2 t-primary font-medium whitespace-nowrap sticky left-0 max-w-[180px] truncate" style={{ background: "var(--bg-card)" }} title={d.ds}>
                         {d.alert && <span className="mr-1">⚠️</span>}{d.ds.length > 25 ? d.ds.slice(0, 25) + "…" : d.ds}
                       </td>
@@ -960,7 +960,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                         Total: {dsInfo.total} órdenes · Prom: {dsInfo.avg}/día · Tendencia: {dsInfo.trend > 0 ? "+" : ""}{dsInfo.trend}%
                       </p>
                     </div>
-                    <button onClick={() => setSelectedDS("")} className="text-xs t-muted hover:text-red-500">✕</button>
+                    <button onClick={() => { setSelectedDS(""); setFilterType("all"); setFilterValue(""); }} className="text-xs t-muted hover:text-red-500">✕</button>
                   </div>
 
                   {dsInfo.alert && (
