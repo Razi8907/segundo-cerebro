@@ -431,6 +431,9 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   const [filterType, setFilterType] = useState<"all" | "proveedor" | "dropshipper">("all");
   const [selectedDS, setSelectedDS] = useState<string>("");
   const [filterValue, setFilterValue] = useState<string>("");
+  const [fProveedor, setFProveedor] = useState("");
+  const [fDropshipper, setFDropshipper] = useState("");
+  const [fTransportadora, setFTransportadora] = useState("");
 
   useEffect(() => {
     fetch(`/api/data/operational?country=${country}`)
@@ -516,17 +519,42 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
     return savedAgg;
   }, [rawRows, savedAgg]);
 
+  // Filter options from raw rows
+  const globalFilterOptions = useMemo(() => {
+    if (rawRows.length === 0) return { proveedores: [] as string[], dropshippers: [] as string[], transportadoras: [] as string[] };
+    const provSet = new Set<string>(), dsSet = new Set<string>(), trSet = new Set<string>();
+    for (const r of rawRows) {
+      if (r.proveedor) provSet.add(r.proveedor);
+      if (r.dropshipper) dsSet.add(r.dropshipper);
+      if (r.transportadora) trSet.add(r.transportadora);
+    }
+    return { proveedores: Array.from(provSet).sort(), dropshippers: Array.from(dsSet).sort(), transportadoras: Array.from(trSet).sort() };
+  }, [rawRows]);
+
+  const hasGlobalFilter = fProveedor || fDropshipper || fTransportadora;
+  const clearGlobalFilters = () => { setFProveedor(""); setFDropshipper(""); setFTransportadora(""); setFilterType("all"); setFilterValue(""); };
+
   // Filtered aggregation — always re-aggregate from raw rows
   const aggData = useMemo(() => {
     if (!fullAgg) return null;
-    if (filterType === "all" || !filterValue) return fullAgg;
     if (rawRows.length === 0) return fullAgg;
-    const filtered = filterType === "proveedor"
-      ? rawRows.filter((r) => r.proveedor === filterValue)
-      : rawRows.filter((r) => r.dropshipper === filterValue);
+    // Apply new global filters
+    if (!fProveedor && !fDropshipper && !fTransportadora) {
+      // Fall back to legacy filter
+      if (filterType === "all" || !filterValue) return fullAgg;
+      const filtered = filterType === "proveedor"
+        ? rawRows.filter((r) => r.proveedor === filterValue)
+        : rawRows.filter((r) => r.dropshipper === filterValue);
+      if (filtered.length === 0) return fullAgg;
+      return aggregateRows(filtered);
+    }
+    let filtered = rawRows;
+    if (fProveedor) filtered = filtered.filter((r) => r.proveedor === fProveedor);
+    if (fDropshipper) filtered = filtered.filter((r) => r.dropshipper === fDropshipper);
+    if (fTransportadora) filtered = filtered.filter((r) => r.transportadora === fTransportadora);
     if (filtered.length === 0) return fullAgg;
     return aggregateRows(filtered);
-  }, [fullAgg, rawRows, filterType, filterValue]);
+  }, [fullAgg, rawRows, filterType, filterValue, fProveedor, fDropshipper, fTransportadora]);
 
   const allStatuses = useMemo(() => {
     if (!aggData) return [];
@@ -581,38 +609,50 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         </label>
       </div>
 
-      {/* GLOBAL FILTER */}
+      {/* GLOBAL FILTERS */}
       <div className="mb-5 p-3 rounded-xl border border-orange-500/20" style={{ background: "var(--bg-card-hover)" }}>
-        <p className="text-[10px] t-muted uppercase mb-2">Filtrar todo por usuario</p>
-        <div className="flex gap-2 flex-wrap items-center">
-          <select
-            value={filterType}
-            onChange={(e) => { setFilterType(e.target.value as any); setFilterValue(""); }}
-            className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none" style={{ background: "var(--bg-input)" }}
-          >
-            <option value="all">Todos</option>
-            <option value="proveedor">Por Proveedor</option>
-            <option value="dropshipper">Por Dropshipper</option>
-          </select>
-          {filterType !== "all" && (
-            <select
-              value={filterValue}
-              onChange={(e) => setFilterValue(e.target.value)}
-              className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none flex-1 max-w-xs" style={{ background: "var(--bg-input)" }}
-            >
-              <option value="">Seleccionar...</option>
-              {(filterType === "proveedor" ? fullAgg!.by_proveedor : fullAgg!.by_dropshipper).map((u) => (
-                <option key={u.nombre} value={u.nombre}>{u.nombre} ({u.total})</option>
-              ))}
-            </select>
-          )}
-          {isFiltered && (
-            <button onClick={() => { setFilterType("all"); setFilterValue(""); setSelectedDS(""); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">
-              Limpiar filtro
-            </button>
-          )}
-        </div>
-        {isFiltered && <p className="text-xs text-orange-500 font-medium mt-2">Mostrando: {filterLabel} — {aggData.total_orders.toLocaleString()} guías</p>}
+        {rawRows.length > 0 ? (
+          <>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Logistica</label>
+                <select value={fTransportadora} onChange={(e) => setFTransportadora(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[140px]" style={{ background: "var(--bg-input)" }}>
+                  <option value="">Todas</option>
+                  {globalFilterOptions.transportadoras.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Dropshipper</label>
+                <select value={fDropshipper} onChange={(e) => setFDropshipper(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[140px]" style={{ background: "var(--bg-input)" }}>
+                  <option value="">Todos</option>
+                  {globalFilterOptions.dropshippers.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Proveedor</label>
+                <select value={fProveedor} onChange={(e) => setFProveedor(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[140px]" style={{ background: "var(--bg-input)" }}>
+                  <option value="">Todos</option>
+                  {globalFilterOptions.proveedores.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              {hasGlobalFilter && (
+                <button onClick={clearGlobalFilters} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10">
+                  Limpiar filtros
+                </button>
+              )}
+            </div>
+            {hasGlobalFilter && (
+              <p className="text-xs text-orange-500 font-medium mt-2">
+                Mostrando {aggData.total_orders.toLocaleString()} de {(fullAgg?.total_orders || 0).toLocaleString()} guias
+                {fTransportadora && ` · Logistica: ${fTransportadora}`}
+                {fDropshipper && ` · DS: ${fDropshipper}`}
+                {fProveedor && ` · Prov: ${fProveedor}`}
+              </p>
+            )}
+          </>
+        ) : (
+          <p className="text-xs t-muted">Subi el archivo Excel nuevamente para activar los filtros por logistica, dropshipper y proveedor.</p>
+        )}
       </div>
 
       {/* KPIs */}
