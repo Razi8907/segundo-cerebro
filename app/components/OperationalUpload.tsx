@@ -774,6 +774,69 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         );
       })()}
 
+      {/* ═══ ALERTA PENDIENTES +24HS ═══ */}
+      {rawRows.length > 0 && (() => {
+        const now = new Date();
+        // Get filtered rows based on current global filters
+        let filtered = rawRows;
+        if (fProveedor) filtered = filtered.filter((r) => r.proveedor === fProveedor);
+        if (fDropshipper) filtered = filtered.filter((r) => r.dropshipper === fDropshipper);
+        if (fTransportadora) filtered = filtered.filter((r) => r.transportadora === fTransportadora);
+
+        const pendientes = filtered.filter((r) => {
+          if (r.estatus !== "PENDIENTE" && r.estatus !== "PENDIENTE CONFIRMACION") return false;
+          if (!r.fecha) return false;
+          // Parse fecha: could be "DD-MM-YYYY", "DD/MM/YYYY", "YYYY-MM-DD" or similar
+          let d: Date | null = null;
+          const parts = r.fecha.match(/(\d{1,4})[-/](\d{1,2})[-/](\d{1,4})/);
+          if (parts) {
+            const a = parseInt(parts[1]), b = parseInt(parts[2]), c = parseInt(parts[3]);
+            if (a > 1000) d = new Date(a, b - 1, c); // YYYY-MM-DD
+            else if (c > 1000) d = new Date(c, b - 1, a); // DD-MM-YYYY
+          }
+          if (!d || isNaN(d.getTime())) return false;
+          const horasDesde = (now.getTime() - d.getTime()) / (1000 * 60 * 60);
+          return horasDesde > 24;
+        });
+
+        if (pendientes.length === 0) return null;
+
+        // Group by proveedor
+        const byProv: Record<string, { count: number; guias: string[] }> = {};
+        for (const r of pendientes) {
+          if (!byProv[r.proveedor]) byProv[r.proveedor] = { count: 0, guias: [] };
+          byProv[r.proveedor].count++;
+          if (byProv[r.proveedor].guias.length < 5) byProv[r.proveedor].guias.push(`${r.dropshipper} (${r.fecha})`);
+        }
+        const provList = Object.entries(byProv).sort((a, b) => b[1].count - a[1].count);
+
+        return (
+          <div className="mb-6 p-4 rounded-xl border-2 border-red-500" style={{ background: "rgba(220,38,38,0.06)" }}>
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-xl">🚨</span>
+              <h3 className="text-sm font-bold text-red-500">Alerta: {pendientes.length} guias PENDIENTES +24hs sin pasar a Guia Generada</h3>
+            </div>
+            <p className="text-xs t-muted mb-3">Estas guias llevan mas de 24 horas en estado Pendiente. El proveedor debe generar la guia.</p>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {provList.map(([prov, data]) => (
+                <div key={prov} className="p-3 rounded-lg border border-red-500/20" style={{ background: "var(--bg-card)" }}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold t-primary">{prov}</span>
+                    <span className="text-xs font-bold text-red-500">{data.count} guia{data.count > 1 ? "s" : ""} parada{data.count > 1 ? "s" : ""}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1">
+                    {data.guias.map((g, i) => (
+                      <span key={i} className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">{g}</span>
+                    ))}
+                    {data.count > 5 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/10 text-red-400">+{data.count - 5} mas</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ═══ PARETO PROVEEDORES ═══ */}
       {aggData.by_proveedor.length > 0 && (() => {
         const sorted = [...aggData.by_proveedor].sort((a, b) => b.total - a.total);
