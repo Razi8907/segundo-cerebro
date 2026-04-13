@@ -110,6 +110,8 @@ export default function FinanzasDashboard({ country }: { country: string }) {
   ];
 
   const yearButtons: YearKey[] = [2024, 2025, 2026];
+  const allSelected = selectedYears.size === 3;
+  const selectAll = () => setSelectedYears(new Set([2024, 2025, 2026]));
 
   return (
     <div className="space-y-6">
@@ -132,6 +134,16 @@ export default function FinanzasDashboard({ country }: { country: string }) {
         </div>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] t-muted uppercase tracking-wider mr-1">Periodo:</span>
+          <button
+            onClick={selectAll}
+            className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
+              allSelected
+                ? "bg-orange-500/20 text-orange-400 border-orange-500/50"
+                : "bg-transparent t-muted border-gray-700/50 opacity-50 hover:opacity-80"
+            }`}
+          >
+            Total
+          </button>
           {yearButtons.map((y) => (
             <button
               key={y}
@@ -183,6 +195,15 @@ function ResumenView({ years }: { years: Set<YearKey> }) {
   const q = DATA.q1_2026;
   const has24 = years.has(2024), has25 = years.has(2025), has26 = years.has(2026);
 
+  // Totals across all years
+  const totalIng = (has24 ? e.ing24 : 0) + (has25 ? e.ing25 : 0) + (has26 ? e.ing26 : 0);
+  const totalUb = (has24 ? e.ub24 : 0) + (has25 ? e.ub25 : 0) + (has26 ? e.ub26 : 0);
+  const totalNet = (has24 ? e.net24 : 0) + (has25 ? e.net25 : 0) + (has26 ? e.util26 : 0);
+  const totalCogs = (has24 ? e.cogs24 : 0) + (has25 ? e.cogs25 : 0) + (has26 ? e.cogs26 : 0);
+  const margenBrutoTotal = totalIng > 0 ? (totalUb / totalIng * 100).toFixed(1) : "0";
+  const margenNetoTotal = totalIng > 0 ? (totalNet / totalIng * 100).toFixed(1) : "0";
+  const activeCount = (has24 ? 1 : 0) + (has25 ? 1 : 0) + (has26 ? 1 : 0);
+
   const allKpis = [
     { label: "Ingresos 2024", value: "Gs 1,142.0M", delta: "Primer ano operativo", positive: true, year: 2024 as YearKey },
     { label: "Ingresos 2025", value: "Gs 7,778.3M", delta: "+581% vs 2024", positive: true, year: 2025 as YearKey },
@@ -229,6 +250,39 @@ function ResumenView({ years }: { years: Set<YearKey> }) {
           </div>
         ))}
       </div>
+
+      {/* Totals row */}
+      {activeCount > 1 && (
+        <div className="glass-card p-4 border border-orange-500/20">
+          <p className="text-[10px] t-muted uppercase tracking-wider mb-3">Totales acumulados ({[has24 && "2024", has25 && "2025", has26 && "2026"].filter(Boolean).join(" + ")})</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div>
+              <p className="text-[10px] t-muted">Ingresos</p>
+              <p className="text-base font-bold t-primary">{fmtGs(totalIng)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] t-muted">Costos</p>
+              <p className="text-base font-bold t-primary">{fmtGs(totalCogs)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] t-muted">Utilidad Bruta</p>
+              <p className="text-base font-bold text-green-400">{fmtGs(totalUb)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] t-muted">Margen Bruto</p>
+              <p className="text-base font-bold text-green-400">{margenBrutoTotal}%</p>
+            </div>
+            <div>
+              <p className="text-[10px] t-muted">Resultado Neto</p>
+              <p className={`text-base font-bold ${totalNet >= 0 ? "text-green-400" : "text-red-400"}`}>{fmtGs(totalNet)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] t-muted">Margen Neto</p>
+              <p className={`text-base font-bold ${totalNet >= 0 ? "text-green-400" : "text-red-400"}`}>{margenNetoTotal}%</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -399,7 +453,9 @@ function ResultadosView({ years }: { years: Set<YearKey> }) {
   ];
 
   const fmtV = (v: number) => v === 0 ? "—" : `${v < 0 ? "-" : ""}Gs ${Math.abs(v / 1e6).toFixed(1)}M`;
-  const colSpan = 1 + (has24 ? 1 : 0) + (has25 ? 1 : 0) + (has26 ? 2 : 0);
+  const activeCount = (has24 ? 1 : 0) + (has25 ? 1 : 0) + (has26 ? 1 : 0);
+  const showTotal = activeCount > 1;
+  const colSpan = 1 + (has24 ? 1 : 0) + (has25 ? 1 : 0) + (has26 ? 2 : 0) + (showTotal ? 1 : 0);
 
   const q1BarData = [
     { mes: "Enero", Ingresos: +fmtM(q.enero.rev), Costos: +fmtM(q.enero.costo), Utilidad: +fmtM(q.enero.util) },
@@ -422,16 +478,18 @@ function ResultadosView({ years }: { years: Set<YearKey> }) {
         <table className="w-full text-sm">
           <thead>
             <tr>
-              <th className="text-left text-xs t-muted pb-3 w-[35%]">Concepto</th>
+              <th className="text-left text-xs t-muted pb-3 w-[30%]">Concepto</th>
               {has24 && <th className="text-right text-xs t-muted pb-3">2024 (M Gs)</th>}
               {has25 && <th className="text-right text-xs t-muted pb-3">2025 (M Gs)</th>}
               {has26 && <th className="text-right text-xs t-muted pb-3">Feb-2026 (M Gs)</th>}
               {has26 && <th className="text-right text-xs t-muted pb-3">% Ing.</th>}
+              {showTotal && <th className="text-right text-xs text-orange-400 pb-3 font-bold">Total (M Gs)</th>}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => {
               if (r.divider) return <tr key={i}><td colSpan={colSpan}><hr className="border-gray-700/50 my-1" /></td></tr>;
+              const totalVal = (has24 ? (r.v24 ?? 0) : 0) + (has25 ? (r.v25 ?? 0) : 0) + (has26 ? (r.v26 ?? 0) : 0);
               return (
                 <tr key={i}>
                   <td className={`py-1.5 ${r.bold ? "font-medium t-primary" : "t-secondary pl-3 text-xs"}`}>{r.label}</td>
@@ -439,6 +497,7 @@ function ResultadosView({ years }: { years: Set<YearKey> }) {
                   {has25 && <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v25 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v25 ?? 0)}</td>}
                   {has26 && <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v26 ?? 0) > 0 ? "text-green-400" : (r.v26 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v26 ?? 0)}</td>}
                   {has26 && <td className="py-1.5 text-right text-xs t-muted">{r.pct26 !== undefined ? `${r.pct26.toFixed(1)}%` : ""}</td>}
+                  {showTotal && <td className={`py-1.5 text-right ${r.bold ? "font-bold text-orange-400" : "text-xs text-orange-300/70"}`}>{fmtV(totalVal)}</td>}
                 </tr>
               );
             })}
