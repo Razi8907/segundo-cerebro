@@ -85,16 +85,21 @@ const fmtGs = (v: number) => {
 const fmtM = (v: number) => (v / 1e6).toFixed(1);
 
 type FinView = "resumen" | "balance" | "resultados" | "indicadores" | "eventos";
+type YearKey = 2024 | 2025 | 2026;
 
 export default function FinanzasDashboard({ country }: { country: string }) {
   const [view, setView] = useState<FinView>("resumen");
   const [balYear, setBalYear] = useState<2025 | 2026>(2025);
+  const [selectedYears, setSelectedYears] = useState<Set<YearKey>>(new Set([2024, 2025, 2026]));
 
-  const e = DATA.estadoResultados;
-  const q = DATA.q1_2026;
-  const totalQ1Rev = q.enero.rev + q.febrero.rev + q.marzo.rev;
-  const totalQ1Util = q.enero.util + q.febrero.util + q.marzo.util;
-  const totalQ1Guias = q.enero.guias + q.febrero.guias + q.marzo.guias;
+  const toggleYear = (y: YearKey) => {
+    setSelectedYears((prev) => {
+      const next = new Set(prev);
+      if (next.has(y) && next.size > 1) next.delete(y);
+      else next.add(y);
+      return next;
+    });
+  };
 
   const views: { key: FinView; label: string }[] = [
     { key: "resumen", label: "Resumen" },
@@ -104,23 +109,43 @@ export default function FinanzasDashboard({ country }: { country: string }) {
     { key: "eventos", label: "Eventos & Ops" },
   ];
 
+  const yearButtons: YearKey[] = [2024, 2025, 2026];
+
   return (
     <div className="space-y-6">
-      {/* Sub-navigation */}
-      <div className="flex gap-2 flex-wrap">
-        {views.map((v) => (
-          <button
-            key={v.key}
-            onClick={() => setView(v.key)}
-            className={`text-xs px-4 py-2 rounded-full border transition-all ${
-              view === v.key
-                ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
-                : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
-            }`}
-          >
-            {v.label}
-          </button>
-        ))}
+      {/* Sub-navigation + Year filter */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex gap-2 flex-wrap flex-1">
+          {views.map((v) => (
+            <button
+              key={v.key}
+              onClick={() => setView(v.key)}
+              className={`text-xs px-4 py-2 rounded-full border transition-all ${
+                view === v.key
+                  ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
+                  : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
+              }`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] t-muted uppercase tracking-wider mr-1">Periodo:</span>
+          {yearButtons.map((y) => (
+            <button
+              key={y}
+              onClick={() => toggleYear(y)}
+              className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
+                selectedYears.has(y)
+                  ? "bg-blue-500/20 text-blue-400 border-blue-500/50"
+                  : "bg-transparent t-muted border-gray-700/50 opacity-50 hover:opacity-80"
+              }`}
+            >
+              {y}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Company header */}
@@ -133,19 +158,19 @@ export default function FinanzasDashboard({ country }: { country: string }) {
       </div>
 
       {/* ─── RESUMEN ─── */}
-      {view === "resumen" && <ResumenView />}
+      {view === "resumen" && <ResumenView years={selectedYears} />}
 
       {/* ─── BALANCE ─── */}
       {view === "balance" && <BalanceView balYear={balYear} setBalYear={setBalYear} />}
 
       {/* ─── RESULTADOS ─── */}
-      {view === "resultados" && <ResultadosView />}
+      {view === "resultados" && <ResultadosView years={selectedYears} />}
 
       {/* ─── INDICADORES ─── */}
-      {view === "indicadores" && <IndicadoresView />}
+      {view === "indicadores" && <IndicadoresView years={selectedYears} />}
 
       {/* ─── EVENTOS ─── */}
-      {view === "eventos" && <EventosView />}
+      {view === "eventos" && <EventosView years={selectedYears} />}
     </div>
   );
 }
@@ -153,23 +178,29 @@ export default function FinanzasDashboard({ country }: { country: string }) {
 // ═══════════════════════════════════════
 // RESUMEN
 // ═══════════════════════════════════════
-function ResumenView() {
+function ResumenView({ years }: { years: Set<YearKey> }) {
   const e = DATA.estadoResultados;
   const q = DATA.q1_2026;
+  const has24 = years.has(2024), has25 = years.has(2025), has26 = years.has(2026);
 
-  const kpis = [
-    { label: "Ingresos 2025", value: "Gs 7,778.3M", delta: "+581% vs 2024", positive: true },
-    { label: "Utilidad Bruta 2025", value: "Gs 1,610.0M", delta: "Margen 20.7%", positive: true },
-    { label: "EBIT 2025", value: "Gs 40.6M", delta: "Margen 0.52%", positive: true },
-    { label: "Resultado Neto 2025", value: "-Gs 17.0M", delta: "Dif. cambio -Gs 57.7M", positive: false },
-    { label: "Resultado Feb-2026", value: "Gs 210.9M", delta: "Margen 25.8%", positive: true },
-    { label: "Rent. Operativa Mar-26", value: "27.32%", delta: "vs Ene: 18.67%", positive: true },
+  const allKpis = [
+    { label: "Ingresos 2024", value: "Gs 1,142.0M", delta: "Primer ano operativo", positive: true, year: 2024 as YearKey },
+    { label: "Ingresos 2025", value: "Gs 7,778.3M", delta: "+581% vs 2024", positive: true, year: 2025 as YearKey },
+    { label: "Utilidad Bruta 2025", value: "Gs 1,610.0M", delta: "Margen 20.7%", positive: true, year: 2025 as YearKey },
+    { label: "EBIT 2025", value: "Gs 40.6M", delta: "Margen 0.52%", positive: true, year: 2025 as YearKey },
+    { label: "Resultado Neto 2024", value: "-Gs 12.4M", delta: "Margen -1.08%", positive: false, year: 2024 as YearKey },
+    { label: "Resultado Neto 2025", value: "-Gs 17.0M", delta: "Dif. cambio -Gs 57.7M", positive: false, year: 2025 as YearKey },
+    { label: "Resultado Feb-2026", value: "Gs 210.9M", delta: "Margen 25.8%", positive: true, year: 2026 as YearKey },
+    { label: "Rent. Operativa Mar-26", value: "27.32%", delta: "vs Ene: 18.67%", positive: true, year: 2026 as YearKey },
   ];
+  const kpis = allKpis.filter((k) => years.has(k.year));
 
-  const ingVsCostData = [
+  const ingVsCostAll = [
     { periodo: "2024", Ingresos: +fmtM(e.ing24), Costos: +fmtM(e.cogs24), GOperativos: +fmtM(e.gv24 + e.ga24) },
     { periodo: "2025", Ingresos: +fmtM(e.ing25), Costos: +fmtM(e.cogs25), GOperativos: +fmtM(e.gv25 + e.ga25) },
+    { periodo: "2026 (Feb)", Ingresos: +fmtM(e.ing26), Costos: +fmtM(e.cogs26), GOperativos: +fmtM(e.gv26 + e.ga26) },
   ];
+  const ingVsCostData = ingVsCostAll.filter((_, i) => years.has((([2024, 2025, 2026] as YearKey[])[i])));
 
   const rentData = [
     { mes: "Enero", Rentabilidad: q.enero.rent },
@@ -178,16 +209,18 @@ function ResumenView() {
   ];
 
   const gastosData = [
-    { concepto: "COGS", "2024": +fmtM(e.cogs24), "2025": +fmtM(e.cogs25) },
-    { concepto: "G.Ventas", "2024": +fmtM(e.gv24), "2025": +fmtM(e.gv25) },
-    { concepto: "G.Admin", "2024": +fmtM(e.ga24), "2025": +fmtM(e.ga25) },
-    { concepto: "G.Financiero", "2024": +fmtM(e.gfin24), "2025": +fmtM(e.gfin25) },
+    { concepto: "COGS", ...(has24 ? { "2024": +fmtM(e.cogs24) } : {}), ...(has25 ? { "2025": +fmtM(e.cogs25) } : {}), ...(has26 ? { "2026": +fmtM(e.cogs26) } : {}) },
+    { concepto: "G.Ventas", ...(has24 ? { "2024": +fmtM(e.gv24) } : {}), ...(has25 ? { "2025": +fmtM(e.gv25) } : {}), ...(has26 ? { "2026": +fmtM(e.gv26) } : {}) },
+    { concepto: "G.Admin", ...(has24 ? { "2024": +fmtM(e.ga24) } : {}), ...(has25 ? { "2025": +fmtM(e.ga25) } : {}), ...(has26 ? { "2026": +fmtM(e.ga26) } : {}) },
+    { concepto: "G.Financiero", ...(has24 ? { "2024": +fmtM(e.gfin24) } : {}), ...(has25 ? { "2025": +fmtM(e.gfin25) } : {}), ...(has26 ? { "2026": 0 } : {}) },
   ];
+
+  const activeYearLabels = [has24 && "2024", has25 && "2025", has26 && "2026"].filter(Boolean).join(" vs ");
 
   return (
     <>
       {/* KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className={`grid grid-cols-2 sm:grid-cols-3 ${kpis.length > 4 ? "lg:grid-cols-4" : "lg:grid-cols-" + kpis.length} gap-3`}>
         {kpis.map((k) => (
           <div key={k.label} className="glass-card p-4">
             <p className="text-[10px] t-muted uppercase tracking-wider">{k.label}</p>
@@ -201,7 +234,7 @@ function ResumenView() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="glass-card p-6">
           <h3 className="text-sm font-semibold t-primary mb-1">Ingresos vs Costos — Anual (M Gs)</h3>
-          <p className="text-xs t-muted mb-4">Comparativa 2024 vs 2025</p>
+          <p className="text-xs t-muted mb-4">Comparativa {activeYearLabels}</p>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={ingVsCostData} barGap={4}>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
@@ -216,25 +249,27 @@ function ResumenView() {
           </ResponsiveContainer>
         </div>
 
-        <div className="glass-card p-6">
-          <h3 className="text-sm font-semibold t-primary mb-1">Rentabilidad operativa Q1-2026 (%)</h3>
-          <p className="text-xs t-muted mb-4">Tendencia mensual Ene-Mar</p>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={rentData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-              <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 12 }} />
-              <YAxis domain={[10, 32]} tick={{ fill: "#9ca3af", fontSize: 12 }} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
-              <Line type="monotone" dataKey="Rentabilidad" stroke="#F97316" strokeWidth={3} dot={{ r: 6, fill: "#F97316", stroke: "#fff", strokeWidth: 2 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        {has26 && (
+          <div className="glass-card p-6">
+            <h3 className="text-sm font-semibold t-primary mb-1">Rentabilidad operativa Q1-2026 (%)</h3>
+            <p className="text-xs t-muted mb-4">Tendencia mensual Ene-Mar</p>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={rentData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+                <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 12 }} />
+                <YAxis domain={[10, 32]} tick={{ fill: "#9ca3af", fontSize: 12 }} tickFormatter={(v) => `${v}%`} />
+                <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
+                <Line type="monotone" dataKey="Rentabilidad" stroke="#F97316" strokeWidth={3} dot={{ r: 6, fill: "#F97316", stroke: "#fff", strokeWidth: 2 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* Gastos */}
       <div className="glass-card p-6">
         <h3 className="text-sm font-semibold t-primary mb-1">Composicion de gastos (M Gs)</h3>
-        <p className="text-xs t-muted mb-4">Comparativa 2024 vs 2025</p>
+        <p className="text-xs t-muted mb-4">Comparativa {activeYearLabels}</p>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={gastosData} barGap={4}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
@@ -242,8 +277,9 @@ function ResumenView() {
             <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}M`} />
             <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="2024" fill="#60A5FA" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="2025" fill="#F97316" radius={[4, 4, 0, 0]} />
+            {has24 && <Bar dataKey="2024" fill="#60A5FA" radius={[4, 4, 0, 0]} />}
+            {has25 && <Bar dataKey="2025" fill="#F97316" radius={[4, 4, 0, 0]} />}
+            {has26 && <Bar dataKey="2026" fill="#10B981" radius={[4, 4, 0, 0]} />}
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -342,9 +378,10 @@ function BalanceTable({ rows }: { rows: Array<{ label?: string; value?: number; 
 // ═══════════════════════════════════════
 // RESULTADOS
 // ═══════════════════════════════════════
-function ResultadosView() {
+function ResultadosView({ years }: { years: Set<YearKey> }) {
   const e = DATA.estadoResultados;
   const q = DATA.q1_2026;
+  const has24 = years.has(2024), has25 = years.has(2025), has26 = years.has(2026);
 
   const rows: Array<{ label?: string; v24?: number; v25?: number; v26?: number; pct26?: number; bold?: boolean; divider?: boolean }> = [
     { label: "Ingresos operativos", v24: e.ing24, v25: e.ing25, v26: e.ing26, bold: true, pct26: 100 },
@@ -362,6 +399,7 @@ function ResultadosView() {
   ];
 
   const fmtV = (v: number) => v === 0 ? "—" : `${v < 0 ? "-" : ""}Gs ${Math.abs(v / 1e6).toFixed(1)}M`;
+  const colSpan = 1 + (has24 ? 1 : 0) + (has25 ? 1 : 0) + (has26 ? 2 : 0);
 
   const q1BarData = [
     { mes: "Enero", Ingresos: +fmtM(q.enero.rev), Costos: +fmtM(q.enero.costo), Utilidad: +fmtM(q.enero.util) },
@@ -369,11 +407,12 @@ function ResultadosView() {
     { mes: "Marzo", Ingresos: +fmtM(q.marzo.rev), Costos: +fmtM(q.marzo.costo), Utilidad: +fmtM(q.marzo.util) },
   ];
 
-  const margenData = [
+  const allMargen = [
     { periodo: "2024", Margen: +(e.ub24 / e.ing24 * 100).toFixed(1) },
     { periodo: "2025", Margen: +(e.ub25 / e.ing25 * 100).toFixed(1) },
     { periodo: "Feb-2026", Margen: +(e.ub26 / e.ing26 * 100).toFixed(1) },
   ];
+  const margenData = allMargen.filter((_, i) => years.has(([2024, 2025, 2026] as YearKey[])[i]));
 
   return (
     <>
@@ -384,22 +423,22 @@ function ResultadosView() {
           <thead>
             <tr>
               <th className="text-left text-xs t-muted pb-3 w-[35%]">Concepto</th>
-              <th className="text-right text-xs t-muted pb-3">2024 (M Gs)</th>
-              <th className="text-right text-xs t-muted pb-3">2025 (M Gs)</th>
-              <th className="text-right text-xs t-muted pb-3">Feb-2026 (M Gs)</th>
-              <th className="text-right text-xs t-muted pb-3">% Ing.</th>
+              {has24 && <th className="text-right text-xs t-muted pb-3">2024 (M Gs)</th>}
+              {has25 && <th className="text-right text-xs t-muted pb-3">2025 (M Gs)</th>}
+              {has26 && <th className="text-right text-xs t-muted pb-3">Feb-2026 (M Gs)</th>}
+              {has26 && <th className="text-right text-xs t-muted pb-3">% Ing.</th>}
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => {
-              if (r.divider) return <tr key={i}><td colSpan={5}><hr className="border-gray-700/50 my-1" /></td></tr>;
+              if (r.divider) return <tr key={i}><td colSpan={colSpan}><hr className="border-gray-700/50 my-1" /></td></tr>;
               return (
                 <tr key={i}>
                   <td className={`py-1.5 ${r.bold ? "font-medium t-primary" : "t-secondary pl-3 text-xs"}`}>{r.label}</td>
-                  <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v24 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v24 ?? 0)}</td>
-                  <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v25 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v25 ?? 0)}</td>
-                  <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v26 ?? 0) > 0 ? "text-green-400" : (r.v26 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v26 ?? 0)}</td>
-                  <td className="py-1.5 text-right text-xs t-muted">{r.pct26 !== undefined ? `${r.pct26.toFixed(1)}%` : ""}</td>
+                  {has24 && <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v24 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v24 ?? 0)}</td>}
+                  {has25 && <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v25 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v25 ?? 0)}</td>}
+                  {has26 && <td className={`py-1.5 text-right ${r.bold ? "font-medium t-primary" : "text-xs t-secondary"} ${(r.v26 ?? 0) > 0 ? "text-green-400" : (r.v26 ?? 0) < 0 ? "text-red-400" : ""}`}>{fmtV(r.v26 ?? 0)}</td>}
+                  {has26 && <td className="py-1.5 text-right text-xs t-muted">{r.pct26 !== undefined ? `${r.pct26.toFixed(1)}%` : ""}</td>}
                 </tr>
               );
             })}
@@ -409,22 +448,24 @@ function ResultadosView() {
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="glass-card p-6">
-          <h3 className="text-sm font-semibold t-primary mb-1">Ingresos mensuales Q1-2026 (M Gs)</h3>
-          <p className="text-xs t-muted mb-4">Desglose por mes</p>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={q1BarData} barGap={4}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-              <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 11 }} />
-              <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}M`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="Ingresos" fill="#F97316" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Costos" fill="#F4C06B" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="Utilidad" fill="#10B981" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {has26 && (
+          <div className="glass-card p-6">
+            <h3 className="text-sm font-semibold t-primary mb-1">Ingresos mensuales Q1-2026 (M Gs)</h3>
+            <p className="text-xs t-muted mb-4">Desglose por mes</p>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={q1BarData} barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+                <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+                <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}M`} />
+                <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="Ingresos" fill="#F97316" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Costos" fill="#F4C06B" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Utilidad" fill="#10B981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
         <div className="glass-card p-6">
           <h3 className="text-sm font-semibold t-primary mb-1">Margen bruto comparativo (%)</h3>
@@ -435,12 +476,7 @@ function ResultadosView() {
               <XAxis dataKey="periodo" tick={{ fill: "#9ca3af", fontSize: 11 }} />
               <YAxis domain={[0, 40]} tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
               <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
-              <Bar dataKey="Margen" radius={[4, 4, 0, 0]}>
-                {margenData.map((_, i) => {
-                  const colors = ["#60A5FA", "#F97316", "#10B981"];
-                  return <rect key={i} fill={colors[i]} />;
-                })}
-              </Bar>
+              <Bar dataKey="Margen" fill="#F97316" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -452,28 +488,32 @@ function ResultadosView() {
 // ═══════════════════════════════════════
 // INDICADORES
 // ═══════════════════════════════════════
-function IndicadoresView() {
+function IndicadoresView({ years }: { years: Set<YearKey> }) {
   const e = DATA.estadoResultados;
   const b25 = DATA.balance2025;
   const b26 = DATA.balance2026;
   const ta25 = b25.actCorr + b25.actNoCurr;
   const ta26 = b26.actCorr + b26.actNoCurr;
   const deExAft = ((b25.pasCorr - b25.aft) / b25.patrimonio).toFixed(2);
+  const has24 = years.has(2024), has25 = years.has(2025), has26 = years.has(2026);
 
-  const indicators = [
-    { name: "EBITDA 2025", value: "Gs 40.6M", desc: "Utilidad antes de intereses, impuestos, D&A. D&A minima (equipos Gs 3.4M).", pct: 40, ok: true },
-    { name: "EBIT 2025", value: "Gs 40.6M / 0.52%", desc: "Beneficio operativo. Los gastos financieros (-Gs 57.7M, dif. cambio) generaron la perdida neta.", pct: 30, ok: true },
-    { name: "Liquidez Corriente 2025", value: `${(b25.actCorr / b25.pasCorr).toFixed(3)}x`, desc: "Activo cte / Pasivo cte. Resultado > 1 indica capacidad de cubrir deudas CP.", pct: Math.min((b25.actCorr / b25.pasCorr) / 2 * 100, 100), ok: true },
-    { name: "Liquidez Corriente Feb-2026", value: `${(b26.actCorr / b26.pasCorr).toFixed(3)}x`, desc: "Mejora respecto a 2025. Activo cte crecio mas que pasivo cte.", pct: Math.min((b26.actCorr / b26.pasCorr) / 2 * 100, 100), ok: true },
-    { name: "Margen Neto 2025", value: `${(e.net25 / e.ing25 * 100).toFixed(2)}%`, desc: "Negativo por perdida de cambio Gs 57.7M. Sin ese efecto: positivo.", pct: 0, ok: false },
-    { name: "Margen Neto Feb-2026", value: "25.77%", desc: "Gs 210.9M utilidad sobre Gs 818M ingresos. Recuperacion muy fuerte.", pct: 74, ok: true },
-    { name: "Ratio Endeudamiento D/E 2025", value: `${(b25.pasCorr / b25.patrimonio).toFixed(2)}x`, desc: `Alta por AFT (fondos de terceros). Ex-AFT: ${deExAft}x.`, pct: 80, ok: false },
-    { name: "ROE 2025", value: `${(e.net25 / b25.patrimonio * 100).toFixed(2)}%`, desc: "Negativo por perdida neta. Sin dif. cambio hubiera sido +6.3%.", pct: 0, ok: false },
-    { name: "ROE Feb-2026", value: `${(b26.resEjercicio! / b26.patrimonio * 100).toFixed(1)}%`, desc: "Fuerte recuperacion del capital.", pct: 50, ok: true },
-    { name: "ROA 2025", value: `${(e.net25 / ta25 * 100).toFixed(2)}%`, desc: "Negativo por perdida cambiaria. Activos son principalmente creditos de intermediacion.", pct: 0, ok: false },
-    { name: "ROA Feb-2026", value: `${(b26.resEjercicio! / ta26 * 100).toFixed(2)}%`, desc: "Eficiencia en uso de activos. Mejora significativa.", pct: 45, ok: true },
-    { name: "Flujo Caja Operativo (FCO)", value: "~Gs 40.6M", desc: "Estimado: EBIT + D&A (2025). AFT son flujo de terceros, no operativo propio.", pct: 25, ok: true },
+  const allIndicators = [
+    { name: "EBITDA 2025", value: "Gs 40.6M", desc: "Utilidad antes de intereses, impuestos, D&A. D&A minima (equipos Gs 3.4M).", pct: 40, ok: true, year: 2025 as YearKey },
+    { name: "EBIT 2025", value: "Gs 40.6M / 0.52%", desc: "Beneficio operativo. Los gastos financieros (-Gs 57.7M, dif. cambio) generaron la perdida neta.", pct: 30, ok: true, year: 2025 as YearKey },
+    { name: "Margen Bruto 2024", value: `${(e.ub24 / e.ing24 * 100).toFixed(2)}%`, desc: "Utilidad bruta sobre ingresos. Primer ano operativo.", pct: 18, ok: true, year: 2024 as YearKey },
+    { name: "Liquidez Corriente 2025", value: `${(b25.actCorr / b25.pasCorr).toFixed(3)}x`, desc: "Activo cte / Pasivo cte. Resultado > 1 indica capacidad de cubrir deudas CP.", pct: Math.min((b25.actCorr / b25.pasCorr) / 2 * 100, 100), ok: true, year: 2025 as YearKey },
+    { name: "Liquidez Corriente Feb-2026", value: `${(b26.actCorr / b26.pasCorr).toFixed(3)}x`, desc: "Mejora respecto a 2025. Activo cte crecio mas que pasivo cte.", pct: Math.min((b26.actCorr / b26.pasCorr) / 2 * 100, 100), ok: true, year: 2026 as YearKey },
+    { name: "Margen Neto 2024", value: `${(e.net24 / e.ing24 * 100).toFixed(2)}%`, desc: "Negativo en primer ano. Fase de crecimiento.", pct: 0, ok: false, year: 2024 as YearKey },
+    { name: "Margen Neto 2025", value: `${(e.net25 / e.ing25 * 100).toFixed(2)}%`, desc: "Negativo por perdida de cambio Gs 57.7M. Sin ese efecto: positivo.", pct: 0, ok: false, year: 2025 as YearKey },
+    { name: "Margen Neto Feb-2026", value: "25.77%", desc: "Gs 210.9M utilidad sobre Gs 818M ingresos. Recuperacion muy fuerte.", pct: 74, ok: true, year: 2026 as YearKey },
+    { name: "Ratio Endeudamiento D/E 2025", value: `${(b25.pasCorr / b25.patrimonio).toFixed(2)}x`, desc: `Alta por AFT (fondos de terceros). Ex-AFT: ${deExAft}x.`, pct: 80, ok: false, year: 2025 as YearKey },
+    { name: "ROE 2025", value: `${(e.net25 / b25.patrimonio * 100).toFixed(2)}%`, desc: "Negativo por perdida neta. Sin dif. cambio hubiera sido +6.3%.", pct: 0, ok: false, year: 2025 as YearKey },
+    { name: "ROE Feb-2026", value: `${(b26.resEjercicio! / b26.patrimonio * 100).toFixed(1)}%`, desc: "Fuerte recuperacion del capital.", pct: 50, ok: true, year: 2026 as YearKey },
+    { name: "ROA 2025", value: `${(e.net25 / ta25 * 100).toFixed(2)}%`, desc: "Negativo por perdida cambiaria. Activos son principalmente creditos de intermediacion.", pct: 0, ok: false, year: 2025 as YearKey },
+    { name: "ROA Feb-2026", value: `${(b26.resEjercicio! / ta26 * 100).toFixed(2)}%`, desc: "Eficiencia en uso de activos. Mejora significativa.", pct: 45, ok: true, year: 2026 as YearKey },
+    { name: "Flujo Caja Operativo (FCO)", value: "~Gs 40.6M", desc: "Estimado: EBIT + D&A (2025). AFT son flujo de terceros, no operativo propio.", pct: 25, ok: true, year: 2025 as YearKey },
   ];
+  const indicators = allIndicators.filter((ind) => years.has(ind.year));
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -494,14 +534,16 @@ function IndicadoresView() {
 // ═══════════════════════════════════════
 // EVENTOS & OPS
 // ═══════════════════════════════════════
-function EventosView() {
+function EventosView({ years }: { years: Set<YearKey> }) {
   const e = DATA.estadoResultados;
   const q = DATA.q1_2026;
+  const has24 = years.has(2024), has25 = years.has(2025), has26 = years.has(2026);
 
-  const evVsIngData = [
+  const allEvVsIng = [
     { periodo: "2024", Eventos: +(e.ev24 / 1e6).toFixed(1), Ingresos: +(e.ing24 / 1e6).toFixed(1) },
     { periodo: "2025", Eventos: +(e.ev25 / 1e6).toFixed(1), Ingresos: +(e.ing25 / 1e6).toFixed(1) },
   ];
+  const evVsIngData = allEvVsIng.filter((_, i) => years.has(([2024, 2025] as YearKey[])[i]));
 
   const margenOpData = [
     { mes: "Enero", Rentabilidad: q.enero.rent },
@@ -509,49 +551,54 @@ function EventosView() {
     { mes: "Marzo", Rentabilidad: q.marzo.rent },
   ];
 
-  const evKpis = [
-    { label: "ROI Eventos 2025", value: "53.5x", desc: "Gs 53.5 de ingreso por cada Gs invertido", positive: true },
-    { label: "ROI Eventos 2024", value: "40.3x", desc: "Mejora del 32.8% en eficiencia", positive: true },
-    { label: "Crecimiento ingresos", value: "+581%", desc: "2024 a 2025: Gs 1,142M a Gs 7,778M", positive: true },
-    { label: "Mejora margen Q1-2026", value: "+8.65pp", desc: "Enero 18.67% a Marzo 27.32%", positive: true },
-    { label: "Guias Q1-2026", value: "61,166", desc: "Crecimiento operativo sostenido", positive: true },
-    { label: "Utilidad operativa Q1-2026", value: "Gs 505.7M", desc: "Margen 23.20% promedio", positive: true },
+  const allEvKpis = [
+    { label: "ROI Eventos 2024", value: "40.3x", desc: "Gs 40.3 de ingreso por cada Gs invertido", positive: true, year: 2024 as YearKey },
+    { label: "ROI Eventos 2025", value: "53.5x", desc: "Gs 53.5 de ingreso por cada Gs invertido", positive: true, year: 2025 as YearKey },
+    { label: "Crecimiento ingresos", value: "+581%", desc: "2024 a 2025: Gs 1,142M a Gs 7,778M", positive: true, year: 2025 as YearKey },
+    { label: "Mejora margen Q1-2026", value: "+8.65pp", desc: "Enero 18.67% a Marzo 27.32%", positive: true, year: 2026 as YearKey },
+    { label: "Guias Q1-2026", value: "61,166", desc: "Crecimiento operativo sostenido", positive: true, year: 2026 as YearKey },
+    { label: "Utilidad operativa Q1-2026", value: "Gs 505.7M", desc: "Margen 23.20% promedio", positive: true, year: 2026 as YearKey },
   ];
+  const evKpis = allEvKpis.filter((k) => years.has(k.year));
 
   return (
     <>
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="glass-card p-6">
-          <h3 className="text-sm font-semibold t-primary mb-1">Inversion en eventos vs crecimiento de ingresos</h3>
-          <p className="text-xs t-muted mb-4">Comparativa anual (M Gs)</p>
-          <ResponsiveContainer width="100%" height={240}>
-            <BarChart data={evVsIngData} barGap={8}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-              <XAxis dataKey="periodo" tick={{ fill: "#9ca3af", fontSize: 12 }} />
-              <YAxis yAxisId="left" tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => `${v}M`} />
-              <YAxis yAxisId="right" orientation="right" tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => `${v}M`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar yAxisId="left" dataKey="Eventos" fill="#F4C06B" radius={[4, 4, 0, 0]} />
-              <Bar yAxisId="right" dataKey="Ingresos" fill="#F97316" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+        {(has24 || has25) && (
+          <div className="glass-card p-6">
+            <h3 className="text-sm font-semibold t-primary mb-1">Inversion en eventos vs crecimiento de ingresos</h3>
+            <p className="text-xs t-muted mb-4">Comparativa anual (M Gs)</p>
+            <ResponsiveContainer width="100%" height={240}>
+              <BarChart data={evVsIngData} barGap={8}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+                <XAxis dataKey="periodo" tick={{ fill: "#9ca3af", fontSize: 12 }} />
+                <YAxis yAxisId="left" tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => `${v}M`} />
+                <YAxis yAxisId="right" orientation="right" tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => `${v}M`} />
+                <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar yAxisId="left" dataKey="Eventos" fill="#F4C06B" radius={[4, 4, 0, 0]} />
+                <Bar yAxisId="right" dataKey="Ingresos" fill="#F97316" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
 
-        <div className="glass-card p-6">
-          <h3 className="text-sm font-semibold t-primary mb-1">Margen operativo post-eventos — Q1 2026 (%)</h3>
-          <p className="text-xs t-muted mb-4">Mejora mensual de margen</p>
-          <ResponsiveContainer width="100%" height={240}>
-            <LineChart data={margenOpData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-              <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 12 }} />
-              <YAxis domain={[12, 32]} tick={{ fill: "#9ca3af", fontSize: 12 }} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
-              <Line type="monotone" dataKey="Rentabilidad" stroke="#F97316" strokeWidth={3} dot={{ r: 6, fill: "#F97316", stroke: "#fff", strokeWidth: 2 }} />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+        {has26 && (
+          <div className="glass-card p-6">
+            <h3 className="text-sm font-semibold t-primary mb-1">Margen operativo post-eventos — Q1 2026 (%)</h3>
+            <p className="text-xs t-muted mb-4">Mejora mensual de margen</p>
+            <ResponsiveContainer width="100%" height={240}>
+              <LineChart data={margenOpData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+                <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 12 }} />
+                <YAxis domain={[12, 32]} tick={{ fill: "#9ca3af", fontSize: 12 }} tickFormatter={(v) => `${v}%`} />
+                <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
+                <Line type="monotone" dataKey="Rentabilidad" stroke="#F97316" strokeWidth={3} dot={{ r: 6, fill: "#F97316", stroke: "#fff", strokeWidth: 2 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       {/* Detalle de inversion */}
@@ -565,18 +612,24 @@ function EventosView() {
                 <p className="text-[11px] t-muted">{ev.nota}</p>
               </div>
               <div className="flex gap-4 text-right shrink-0">
-                <div>
-                  <p className="text-[10px] t-muted">2024</p>
-                  <p className="text-xs t-secondary">{ev.v2024 ? `Gs ${(ev.v2024 / 1e6).toFixed(1)}M` : "—"}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] t-muted">2025</p>
-                  <p className="text-xs font-medium t-primary">{ev.v2025 ? `Gs ${(ev.v2025 / 1e6).toFixed(1)}M` : "—"}</p>
-                </div>
-                <div>
-                  <p className="text-[10px] t-muted">Feb-26</p>
-                  <p className="text-xs text-green-400">{ev.v2026 ? `Gs ${(ev.v2026 / 1e6).toFixed(2)}M` : "—"}</p>
-                </div>
+                {has24 && (
+                  <div>
+                    <p className="text-[10px] t-muted">2024</p>
+                    <p className="text-xs t-secondary">{ev.v2024 ? `Gs ${(ev.v2024 / 1e6).toFixed(1)}M` : "—"}</p>
+                  </div>
+                )}
+                {has25 && (
+                  <div>
+                    <p className="text-[10px] t-muted">2025</p>
+                    <p className="text-xs font-medium t-primary">{ev.v2025 ? `Gs ${(ev.v2025 / 1e6).toFixed(1)}M` : "—"}</p>
+                  </div>
+                )}
+                {has26 && (
+                  <div>
+                    <p className="text-[10px] t-muted">Feb-26</p>
+                    <p className="text-xs text-green-400">{ev.v2026 ? `Gs ${(ev.v2026 / 1e6).toFixed(2)}M` : "—"}</p>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -584,15 +637,17 @@ function EventosView() {
       </div>
 
       {/* Event KPIs */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        {evKpis.map((k) => (
-          <div key={k.label} className="glass-card p-4">
-            <p className="text-[10px] t-muted uppercase tracking-wider">{k.label}</p>
-            <p className="text-base font-bold t-primary mt-1">{k.value}</p>
-            <p className={`text-[11px] mt-1 ${k.positive ? "text-green-400" : "text-red-400"}`}>{k.desc}</p>
-          </div>
-        ))}
-      </div>
+      {evKpis.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {evKpis.map((k) => (
+            <div key={k.label} className="glass-card p-4">
+              <p className="text-[10px] t-muted uppercase tracking-wider">{k.label}</p>
+              <p className="text-base font-bold t-primary mt-1">{k.value}</p>
+              <p className={`text-[11px] mt-1 ${k.positive ? "text-green-400" : "text-red-400"}`}>{k.desc}</p>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 }
