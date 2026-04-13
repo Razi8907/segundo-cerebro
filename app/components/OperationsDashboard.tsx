@@ -394,6 +394,10 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState<TabKey>("resumen");
   const [error, setError] = useState("");
+  const [fComercial, setFComercial] = useState("");
+  const [fTransportadora, setFTransportadora] = useState("");
+  const [fDropshipper, setFDropshipper] = useState("");
+  const [fProveedor, setFProveedor] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -525,6 +529,38 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     }
   }, [country, fetchData]);
 
+  /* ───── global filters ───── */
+  const filterOptions = useMemo(() => {
+    const comerciales = new Set<string>();
+    const transportadoras = new Set<string>();
+    const dropshippers = new Set<string>();
+    const proveedores = new Set<string>();
+    for (const r of rows) {
+      if (r.comercial_asignado) comerciales.add(r.comercial_asignado);
+      if (r.transportadora) transportadoras.add(r.transportadora);
+      if (r.dropshipper) dropshippers.add(r.dropshipper);
+      if (r.proveedor_nombre) proveedores.add(r.proveedor_nombre);
+    }
+    return {
+      comerciales: Array.from(comerciales).sort(),
+      transportadoras: Array.from(transportadoras).sort(),
+      dropshippers: Array.from(dropshippers).sort(),
+      proveedores: Array.from(proveedores).sort(),
+    };
+  }, [rows]);
+
+  const filteredRows = useMemo(() => {
+    let result = rows;
+    if (fComercial) result = result.filter((r) => r.comercial_asignado === fComercial);
+    if (fTransportadora) result = result.filter((r) => r.transportadora === fTransportadora);
+    if (fDropshipper) result = result.filter((r) => r.dropshipper === fDropshipper);
+    if (fProveedor) result = result.filter((r) => r.proveedor_nombre === fProveedor);
+    return result;
+  }, [rows, fComercial, fTransportadora, fDropshipper, fProveedor]);
+
+  const hasAnyFilter = fComercial || fTransportadora || fDropshipper || fProveedor;
+  const clearFilters = () => { setFComercial(""); setFTransportadora(""); setFDropshipper(""); setFProveedor(""); };
+
   /* ───── derived data ───── */
   const fechasCarga = useMemo(() => {
     const set = new Set(rows.map((r) => r.fecha_carga));
@@ -540,25 +576,25 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
   // Status counts
   const byStatus = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const r of rows) map[r.estatus] = (map[r.estatus] || 0) + 1;
+    for (const r of filteredRows) map[r.estatus] = (map[r.estatus] || 0) + 1;
     return map;
-  }, [rows]);
+  }, [filteredRows]);
 
   // Transport-specific filters
-  const aexRows = useMemo(() => rows.filter((r) => r.transportadora === "AEX" && STATUS_GROUPS.mov_aex.includes(r.estatus)), [rows]);
-  const fixyRows = useMemo(() => rows.filter((r) => r.transportadora === "FIXY" && STATUS_GROUPS.mov_fixy.includes(r.estatus)), [rows]);
-  const fixyNdRows = useMemo(() => rows.filter((r) => r.transportadora === "FIXY-NEXTDAY" && STATUS_GROUPS.mov_fixy.includes(r.estatus)), [rows]);
-  const noEntregadas = useMemo(() => rows.filter((r) => r.estatus === "NO ENTREGADA"), [rows]);
-  const novedades = useMemo(() => rows.filter((r) => r.estatus === "NOVEDAD"), [rows]);
-  const movProv = useMemo(() => rows.filter((r) => STATUS_GROUPS.mov_proveedor.includes(r.estatus)), [rows]);
-  const movDs = useMemo(() => rows.filter((r) => STATUS_GROUPS.mov_dropshipper.includes(r.estatus)), [rows]);
-  const canceladas = useMemo(() => rows.filter((r) => STATUS_GROUPS.cancelacion.includes(r.estatus)), [rows]);
+  const aexRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "AEX" && STATUS_GROUPS.mov_aex.includes(r.estatus)), [filteredRows]);
+  const fixyRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "FIXY" && STATUS_GROUPS.mov_fixy.includes(r.estatus)), [filteredRows]);
+  const fixyNdRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "FIXY-NEXTDAY" && STATUS_GROUPS.mov_fixy.includes(r.estatus)), [filteredRows]);
+  const noEntregadas = useMemo(() => filteredRows.filter((r) => r.estatus === "NO ENTREGADA"), [filteredRows]);
+  const novedades = useMemo(() => filteredRows.filter((r) => r.estatus === "NOVEDAD"), [filteredRows]);
+  const movProv = useMemo(() => filteredRows.filter((r) => STATUS_GROUPS.mov_proveedor.includes(r.estatus)), [filteredRows]);
+  const movDs = useMemo(() => filteredRows.filter((r) => STATUS_GROUPS.mov_dropshipper.includes(r.estatus)), [filteredRows]);
+  const canceladas = useMemo(() => filteredRows.filter((r) => STATUS_GROUPS.cancelacion.includes(r.estatus)), [filteredRows]);
 
   // Paradas +72hs: guides in transport states where FECHA EN PROCESAMIENTO > 72hs ago
   const paradasRows = useMemo(() => {
     // Use latest upload, deduplicate by guia (keep latest fecha_carga)
-    const guiaMap = new Map<string, typeof rows[0]>();
-    for (const r of rows) {
+    const guiaMap = new Map<string, typeof filteredRows[0]>();
+    for (const r of filteredRows) {
       const existing = guiaMap.get(r.guia);
       if (!existing || r.fecha_carga > existing.fecha_carga) {
         guiaMap.set(r.guia, r);
@@ -576,12 +612,12 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         return { ...r, diasSinCambio: diasDesdeProc, horasTransporte: horas };
       })
       .sort((a, b) => b.horasTransporte - a.horasTransporte);
-  }, [rows]);
+  }, [filteredRows]);
 
   // Alert counts
   const alertCounts = useMemo(() => {
-    const aexAll = rows.filter((r) => r.transportadora === "AEX" && STATUS_GROUPS.mov_aex.includes(r.estatus));
-    const fixyAll = rows.filter((r) =>
+    const aexAll = filteredRows.filter((r) => r.transportadora === "AEX" && STATUS_GROUPS.mov_aex.includes(r.estatus));
+    const fixyAll = filteredRows.filter((r) =>
       (r.transportadora === "FIXY" || r.transportadora === "FIXY-NEXTDAY") && STATUS_GROUPS.mov_fixy.includes(r.estatus)
     );
     const h = (arr: GuideRow[], min: number, max?: number) =>
@@ -595,14 +631,14 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       fixy72: h(fixyAll, 72, 120),
       fixy120: h(fixyAll, 120),
     };
-  }, [rows]);
+  }, [filteredRows]);
 
   // KPI summary counts
   const kpis = useMemo(() => {
-    const entregadas = rows.filter((r) => r.estatus === "ENTREGADO").length;
-    const devolucion = rows.filter((r) => r.estatus === "DEVOLUCION").length;
+    const entregadas = filteredRows.filter((r) => r.estatus === "ENTREGADO").length;
+    const devolucion = filteredRows.filter((r) => r.estatus === "DEVOLUCION").length;
     return {
-      total: rows.length,
+      total: filteredRows.length,
       aexTransito: aexRows.length,
       fixyTransito: fixyRows.length,
       fixyNdTransito: fixyNdRows.length,
@@ -612,7 +648,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       canceladas: canceladas.length,
       entregadas,
     };
-  }, [rows, aexRows, fixyRows, fixyNdRows, noEntregadas, novedades, canceladas]);
+  }, [filteredRows, aexRows, fixyRows, fixyNdRows, noEntregadas, novedades, canceladas]);
 
   /* ───── table column defs ───── */
   const transportColumns = [
@@ -860,6 +896,48 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       </div>
       {error && <p className="text-xs text-red-400">{error}</p>}
 
+      {/* Global filters */}
+      <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg" style={{ background: "var(--bg-page)" }}>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] t-muted uppercase tracking-wider">Usuario</label>
+          <select value={fComercial} onChange={(e) => setFComercial(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary focus:border-orange-500 outline-none min-w-[140px]">
+            <option value="">Todos</option>
+            {filterOptions.comerciales.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] t-muted uppercase tracking-wider">Logistica</label>
+          <select value={fTransportadora} onChange={(e) => setFTransportadora(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary focus:border-orange-500 outline-none min-w-[140px]">
+            <option value="">Todas</option>
+            {filterOptions.transportadoras.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] t-muted uppercase tracking-wider">Dropshipper</label>
+          <select value={fDropshipper} onChange={(e) => setFDropshipper(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary focus:border-orange-500 outline-none min-w-[140px]">
+            <option value="">Todos</option>
+            {filterOptions.dropshippers.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] t-muted uppercase tracking-wider">Proveedor</label>
+          <select value={fProveedor} onChange={(e) => setFProveedor(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary focus:border-orange-500 outline-none min-w-[140px]">
+            <option value="">Todos</option>
+            {filterOptions.proveedores.map((v) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        {hasAnyFilter && (
+          <button onClick={clearFilters} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10 transition-colors">
+            Limpiar filtros
+          </button>
+        )}
+        {hasAnyFilter && (
+          <span className="text-[11px] t-muted ml-auto">
+            Mostrando {filteredRows.length.toLocaleString()} de {rows.length.toLocaleString()} guias
+          </span>
+        )}
+      </div>
+
       {/* Tab bar */}
       <div className="flex flex-wrap gap-0 border-b border-cyan-500/20 -mx-6 px-6 overflow-x-auto">
         {TABS.map((t) => (
@@ -880,7 +958,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {/* ── RESUMEN TAB ── */}
       {tab === "resumen" && (
         <div className="space-y-4">
-          <DownloadBtn onClick={() => downloadCSV("Resumen_Completo", rows, EXPORT_COLUMNS)} label={`Descargar todo (${rows.length} guías)`} />
+          <DownloadBtn onClick={() => downloadCSV("Resumen_Completo", filteredRows, EXPORT_COLUMNS)} label={`Descargar todo (${filteredRows.length} guías)`} />
           {/* KPI cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             <KpiCard label="Total guias" value={kpis.total.toLocaleString()} color="orange" />
