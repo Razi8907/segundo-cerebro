@@ -207,7 +207,7 @@ function ResumenView() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="periodo" tick={{ fill: "#9ca3af", fontSize: 12 }} />
               <YAxis tick={{ fill: "#9ca3af", fontSize: 12 }} tickFormatter={(v) => `${v}M`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v: number) => `${v}M Gs`} />
+              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="Ingresos" fill="#F97316" radius={[4, 4, 0, 0]} />
               <Bar dataKey="Costos" fill="#F4C06B" radius={[4, 4, 0, 0]} />
@@ -224,7 +224,7 @@ function ResumenView() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 12 }} />
               <YAxis domain={[10, 32]} tick={{ fill: "#9ca3af", fontSize: 12 }} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v: number) => `${v}%`} />
+              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
               <Line type="monotone" dataKey="Rentabilidad" stroke="#F97316" strokeWidth={3} dot={{ r: 6, fill: "#F97316", stroke: "#fff", strokeWidth: 2 }} />
             </LineChart>
           </ResponsiveContainer>
@@ -240,7 +240,7 @@ function ResumenView() {
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
             <XAxis dataKey="concepto" tick={{ fill: "#9ca3af", fontSize: 11 }} />
             <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}M`} />
-            <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v: number) => `${v}M Gs`} />
+            <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar dataKey="2024" fill="#60A5FA" radius={[4, 4, 0, 0]} />
             <Bar dataKey="2025" fill="#F97316" radius={[4, 4, 0, 0]} />
@@ -417,7 +417,7 @@ function ResultadosView() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 11 }} />
               <YAxis tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}M`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v: number) => `${v}M Gs`} />
+              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="Ingresos" fill="#F97316" radius={[4, 4, 0, 0]} />
               <Bar dataKey="Costos" fill="#F4C06B" radius={[4, 4, 0, 0]} />
@@ -434,7 +434,7 @@ function ResultadosView() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="periodo" tick={{ fill: "#9ca3af", fontSize: 11 }} />
               <YAxis domain={[0, 40]} tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v: number) => `${v}%`} />
+              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
               <Bar dataKey="Margen" radius={[4, 4, 0, 0]}>
                 {margenData.map((_, i) => {
                   const colors = ["#60A5FA", "#F97316", "#10B981"];
@@ -531,7 +531,7 @@ function EventosView() {
               <XAxis dataKey="periodo" tick={{ fill: "#9ca3af", fontSize: 12 }} />
               <YAxis yAxisId="left" tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => `${v}M`} />
               <YAxis yAxisId="right" orientation="right" tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => `${v}M`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v: number) => `${v}M Gs`} />
+              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}M Gs`} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar yAxisId="left" dataKey="Eventos" fill="#F4C06B" radius={[4, 4, 0, 0]} />
               <Bar yAxisId="right" dataKey="Ingresos" fill="#F97316" radius={[4, 4, 0, 0]} />
@@ -547,7 +547,7 @@ function EventosView() {
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="mes" tick={{ fill: "#9ca3af", fontSize: 12 }} />
               <YAxis domain={[12, 32]} tick={{ fill: "#9ca3af", fontSize: 12 }} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v: number) => `${v}%`} />
+              <Tooltip contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(249,115,22,0.3)", borderRadius: "12px" }} formatter={(v) => `${v}%`} />
               <Line type="monotone" dataKey="Rentabilidad" stroke="#F97316" strokeWidth={3} dot={{ r: 6, fill: "#F97316", stroke: "#fff", strokeWidth: 2 }} />
             </LineChart>
           </ResponsiveContainer>
