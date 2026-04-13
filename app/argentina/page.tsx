@@ -19,6 +19,8 @@ import DropshipperManager from "../components/DropshipperManager";
 import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
+import OperationsDashboard from "../components/OperationsDashboard";
+import FinanzasDashboard from "../components/FinanzasDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
 import type { MesFilter } from "../types";
@@ -195,19 +197,11 @@ export default function ArgentinaDashboard() {
         </>}
 
         {sector === "operaciones" && (
-          <div className="glass-card p-8 text-center">
-            <span className="text-4xl mb-4 block">🏭</span>
-            <h2 className="text-xl font-bold t-primary mb-2">Operaciones</h2>
-            <p className="t-secondary text-sm">Sección en construcción. Subí la información de operaciones para activar el dashboard.</p>
-          </div>
+          <OperationsDashboard country="ar" />
         )}
 
         {sector === "finanzas" && (
-          <div className="glass-card p-8 text-center">
-            <span className="text-4xl mb-4 block">💰</span>
-            <h2 className="text-xl font-bold t-primary mb-2">Finanzas</h2>
-            <p className="t-secondary text-sm">Sección en construcción. Subí la información financiera para activar el dashboard.</p>
-          </div>
+          <FinanzasDashboard country="ar" />
         )}
 
         <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
