@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Tell Tailwind v4 that dark mode is activated via the .dark class on <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* ── Light theme (default — Dropi identity: white + orange) ── */
 :root {
   --dropi-orange: #F97316;
