@@ -434,6 +434,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   const [fProveedor, setFProveedor] = useState("");
   const [fDropshipper, setFDropshipper] = useState("");
   const [fTransportadora, setFTransportadora] = useState("");
+  const [recLogistic, setRecLogistic] = useState("");
 
   useEffect(() => {
     fetch(`/api/data/operational?country=${country}`)
@@ -638,6 +639,41 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
 
     return results.sort((a, b) => b.totalCity - a.totalCity);
   }, [rawRows, fProveedor, fDropshipper]);
+
+  // Cities performance for a specific logistic (when user selects one in recommendation filter)
+  const citiesByLogistic = useMemo(() => {
+    if (!recLogistic || rawRows.length === 0) return [];
+    let filtered = rawRows.filter((r) => r.transportadora === recLogistic);
+    if (fProveedor) filtered = filtered.filter((r) => r.proveedor === fProveedor);
+    if (fDropshipper) filtered = filtered.filter((r) => r.dropshipper === fDropshipper);
+    const ENTREGA = ["ENTREGADO"];
+    const DEV = ["DEVOLUCION", "EN PROCESO DE DEVOLUCION", "RECHAZADO", "REINGRESO A BODEGA"];
+
+    const byCity = new Map<string, { ciudad: string; dept: string; total: number; entregado: number; devuelto: number; fletes: number[] }>();
+    for (const r of filtered) {
+      if (!r.ciudad) continue;
+      if (r.estatus === "CANCELADO") continue;
+      const key = `${r.ciudad}|${r.departamento}`;
+      let b = byCity.get(key);
+      if (!b) { b = { ciudad: r.ciudad, dept: r.departamento, total: 0, entregado: 0, devuelto: 0, fletes: [] }; byCity.set(key, b); }
+      b.total++;
+      if (ENTREGA.includes(r.estatus)) b.entregado++;
+      if (DEV.includes(r.estatus)) b.devuelto++;
+      if (r.precioFlete > 0) b.fletes.push(r.precioFlete);
+    }
+    return Array.from(byCity.values())
+      .filter((c) => c.total >= 3)
+      .map((c) => ({
+        ciudad: c.ciudad,
+        dept: c.dept,
+        total: c.total,
+        pctEntrega: (c.entregado / c.total) * 100,
+        pctDev: (c.devuelto / c.total) * 100,
+        fletePromedio: c.fletes.length > 0 ? Math.round(c.fletes.reduce((a, b) => a + b, 0) / c.fletes.length) : 0,
+        score: (c.entregado / c.total) * 100 - (c.devuelto / c.total) * 100 * 0.5,
+      }))
+      .sort((a, b) => b.score - a.score);
+  }, [recLogistic, rawRows, fProveedor, fDropshipper]);
 
   const countryLabel = country === "py" ? "Paraguay" : "Argentina";
 
@@ -1461,52 +1497,147 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
               <p className="text-xs t-secondary mb-3">
                 Mejor transportadora por ciudad segun tasa de entrega y devolucion (score = %entrega − %devolucion×0.5). Min 5 guias por ciudad, 3 por transportadora.
               </p>
+
+              {/* Filter by logistic */}
+              <div className="flex flex-wrap items-end gap-3 mb-4 p-3 rounded-lg border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] t-muted uppercase tracking-wider">Ver por logistica</label>
+                  <select
+                    value={recLogistic}
+                    onChange={(e) => setRecLogistic(e.target.value)}
+                    className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[180px]"
+                    style={{ background: "var(--bg-input)" }}
+                  >
+                    <option value="">Todas (modo recomendacion)</option>
+                    {globalFilterOptions.transportadoras.map((v) => <option key={v} value={v}>{v}</option>)}
+                  </select>
+                </div>
+                {recLogistic && (
+                  <button
+                    onClick={() => setRecLogistic("")}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10"
+                  >
+                    Limpiar
+                  </button>
+                )}
+                {recLogistic && (
+                  <span className="text-[11px] t-muted ml-auto">
+                    {citiesByLogistic.length} ciudades con {recLogistic}
+                  </span>
+                )}
+              </div>
+
+              {/* Chart for selected logistic */}
+              {recLogistic && citiesByLogistic.length > 0 && (
+                <div className="mb-4 p-4 rounded-xl border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
+                  <h4 className="text-xs font-bold t-primary mb-3">📊 Performance de {recLogistic} por Ciudad (Top 15)</h4>
+                  <ResponsiveContainer width="100%" height={Math.min(citiesByLogistic.length * 30, 450)}>
+                    <BarChart data={citiesByLogistic.slice(0, 15)} layout="vertical" margin={{ left: 80, right: 20, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" />
+                      <XAxis type="number" domain={[0, 100]} tick={TICK_STYLE} tickFormatter={(v) => `${v}%`} />
+                      <YAxis dataKey="ciudad" type="category" tick={TICK_STYLE_SM} width={110} />
+                      <Tooltip
+                        contentStyle={TOOLTIP_STYLE}
+                        formatter={(value: any, name: string) => [`${Number(value).toFixed(1)}%`, name === "pctEntrega" ? "Entrega" : "Devolucion"]}
+                      />
+                      <Bar dataKey="pctEntrega" name="pctEntrega" fill="#16a34a" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="pctDev" name="pctDev" fill="#dc2626" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="flex gap-4 mt-2 text-[10px] t-muted">
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-500" />% Entrega</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" />% Devolucion</span>
+                  </div>
+                </div>
+              )}
               <div className="table-container overflow-x-auto max-h-[450px] overflow-y-auto">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
-                    <tr className="border-b-2 border-orange-500/30">
-                      <th className="text-left py-2 px-2 t-primary font-bold">Ciudad</th>
-                      <th className="text-left py-2 px-2 t-primary font-bold">Departamento</th>
-                      <th className="text-right py-2 px-2 t-primary font-bold">Guias</th>
-                      <th className="text-left py-2 px-2 t-primary font-bold">Recomendada</th>
-                      <th className="text-right py-2 px-2 t-primary font-bold">%Entrega</th>
-                      <th className="text-right py-2 px-2 t-primary font-bold">%Devol.</th>
-                      <th className="text-right py-2 px-2 t-primary font-bold">Flete Prom.</th>
-                      <th className="text-left py-2 px-2 t-primary font-bold">Alternativas</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {cityLogisticsRecommendation.map((c) => (
-                      <tr key={`${c.ciudad}-${c.dept}`} className="border-b border-gray-800/20 hover:bg-orange-500/5">
-                        <td className="py-2 px-2 t-primary font-medium">{c.ciudad}</td>
-                        <td className="py-2 px-2 t-secondary">{c.dept}</td>
-                        <td className="py-2 px-2 text-right t-secondary">{c.totalCity}</td>
-                        <td className="py-2 px-2">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 font-bold text-[11px]">
-                            ⭐ {c.best?.trans}
-                          </span>
-                          <span className="t-muted text-[10px] ml-1">({c.best?.total})</span>
-                        </td>
-                        <td className="py-2 px-2 text-right font-bold text-green-600">{c.best?.pctEntrega.toFixed(1)}%</td>
-                        <td className="py-2 px-2 text-right font-bold text-red-600">{c.best?.pctDev.toFixed(1)}%</td>
-                        <td className="py-2 px-2 text-right text-orange-600">${c.best?.fletePromedio.toLocaleString()}</td>
-                        <td className="py-2 px-2">
-                          {c.alternatives.length === 0 ? (
-                            <span className="t-muted text-[10px]">—</span>
-                          ) : (
-                            <div className="flex flex-wrap gap-1">
-                              {c.alternatives.slice(0, 3).map((a) => (
-                                <span key={a.trans} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/10 t-secondary" title={`Flete prom. $${a.fletePromedio.toLocaleString()}`}>
-                                  {a.trans}: {a.pctEntrega.toFixed(0)}% entrega / {a.pctDev.toFixed(0)}% dev ({a.total})
-                                </span>
-                              ))}
-                            </div>
-                          )}
-                        </td>
+                {recLogistic ? (
+                  // Filtered by logistic: show top cities for this logistic
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
+                      <tr className="border-b-2 border-orange-500/30">
+                        <th className="text-left py-2 px-2 t-primary font-bold">#</th>
+                        <th className="text-left py-2 px-2 t-primary font-bold">Ciudad</th>
+                        <th className="text-left py-2 px-2 t-primary font-bold">Departamento</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">Guias</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">%Entrega</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">%Devol.</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">Flete Prom.</th>
+                        <th className="text-left py-2 px-2 t-primary font-bold">Recomendacion</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {citiesByLogistic.map((c, i) => {
+                        // Check if this logistic is the best for this city
+                        const cityRec = cityLogisticsRecommendation.find((r) => r.ciudad === c.ciudad && r.dept === c.dept);
+                        const isRecommended = cityRec?.best?.trans === recLogistic;
+                        const statusLabel = isRecommended ? "✓ Recomendada" : c.pctEntrega >= 50 ? "⚠ Aceptable" : "✗ Baja entrega";
+                        const statusColor = isRecommended ? "text-green-600 bg-green-500/15" : c.pctEntrega >= 50 ? "text-yellow-600 bg-yellow-500/15" : "text-red-600 bg-red-500/15";
+                        return (
+                          <tr key={`${c.ciudad}-${c.dept}`} className="border-b border-gray-800/20 hover:bg-orange-500/5">
+                            <td className="py-2 px-2 t-muted">{i + 1}</td>
+                            <td className="py-2 px-2 t-primary font-medium">{c.ciudad}</td>
+                            <td className="py-2 px-2 t-secondary">{c.dept}</td>
+                            <td className="py-2 px-2 text-right t-secondary">{c.total}</td>
+                            <td className="py-2 px-2 text-right font-bold text-green-600">{c.pctEntrega.toFixed(1)}%</td>
+                            <td className="py-2 px-2 text-right font-bold text-red-600">{c.pctDev.toFixed(1)}%</td>
+                            <td className="py-2 px-2 text-right text-orange-600">${c.fletePromedio.toLocaleString()}</td>
+                            <td className="py-2 px-2">
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${statusColor}`}>{statusLabel}</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  // Default mode: show best recommendation per city
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
+                      <tr className="border-b-2 border-orange-500/30">
+                        <th className="text-left py-2 px-2 t-primary font-bold">Ciudad</th>
+                        <th className="text-left py-2 px-2 t-primary font-bold">Departamento</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">Guias</th>
+                        <th className="text-left py-2 px-2 t-primary font-bold">Recomendada</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">%Entrega</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">%Devol.</th>
+                        <th className="text-right py-2 px-2 t-primary font-bold">Flete Prom.</th>
+                        <th className="text-left py-2 px-2 t-primary font-bold">Alternativas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cityLogisticsRecommendation.map((c) => (
+                        <tr key={`${c.ciudad}-${c.dept}`} className="border-b border-gray-800/20 hover:bg-orange-500/5">
+                          <td className="py-2 px-2 t-primary font-medium">{c.ciudad}</td>
+                          <td className="py-2 px-2 t-secondary">{c.dept}</td>
+                          <td className="py-2 px-2 text-right t-secondary">{c.totalCity}</td>
+                          <td className="py-2 px-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 font-bold text-[11px]">
+                              ⭐ {c.best?.trans}
+                            </span>
+                            <span className="t-muted text-[10px] ml-1">({c.best?.total})</span>
+                          </td>
+                          <td className="py-2 px-2 text-right font-bold text-green-600">{c.best?.pctEntrega.toFixed(1)}%</td>
+                          <td className="py-2 px-2 text-right font-bold text-red-600">{c.best?.pctDev.toFixed(1)}%</td>
+                          <td className="py-2 px-2 text-right text-orange-600">${c.best?.fletePromedio.toLocaleString()}</td>
+                          <td className="py-2 px-2">
+                            {c.alternatives.length === 0 ? (
+                              <span className="t-muted text-[10px]">—</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-1">
+                                {c.alternatives.slice(0, 3).map((a) => (
+                                  <span key={a.trans} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/10 t-secondary" title={`Flete prom. $${a.fletePromedio.toLocaleString()}`}>
+                                    {a.trans}: {a.pctEntrega.toFixed(0)}% entrega / {a.pctDev.toFixed(0)}% dev ({a.total})
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
               </div>
             </div>
           )}
