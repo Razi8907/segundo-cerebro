@@ -80,7 +80,7 @@ export default function DailyTracker({
 
   const STORAGE_KEY = `segundo-cerebro-abril-${country}`;
 
-  // Abril tracking state — initialize from localStorage, fallback to JSON data
+  // Abril tracking state — hydrated from DB (with localStorage fallback + JSON fallback)
   const [abrilData, setAbrilData] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>(
     () => {
       if (typeof window !== "undefined") {
@@ -97,8 +97,25 @@ export default function DailyTracker({
   );
   const [inputDay, setInputDay] = useState("");
   const [inputOrdenes, setInputOrdenes] = useState("");
+  const [dbLoaded, setDbLoaded] = useState(false);
 
-  // Persist to localStorage whenever abrilData changes
+  // Load from DB on mount — DB is source of truth
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/data/daily-tracking?country=${country}`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res.days) && res.days.length > 0) {
+          setAbrilData(res.days);
+        }
+        setDbLoaded(true);
+      })
+      .catch(() => { if (!cancelled) setDbLoaded(true); });
+    return () => { cancelled = true; };
+  }, [country]);
+
+  // Persist to localStorage (backup)
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(abrilData));
@@ -110,15 +127,29 @@ export default function DailyTracker({
     const ordenes = parseInt(inputOrdenes);
     if (isNaN(day) || isNaN(ordenes) || day < 1 || day > 30) return;
 
+    const dia_semana = DIAS_SEMANA_ABRIL[day - 1];
     setAbrilData((prev) => {
       const filtered = prev.filter((d) => d.fecha !== day);
-      return [...filtered, { fecha: day, ordenes, dia_semana: DIAS_SEMANA_ABRIL[day - 1] }].sort(
+      return [...filtered, { fecha: day, ordenes, dia_semana }].sort(
         (a, b) => a.fecha - b.fecha
       );
     });
     setInputDay(String(day + 1));
     setInputOrdenes("");
-  }, [inputDay, inputOrdenes]);
+
+    // Persist to DB
+    fetch("/api/data/daily-tracking", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ country, fecha: day, ordenes, dia_semana }),
+    }).catch((e) => console.error("Error saving day to DB:", e));
+  }, [inputDay, inputOrdenes, country]);
+
+  const deleteDay = useCallback((day: number) => {
+    setAbrilData((prev) => prev.filter((d) => d.fecha !== day));
+    fetch(`/api/data/daily-tracking?country=${country}&fecha=${day}`, { method: "DELETE" })
+      .catch((e) => console.error("Error deleting day from DB:", e));
+  }, [country]);
 
   const analysis = useMemo(() => {
     // Marzo analysis
@@ -517,7 +548,11 @@ export default function DailyTracker({
           </button>
           {abrilData.length > 0 && (
             <button
-              onClick={() => { setAbrilData([]); try { localStorage.removeItem(STORAGE_KEY); } catch {} }}
+              onClick={() => {
+                setAbrilData([]);
+                try { localStorage.removeItem(STORAGE_KEY); } catch {}
+                fetch(`/api/data/daily-tracking?country=${country}`, { method: "DELETE" }).catch(() => {});
+              }}
               className="px-3 py-2 text-xs rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10"
             >
               Limpiar
