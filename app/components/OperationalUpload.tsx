@@ -561,6 +561,84 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
     return STATUS_ORDER.filter((s) => aggData.by_status[s]);
   }, [aggData]);
 
+  // Best logistics recommendation per city based on delivery/return rates
+  const cityLogisticsRecommendation = useMemo(() => {
+    if (rawRows.length === 0) return [];
+    // Apply same global filters
+    let filtered = rawRows;
+    if (fProveedor) filtered = filtered.filter((r) => r.proveedor === fProveedor);
+    if (fDropshipper) filtered = filtered.filter((r) => r.dropshipper === fDropshipper);
+    // Do NOT filter by transportadora here — we need all to compare
+    const ENTREGA = ["ENTREGADO"];
+    const DEV = ["DEVOLUCION", "EN PROCESO DE DEVOLUCION", "RECHAZADO", "REINGRESO A BODEGA"];
+
+    // Group by city + transportadora
+    type Bucket = { ciudad: string; dept: string; trans: string; total: number; entregado: number; devuelto: number; fletes: number[] };
+    const buckets = new Map<string, Bucket>();
+    for (const r of filtered) {
+      if (!r.ciudad || !r.transportadora) continue;
+      if (r.estatus === "CANCELADO") continue;
+      const key = `${r.ciudad}|${r.departamento}|${r.transportadora}`;
+      let b = buckets.get(key);
+      if (!b) {
+        b = { ciudad: r.ciudad, dept: r.departamento, trans: r.transportadora, total: 0, entregado: 0, devuelto: 0, fletes: [] };
+        buckets.set(key, b);
+      }
+      b.total++;
+      if (ENTREGA.includes(r.estatus)) b.entregado++;
+      if (DEV.includes(r.estatus)) b.devuelto++;
+      if (r.precioFlete > 0) b.fletes.push(r.precioFlete);
+    }
+
+    // Group by city, rank transportadoras
+    type CityResult = {
+      ciudad: string;
+      dept: string;
+      totalCity: number;
+      best: { trans: string; pctEntrega: number; pctDev: number; total: number; fletePromedio: number } | null;
+      alternatives: { trans: string; pctEntrega: number; pctDev: number; total: number; fletePromedio: number }[];
+    };
+    const byCity = new Map<string, { dept: string; transOptions: Bucket[] }>();
+    for (const b of buckets.values()) {
+      const k = `${b.ciudad}|${b.dept}`;
+      let c = byCity.get(k);
+      if (!c) { c = { dept: b.dept, transOptions: [] }; byCity.set(k, c); }
+      c.transOptions.push(b);
+    }
+
+    const results: CityResult[] = [];
+    for (const [key, c] of byCity.entries()) {
+      const [ciudad] = key.split("|");
+      const totalCity = c.transOptions.reduce((s, t) => s + t.total, 0);
+      if (totalCity < 5) continue; // skip low-volume cities
+
+      const ranked = c.transOptions
+        .filter((t) => t.total >= 3) // need min 3 guides per trans to be meaningful
+        .map((t) => ({
+          trans: t.trans,
+          pctEntrega: t.total > 0 ? (t.entregado / t.total) * 100 : 0,
+          pctDev: t.total > 0 ? (t.devuelto / t.total) * 100 : 0,
+          total: t.total,
+          fletePromedio: t.fletes.length > 0 ? Math.round(t.fletes.reduce((a, b) => a + b, 0) / t.fletes.length) : 0,
+          // Score: prioritize high delivery, penalize high return
+          score: (t.total > 0 ? (t.entregado / t.total) * 100 : 0) - (t.total > 0 ? (t.devuelto / t.total) * 100 * 0.5 : 0),
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      if (ranked.length === 0) continue;
+      const [best, ...alternatives] = ranked;
+      results.push({
+        ciudad,
+        dept: c.dept,
+        totalCity,
+        best: { trans: best.trans, pctEntrega: best.pctEntrega, pctDev: best.pctDev, total: best.total, fletePromedio: best.fletePromedio },
+        alternatives: alternatives.map(({ trans, pctEntrega, pctDev, total, fletePromedio }) => ({ trans, pctEntrega, pctDev, total, fletePromedio })),
+      });
+    }
+
+    return results.sort((a, b) => b.totalCity - a.totalCity);
+  }, [rawRows, fProveedor, fDropshipper]);
+
   const countryLabel = country === "py" ? "Paraguay" : "Argentina";
 
   if (!aggData) {
@@ -1375,6 +1453,63 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
               </table>
             </div>
           </div>
+
+          {/* ═══ RECOMENDACION DE LOGISTICA POR CIUDAD ═══ */}
+          {cityLogisticsRecommendation.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-sm font-bold t-primary mb-1">🎯 Recomendacion de Logistica por Ciudad</h3>
+              <p className="text-xs t-secondary mb-3">
+                Mejor transportadora por ciudad segun tasa de entrega y devolucion (score = %entrega − %devolucion×0.5). Min 5 guias por ciudad, 3 por transportadora.
+              </p>
+              <div className="table-container overflow-x-auto max-h-[450px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
+                    <tr className="border-b-2 border-orange-500/30">
+                      <th className="text-left py-2 px-2 t-primary font-bold">Ciudad</th>
+                      <th className="text-left py-2 px-2 t-primary font-bold">Departamento</th>
+                      <th className="text-right py-2 px-2 t-primary font-bold">Guias</th>
+                      <th className="text-left py-2 px-2 t-primary font-bold">Recomendada</th>
+                      <th className="text-right py-2 px-2 t-primary font-bold">%Entrega</th>
+                      <th className="text-right py-2 px-2 t-primary font-bold">%Devol.</th>
+                      <th className="text-right py-2 px-2 t-primary font-bold">Flete Prom.</th>
+                      <th className="text-left py-2 px-2 t-primary font-bold">Alternativas</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cityLogisticsRecommendation.map((c) => (
+                      <tr key={`${c.ciudad}-${c.dept}`} className="border-b border-gray-800/20 hover:bg-orange-500/5">
+                        <td className="py-2 px-2 t-primary font-medium">{c.ciudad}</td>
+                        <td className="py-2 px-2 t-secondary">{c.dept}</td>
+                        <td className="py-2 px-2 text-right t-secondary">{c.totalCity}</td>
+                        <td className="py-2 px-2">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-green-500/15 text-green-600 font-bold text-[11px]">
+                            ⭐ {c.best?.trans}
+                          </span>
+                          <span className="t-muted text-[10px] ml-1">({c.best?.total})</span>
+                        </td>
+                        <td className="py-2 px-2 text-right font-bold text-green-600">{c.best?.pctEntrega.toFixed(1)}%</td>
+                        <td className="py-2 px-2 text-right font-bold text-red-600">{c.best?.pctDev.toFixed(1)}%</td>
+                        <td className="py-2 px-2 text-right text-orange-600">${c.best?.fletePromedio.toLocaleString()}</td>
+                        <td className="py-2 px-2">
+                          {c.alternatives.length === 0 ? (
+                            <span className="t-muted text-[10px]">—</span>
+                          ) : (
+                            <div className="flex flex-wrap gap-1">
+                              {c.alternatives.slice(0, 3).map((a) => (
+                                <span key={a.trans} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-500/10 t-secondary" title={`Flete prom. $${a.fletePromedio.toLocaleString()}`}>
+                                  {a.trans}: {a.pctEntrega.toFixed(0)}% entrega / {a.pctDev.toFixed(0)}% dev ({a.total})
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {/* Top cities by flete */}
           {aggData.logistics.by_ciudad_flete.length > 0 && (
