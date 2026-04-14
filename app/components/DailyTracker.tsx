@@ -76,9 +76,17 @@ export default function DailyTracker({
   country?: "py" | "ar";
 }) {
   const { theme } = useTheme();
-  const isDark = theme === "dark";
-  const colPrimary = isDark ? "#f9fafb" : "#111827";
-  const colSecondary = isDark ? "#9ca3af" : "#4b5563";
+  const [isDarkDom, setIsDarkDom] = useState(false);
+  useEffect(() => {
+    const check = () => setIsDarkDom(document.documentElement.classList.contains("dark"));
+    check();
+    const observer = new MutationObserver(check);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  const isDark = theme === "dark" || isDarkDom;
+  const colPrimary = isDark ? "#f9fafb" : "#000000";
+  const colSecondary = isDark ? "#9ca3af" : "#374151";
   const META_DIARIA = metaInfo.promedio_diario_necesario;
   const META_TOTAL = metaInfo.meta_ingresadas_abril;
   const isAbril = mesFilter === "abril";
