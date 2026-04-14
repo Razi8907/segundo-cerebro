@@ -689,18 +689,18 @@ export default function DailyTracker({
 
         {/* Weekly table */}
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full text-xs">
+          <table className="w-full text-xs text-black dark:text-white">
             <thead>
-              <tr className="border-b border-cyan-500/20" style={{ color: "var(--text-primary)" }}>
-                <th className="text-left py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Semana</th>
-                <th className="text-right py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Días</th>
-                <th className="text-right py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Meta Ing.</th>
-                <th className="text-right py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Meta Mov.</th>
-                <th className="text-right py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Real</th>
-                <th className="text-right py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Acum. Real</th>
-                <th className="text-right py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Acum. Meta</th>
-                <th className="text-right py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Necesario/día</th>
-                <th className="text-center py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>Estado</th>
+              <tr className="border-b border-cyan-500/20">
+                <th className="text-left py-2 px-2 font-bold text-black dark:text-white">Semana</th>
+                <th className="text-right py-2 px-2 font-bold text-black dark:text-white">Días</th>
+                <th className="text-right py-2 px-2 font-bold text-black dark:text-white">Meta Ing.</th>
+                <th className="text-right py-2 px-2 font-bold text-black dark:text-white">Meta Mov.</th>
+                <th className="text-right py-2 px-2 font-bold text-black dark:text-white">Real</th>
+                <th className="text-right py-2 px-2 font-bold text-black dark:text-white">Acum. Real</th>
+                <th className="text-right py-2 px-2 font-bold text-black dark:text-white">Acum. Meta</th>
+                <th className="text-right py-2 px-2 font-bold text-black dark:text-white">Necesario/día</th>
+                <th className="text-center py-2 px-2 font-bold text-black dark:text-white">Estado</th>
               </tr>
             </thead>
             <tbody>
@@ -710,14 +710,14 @@ export default function DailyTracker({
                 const estadoColor = w.diasCargados === 0 ? "#6b7280" : pct >= 100 ? "#16a34a" : pct >= 80 ? "#ca8a04" : "#dc2626";
                 return (
                   <tr key={w.semana} className="border-b border-gray-300/30 dark:border-gray-800/40">
-                    <td className="py-2 px-2 font-medium" style={{ color: "var(--text-primary)" }}>{w.semana}</td>
-                    <td className="py-2 px-2 text-right" style={{ color: "var(--text-secondary)" }}>{w.dias} ({w.diasCargados} carg.)</td>
-                    <td className="py-2 px-2 text-right font-bold" style={{ color: "var(--text-primary)" }}>{w.metaIng.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right" style={{ color: "var(--text-primary)" }}>{w.metaMov.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right font-bold" style={{ color: "var(--text-primary)" }}>{w.real > 0 ? w.real.toLocaleString() : "—"}</td>
-                    <td className="py-2 px-2 text-right" style={{ color: "var(--text-primary)" }}>{w.acumReal > 0 ? w.acumReal.toLocaleString() : "—"}</td>
-                    <td className="py-2 px-2 text-right" style={{ color: "var(--text-primary)" }}>{w.acumMetaIng.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right" style={{ color: "var(--text-primary)" }}>
+                    <td className="py-2 px-2 font-medium text-black dark:text-white">{w.semana}</td>
+                    <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-400">{w.dias} ({w.diasCargados} carg.)</td>
+                    <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{w.metaIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-black dark:text-white">{w.metaMov.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{w.real > 0 ? w.real.toLocaleString() : "—"}</td>
+                    <td className="py-2 px-2 text-right text-black dark:text-white">{w.acumReal > 0 ? w.acumReal.toLocaleString() : "—"}</td>
+                    <td className="py-2 px-2 text-right text-black dark:text-white">{w.acumMetaIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-black dark:text-white">
                       {w.necesarioDiario > 0 ? w.necesarioDiario.toLocaleString() + "/día" : w.diasCargados > 0 ? "—" : META_DIARIA.toLocaleString() + "/día"}
                     </td>
                     <td className="py-2 px-2 text-center text-[10px] font-medium" style={{ color: estadoColor }}>{estado}</td>
@@ -725,15 +725,15 @@ export default function DailyTracker({
                 );
               })}
               <tr className="border-t border-cyan-500/30">
-                <td className="py-2 px-2 font-bold" style={{ color: "var(--text-primary)" }}>TOTAL</td>
-                <td className="py-2 px-2 text-right" style={{ color: "var(--text-secondary)" }}>30</td>
-                <td className="py-2 px-2 text-right font-bold" style={{ color: "var(--text-primary)" }}>{META_TOTAL.toLocaleString()}</td>
-                <td className="py-2 px-2 text-right font-bold" style={{ color: "var(--text-primary)" }}>{metaInfo.meta_movilizadas_abril.toLocaleString()}</td>
-                <td className="py-2 px-2 text-right font-bold" style={{ color: "var(--text-primary)" }}>{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</td>
-                <td colSpan={2} className="py-2 px-2 text-right" style={{ color: "var(--text-secondary)" }}>
+                <td className="py-2 px-2 font-bold text-black dark:text-white">TOTAL</td>
+                <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-400">30</td>
+                <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{META_TOTAL.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{metaInfo.meta_movilizadas_abril.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</td>
+                <td colSpan={2} className="py-2 px-2 text-right text-gray-600 dark:text-gray-400">
                   {analysis.abrilTotal > 0 ? `${analysis.pctMeta.toFixed(1)}% de meta (proy.)` : ""}
                 </td>
-                <td className="py-2 px-2 text-right font-bold" style={{ color: "var(--text-primary)" }}>
+                <td className="py-2 px-2 text-right font-bold text-black dark:text-white">
                   {analysis.necesarioPorDiaRestante > 0 ? analysis.necesarioPorDiaRestante.toLocaleString() + "/día" : META_DIARIA.toLocaleString() + "/día"}
                 </td>
                 <td />
