@@ -628,10 +628,10 @@ export default function DailyTracker({
 
       {/* Weekly projection chart */}
       <div className="mb-6 p-4 rounded-xl border border-cyan-500/20" style={{ background: "rgba(6,182,212,0.03)" }}>
-        <h3 className="text-sm font-bold text-cyan-400 mb-1">
+        <h3 className="text-sm font-bold t-primary mb-1">
           📅 Proyección Semanal — Camino a {META_TOTAL.toLocaleString()} ingresadas → {metaInfo.meta_movilizadas_abril.toLocaleString()} movilizadas
         </h3>
-        <p className="text-[10px] text-gray-400 mb-4">
+        <p className="text-[10px] t-secondary mb-4">
           Meta semanal proporcional &middot; Acumulado real vs necesario para llegar al objetivo
         </p>
 
@@ -671,19 +671,19 @@ export default function DailyTracker({
         <div className="flex gap-4 mt-2 justify-center flex-wrap">
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className="w-3 h-3 rounded" style={{ background: "#10B981" }} />
-            <span className="text-gray-400">Real (cumple meta)</span>
+            <span className="t-secondary">Real (cumple meta)</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className="w-3 h-3 rounded" style={{ background: "#F97316", opacity: 0.2 }} />
-            <span className="text-gray-400">Meta semanal ingresadas</span>
+            <span className="t-secondary">Meta semanal ingresadas</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className="w-4 border-t-2 border-cyan-500" />
-            <span className="text-gray-400">Acumulado real</span>
+            <span className="t-secondary">Acumulado real</span>
           </div>
           <div className="flex items-center gap-1.5 text-[10px]">
             <span className="w-4 border-t-2 border-dashed border-orange-500" />
-            <span className="text-gray-400">Acumulado meta</span>
+            <span className="t-secondary">Acumulado meta</span>
           </div>
         </div>
 
@@ -692,32 +692,32 @@ export default function DailyTracker({
           <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-cyan-500/20">
-                <th className="text-left py-2 px-2 text-gray-400">Semana</th>
-                <th className="text-right py-2 px-2 text-gray-400">Días</th>
-                <th className="text-right py-2 px-2 text-cyan-400">Meta Ing.</th>
-                <th className="text-right py-2 px-2 text-orange-400">Meta Mov.</th>
-                <th className="text-right py-2 px-2 text-gray-400">Real</th>
-                <th className="text-right py-2 px-2 text-gray-400">Acum. Real</th>
-                <th className="text-right py-2 px-2 text-gray-400">Acum. Meta</th>
-                <th className="text-right py-2 px-2 text-gray-400">Necesario/día</th>
-                <th className="text-center py-2 px-2 text-gray-400">Estado</th>
+                <th className="text-left py-2 px-2 t-primary font-bold">Semana</th>
+                <th className="text-right py-2 px-2 t-primary font-bold">Días</th>
+                <th className="text-right py-2 px-2 t-primary font-bold">Meta Ing.</th>
+                <th className="text-right py-2 px-2 t-primary font-bold">Meta Mov.</th>
+                <th className="text-right py-2 px-2 t-primary font-bold">Real</th>
+                <th className="text-right py-2 px-2 t-primary font-bold">Acum. Real</th>
+                <th className="text-right py-2 px-2 t-primary font-bold">Acum. Meta</th>
+                <th className="text-right py-2 px-2 t-primary font-bold">Necesario/día</th>
+                <th className="text-center py-2 px-2 t-primary font-bold">Estado</th>
               </tr>
             </thead>
             <tbody>
               {analysis.weeklyData.map((w) => {
                 const pct = w.metaIng > 0 && w.diasCargados > 0 ? (w.real / w.metaIng) * 100 : 0;
                 const estado = w.diasCargados === 0 ? "Pendiente" : pct >= 100 ? "Cumplida" : pct >= 80 ? "En rango" : "Bajo meta";
-                const estadoColor = w.diasCargados === 0 ? "text-gray-500" : pct >= 100 ? "text-green-400" : pct >= 80 ? "text-yellow-400" : "text-red-400";
+                const estadoColor = w.diasCargados === 0 ? "t-muted" : pct >= 100 ? "text-green-500" : pct >= 80 ? "text-yellow-500" : "text-red-500";
                 return (
                   <tr key={w.semana} className="border-b border-gray-800/40">
-                    <td className="py-2 px-2 text-white font-medium">{w.semana}</td>
-                    <td className="py-2 px-2 text-right text-gray-400">{w.dias} ({w.diasCargados} carg.)</td>
-                    <td className="py-2 px-2 text-right text-cyan-400 font-bold">{w.metaIng.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right text-orange-400">{w.metaMov.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right text-white font-bold">{w.real > 0 ? w.real.toLocaleString() : "—"}</td>
-                    <td className="py-2 px-2 text-right text-cyan-400">{w.acumReal > 0 ? w.acumReal.toLocaleString() : "—"}</td>
-                    <td className="py-2 px-2 text-right text-orange-400">{w.acumMetaIng.toLocaleString()}</td>
-                    <td className="py-2 px-2 text-right text-purple-400">
+                    <td className="py-2 px-2 t-primary font-medium">{w.semana}</td>
+                    <td className="py-2 px-2 text-right t-secondary">{w.dias} ({w.diasCargados} carg.)</td>
+                    <td className="py-2 px-2 text-right t-primary font-bold">{w.metaIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right t-primary">{w.metaMov.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right t-primary font-bold">{w.real > 0 ? w.real.toLocaleString() : "—"}</td>
+                    <td className="py-2 px-2 text-right t-primary">{w.acumReal > 0 ? w.acumReal.toLocaleString() : "—"}</td>
+                    <td className="py-2 px-2 text-right t-primary">{w.acumMetaIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right t-primary">
                       {w.necesarioDiario > 0 ? w.necesarioDiario.toLocaleString() + "/día" : w.diasCargados > 0 ? "—" : META_DIARIA.toLocaleString() + "/día"}
                     </td>
                     <td className={`py-2 px-2 text-center text-[10px] font-medium ${estadoColor}`}>{estado}</td>
@@ -725,15 +725,15 @@ export default function DailyTracker({
                 );
               })}
               <tr className="border-t border-cyan-500/30">
-                <td className="py-2 px-2 text-white font-bold">TOTAL</td>
-                <td className="py-2 px-2 text-right text-gray-400">30</td>
-                <td className="py-2 px-2 text-right text-cyan-400 font-bold">{META_TOTAL.toLocaleString()}</td>
-                <td className="py-2 px-2 text-right text-orange-400 font-bold">{metaInfo.meta_movilizadas_abril.toLocaleString()}</td>
-                <td className="py-2 px-2 text-right text-white font-bold">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</td>
-                <td colSpan={2} className="py-2 px-2 text-right text-gray-400">
+                <td className="py-2 px-2 t-primary font-bold">TOTAL</td>
+                <td className="py-2 px-2 text-right t-secondary">30</td>
+                <td className="py-2 px-2 text-right t-primary font-bold">{META_TOTAL.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right t-primary font-bold">{metaInfo.meta_movilizadas_abril.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right t-primary font-bold">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</td>
+                <td colSpan={2} className="py-2 px-2 text-right t-secondary">
                   {analysis.abrilTotal > 0 ? `${analysis.pctMeta.toFixed(1)}% de meta (proy.)` : ""}
                 </td>
-                <td className="py-2 px-2 text-right text-purple-400 font-bold">
+                <td className="py-2 px-2 text-right t-primary font-bold">
                   {analysis.necesarioPorDiaRestante > 0 ? analysis.necesarioPorDiaRestante.toLocaleString() + "/día" : META_DIARIA.toLocaleString() + "/día"}
                 </td>
                 <td />
