@@ -611,10 +611,10 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
     for (const [key, c] of byCity.entries()) {
       const [ciudad] = key.split("|");
       const totalCity = c.transOptions.reduce((s, t) => s + t.total, 0);
-      if (totalCity < 5) continue; // skip low-volume cities
+      if (totalCity < 3) continue; // skip low-volume cities
 
       const ranked = c.transOptions
-        .filter((t) => t.total >= 3) // need min 3 guides per trans to be meaningful
+        .filter((t) => t.total >= 2) // need min 2 guides per trans to be meaningful
         .map((t) => ({
           trans: t.trans,
           pctEntrega: t.total > 0 ? (t.entregado / t.total) * 100 : 0,
@@ -1491,12 +1491,23 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
           </div>
 
           {/* ═══ RECOMENDACION DE LOGISTICA POR CIUDAD ═══ */}
+          <div className="mb-6">
+            <h3 className="text-sm font-bold t-primary mb-1">🎯 Recomendacion de Logistica por Ciudad</h3>
+            <p className="text-xs t-secondary mb-3">
+              Mejor transportadora por ciudad segun tasa de entrega y devolucion (score = %entrega − %devolucion×0.5). Min 3 guias por ciudad, 2 por transportadora.
+            </p>
+            {cityLogisticsRecommendation.length === 0 && (
+              <div className="p-4 rounded-xl border border-yellow-500/30" style={{ background: "rgba(234,179,8,0.06)" }}>
+                <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                  {rawRows.length === 0
+                    ? "⚠ No hay filas crudas disponibles (rawRows vacio). Re-subi el archivo Excel para que se carguen los datos necesarios para este analisis."
+                    : `⚠ No hay suficientes datos para generar recomendaciones. Se encontraron ${rawRows.length.toLocaleString()} filas pero ninguna ciudad alcanza los minimos (3 guias por ciudad + 2 por transportadora, excluyendo canceladas). Verifica que el Excel tenga columnas "CIUDAD DESTINO" y "TRANSPORTADORA" pobladas.`}
+                </p>
+              </div>
+            )}
+          </div>
           {cityLogisticsRecommendation.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-bold t-primary mb-1">🎯 Recomendacion de Logistica por Ciudad</h3>
-              <p className="text-xs t-secondary mb-3">
-                Mejor transportadora por ciudad segun tasa de entrega y devolucion (score = %entrega − %devolucion×0.5). Min 5 guias por ciudad, 3 por transportadora.
-              </p>
 
               {/* Filter by logistic */}
               <div className="flex flex-wrap items-end gap-3 mb-4 p-3 rounded-lg border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
