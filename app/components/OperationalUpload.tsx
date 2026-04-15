@@ -1538,7 +1538,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
                       <YAxis dataKey="ciudad" type="category" tick={TICK_STYLE_SM} width={110} />
                       <Tooltip
                         contentStyle={TOOLTIP_STYLE}
-                        formatter={(value: any, name: string) => [`${Number(value).toFixed(1)}%`, name === "pctEntrega" ? "Entrega" : "Devolucion"]}
+                        formatter={(value, name) => [`${Number(value).toFixed(1)}%`, String(name) === "pctEntrega" ? "Entrega" : "Devolucion"]}
                       />
                       <Bar dataKey="pctEntrega" name="pctEntrega" fill="#16a34a" radius={[0, 4, 4, 0]} />
                       <Bar dataKey="pctDev" name="pctDev" fill="#dc2626" radius={[0, 4, 4, 0]} />
