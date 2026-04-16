@@ -291,13 +291,49 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
     });
   }, [paretoProducts, stockData, diasCargados, diasRestantes]);
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   async function updateStock(productId: string, newStock: number) {
-    await fetch("/api/data/stock", {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ country, product_id: productId, stock_actual: newStock }),
-    });
-    setStockData((prev) => prev.map((p) => p.product_id === productId ? { ...p, stock_actual: newStock } : p));
-    setEditing(null);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/data/stock", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country, product_id: productId, stock_actual: newStock }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        setSaveError(`Error guardando stock (${res.status}): ${msg || res.statusText}`);
+        return;
+      }
+      setStockData((prev) => prev.map((p) => p.product_id === productId ? { ...p, stock_actual: newStock } : p));
+      setEditing(null);
+    } catch (e: any) {
+      setSaveError(`Error de red guardando stock: ${e?.message || e}`);
+    }
+  }
+
+  async function createStock(product_name: string, proveedor: string, stock_actual: number) {
+    setSaveError(null);
+    const product_id = String(Date.now());
+    try {
+      const res = await fetch("/api/data/stock", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country, product_id, product_name, proveedor, stock_actual }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        setSaveError(`Error creando stock (${res.status}): ${msg || res.statusText}`);
+        return;
+      }
+      setStockData((prev) => [...prev, { product_id, product_name, proveedor, stock_actual }]);
+      setEditing(null);
+    } catch (e: any) {
+      setSaveError(`Error de red creando stock: ${e?.message || e}`);
+    }
   }
 
   if (!projections.length) return null;
@@ -312,6 +348,12 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
       <p className="text-[10px] t-muted mb-4">{diasCargados} días cargados · {diasRestantes} días restantes · Productos de los DS que generan el 80% · Click en stock para editar
         {sinStock.length > 0 && <span className="text-orange-500 ml-1">· {sinStock.length} sin stock cargado</span>}
       </p>
+      {saveError && (
+        <div className="mb-3 p-3 rounded-lg border border-red-500/40 bg-red-500/10 flex items-start justify-between gap-3">
+          <p className="text-xs text-red-600 font-medium">⚠ {saveError}</p>
+          <button onClick={() => setSaveError(null)} className="text-red-500 text-xs">✕</button>
+        </div>
+      )}
 
       {/* Alertas críticas */}
       {criticos.length > 0 && (
@@ -378,21 +420,13 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
                           className="w-16 px-1 py-0.5 text-xs rounded border border-orange-500/30 t-primary" style={{ background: "var(--bg-input)" }}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
-                              if (p.hasStock) { updateStock(p.product_id, Number(editVal)); }
-                              else {
-                                fetch("/api/data/stock", { method: "POST", headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({ country, product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }),
-                                }).then(() => { setStockData((prev) => [...prev, { product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }]); setEditing(null); });
-                              }
+                              if (p.hasStock) updateStock(p.product_id, Number(editVal));
+                              else createStock(p.product_name, p.proveedor, Number(editVal));
                             }
                           }} autoFocus />
                         <button onClick={() => {
-                          if (p.hasStock) { updateStock(p.product_id, Number(editVal)); }
-                          else {
-                            fetch("/api/data/stock", { method: "POST", headers: { "Content-Type": "application/json" },
-                              body: JSON.stringify({ country, product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }),
-                            }).then(() => { setStockData((prev) => [...prev, { product_id: String(Date.now()), product_name: p.product_name, proveedor: p.proveedor, stock_actual: Number(editVal) }]); setEditing(null); });
-                          }
+                          if (p.hasStock) updateStock(p.product_id, Number(editVal));
+                          else createStock(p.product_name, p.proveedor, Number(editVal));
                         }} className="text-green-500 text-[10px]">✓</button>
                         <button onClick={() => setEditing(null)} className="text-red-500 text-[10px]">✕</button>
                       </div>
