@@ -228,6 +228,8 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
   const [stockData, setStockData] = useState<any[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`/api/data/stock?country=${country}`)
@@ -293,8 +295,15 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
 
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  async function updateStock(productId: string, newStock: number) {
+  async function updateStock(productId: string, newStock: number, productName: string) {
+    if (saving) return;
+    if (isNaN(newStock) || newStock < 0) {
+      setSaveError("Stock debe ser un numero valido (>= 0)");
+      return;
+    }
+    setSaving(true);
     setSaveError(null);
+    setSaveSuccess(null);
     try {
       const res = await fetch("/api/data/stock", {
         method: "PUT",
@@ -305,17 +314,29 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
         setSaveError(`Error guardando stock (${res.status}): ${msg || res.statusText}`);
+        setSaving(false);
         return;
       }
       setStockData((prev) => prev.map((p) => p.product_id === productId ? { ...p, stock_actual: newStock } : p));
       setEditing(null);
+      setSaveSuccess(`✓ Stock actualizado: ${productName} → ${newStock} uds`);
+      setTimeout(() => setSaveSuccess(null), 3000);
     } catch (e: any) {
       setSaveError(`Error de red guardando stock: ${e?.message || e}`);
+    } finally {
+      setSaving(false);
     }
   }
 
   async function createStock(product_name: string, proveedor: string, stock_actual: number) {
+    if (saving) return;
+    if (isNaN(stock_actual) || stock_actual < 0) {
+      setSaveError("Stock debe ser un numero valido (>= 0)");
+      return;
+    }
+    setSaving(true);
     setSaveError(null);
+    setSaveSuccess(null);
     const product_id = String(Date.now());
     try {
       const res = await fetch("/api/data/stock", {
@@ -327,13 +348,24 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
         setSaveError(`Error creando stock (${res.status}): ${msg || res.statusText}`);
+        setSaving(false);
         return;
       }
       setStockData((prev) => [...prev, { product_id, product_name, proveedor, stock_actual }]);
       setEditing(null);
+      setSaveSuccess(`✓ Stock creado: ${product_name} → ${stock_actual} uds`);
+      setTimeout(() => setSaveSuccess(null), 3000);
     } catch (e: any) {
       setSaveError(`Error de red creando stock: ${e?.message || e}`);
+    } finally {
+      setSaving(false);
     }
+  }
+
+  function saveCurrent(p: any) {
+    const num = Number(editVal);
+    if (p.hasStock) updateStock(p.product_id, num, p.product_name);
+    else createStock(p.product_name, p.proveedor, num);
   }
 
   if (!projections.length) return null;
@@ -352,6 +384,11 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
         <div className="mb-3 p-3 rounded-lg border border-red-500/40 bg-red-500/10 flex items-start justify-between gap-3">
           <p className="text-xs text-red-600 font-medium">⚠ {saveError}</p>
           <button onClick={() => setSaveError(null)} className="text-red-500 text-xs">✕</button>
+        </div>
+      )}
+      {saveSuccess && (
+        <div className="mb-3 p-2 rounded-lg border border-green-500/40 bg-green-500/10">
+          <p className="text-xs text-green-600 font-medium">{saveSuccess}</p>
         </div>
       )}
 
@@ -416,19 +453,33 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
                   <td className="py-2 px-2 text-right">
                     {editing === p.product_name ? (
                       <div className="flex items-center gap-1 justify-end">
-                        <input type="number" value={editVal} onChange={(e) => setEditVal(e.target.value)}
-                          className="w-16 px-1 py-0.5 text-xs rounded border border-orange-500/30 t-primary" style={{ background: "var(--bg-input)" }}
+                        <input
+                          type="number"
+                          value={editVal}
+                          disabled={saving}
+                          onChange={(e) => setEditVal(e.target.value)}
+                          className="w-16 px-1 py-0.5 text-xs rounded border border-orange-500/30 t-primary disabled:opacity-50"
+                          style={{ background: "var(--bg-input)" }}
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              if (p.hasStock) updateStock(p.product_id, Number(editVal));
-                              else createStock(p.product_name, p.proveedor, Number(editVal));
-                            }
-                          }} autoFocus />
-                        <button onClick={() => {
-                          if (p.hasStock) updateStock(p.product_id, Number(editVal));
-                          else createStock(p.product_name, p.proveedor, Number(editVal));
-                        }} className="text-green-500 text-[10px]">✓</button>
-                        <button onClick={() => setEditing(null)} className="text-red-500 text-[10px]">✕</button>
+                            if (e.key === "Enter") { e.preventDefault(); saveCurrent(p); }
+                            else if (e.key === "Escape") { e.preventDefault(); setEditing(null); }
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={(e) => { e.preventDefault(); saveCurrent(p); }}
+                          className="text-green-500 text-[10px] disabled:opacity-50 px-1"
+                          title="Guardar (Enter)"
+                        >{saving ? "…" : "✓"}</button>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={() => setEditing(null)}
+                          className="text-red-500 text-[10px] disabled:opacity-50 px-1"
+                          title="Cancelar (Esc)"
+                        >✕</button>
                       </div>
                     ) : (
                       <button onClick={() => { setEditing(p.product_name); setEditVal(String(p.stock_actual ?? 0)); }}
