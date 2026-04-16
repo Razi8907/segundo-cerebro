@@ -26,17 +26,25 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: `Token invalido: ${e?.message || e}` }, { status: 401 });
     }
 
-    const { country, product_id, stock_actual } = await req.json();
+    const { country, product_id, stock_actual, product_name, proveedor } = await req.json();
     if (!country || !product_id || stock_actual === undefined) {
       return NextResponse.json({ error: "country, product_id, stock_actual required" }, { status: 400 });
     }
 
+    // Build upsert payload — include product_name/proveedor if provided so a
+    // brand-new row can satisfy NOT NULL constraints.
+    const payload: Record<string, any> = {
+      country,
+      product_id,
+      stock_actual,
+      updated_at: new Date().toISOString(),
+    };
+    if (product_name) payload.product_name = product_name;
+    if (proveedor !== undefined) payload.proveedor = proveedor;
+
     const { error } = await getSupabase()
       .from("product_stock")
-      .upsert(
-        { country, product_id, stock_actual, updated_at: new Date().toISOString() },
-        { onConflict: "country,product_id" }
-      );
+      .upsert(payload, { onConflict: "country,product_id" });
 
     if (error) {
       console.error("[stock PUT] Supabase error:", error);

@@ -295,7 +295,7 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
 
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  async function updateStock(productId: string, newStock: number, productName: string) {
+  async function updateStock(productId: string, newStock: number, productName: string, proveedor: string = "") {
     if (saving) return;
     if (isNaN(newStock) || newStock < 0) {
       setSaveError("Stock debe ser un numero valido (>= 0)");
@@ -309,7 +309,13 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country, product_id: productId, stock_actual: newStock }),
+        body: JSON.stringify({
+          country,
+          product_id: productId,
+          stock_actual: newStock,
+          product_name: productName,
+          proveedor,
+        }),
       });
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
@@ -317,7 +323,14 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
         setSaving(false);
         return;
       }
-      setStockData((prev) => prev.map((p) => p.product_id === productId ? { ...p, stock_actual: newStock } : p));
+      setStockData((prev) => {
+        const existing = prev.find((p) => p.product_id === productId);
+        if (existing) {
+          return prev.map((p) => p.product_id === productId ? { ...p, stock_actual: newStock } : p);
+        }
+        // Newly upserted row — add it to local state
+        return [...prev, { product_id: productId, product_name: productName, proveedor, stock_actual: newStock }];
+      });
       setEditing(null);
       setSaveSuccess(`✓ Stock actualizado: ${productName} → ${newStock} uds`);
       setTimeout(() => setSaveSuccess(null), 3000);
@@ -364,7 +377,7 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
 
   function saveCurrent(p: any) {
     const num = Number(editVal);
-    if (p.hasStock) updateStock(p.product_id, num, p.product_name);
+    if (p.hasStock) updateStock(p.product_id, num, p.product_name, p.proveedor || "");
     else createStock(p.product_name, p.proveedor, num);
   }
 
