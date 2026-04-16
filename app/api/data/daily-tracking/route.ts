@@ -12,6 +12,7 @@ export async function GET(req: NextRequest) {
     .order("fecha");
 
   if (error) {
+    console.error("[daily-tracking GET] Supabase error:", error);
     // Table may not exist yet — return empty instead of failing
     return NextResponse.json({ days: [] });
   }
@@ -22,8 +23,12 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const token = req.cookies.get(COOKIE_NAME)?.value;
-    if (!token) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    await verifyToken(token);
+    if (!token) return NextResponse.json({ error: "No autorizado (sin token de sesion)" }, { status: 401 });
+    try {
+      await verifyToken(token);
+    } catch (e: any) {
+      return NextResponse.json({ error: `Token invalido o expirado: ${e?.message || e}. Hace logout y login de nuevo.` }, { status: 401 });
+    }
 
     const { country, fecha, ordenes, dia_semana } = await req.json();
     if (!country || fecha === undefined || ordenes === undefined || !dia_semana) {
@@ -37,10 +42,14 @@ export async function PUT(req: NextRequest) {
         { onConflict: "country,fecha" }
       );
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("[daily-tracking PUT] Supabase error:", error);
+      return NextResponse.json({ error: `DB error: ${error.message}` }, { status: 500 });
+    }
     return NextResponse.json({ success: true });
-  } catch (err) {
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  } catch (err: any) {
+    console.error("[daily-tracking PUT] Exception:", err);
+    return NextResponse.json({ error: `Error interno: ${err?.message || err}` }, { status: 500 });
   }
 }
 
@@ -49,8 +58,12 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const token = req.cookies.get(COOKIE_NAME)?.value;
-    if (!token) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
-    await verifyToken(token);
+    if (!token) return NextResponse.json({ error: "No autorizado (sin token de sesion)" }, { status: 401 });
+    try {
+      await verifyToken(token);
+    } catch (e: any) {
+      return NextResponse.json({ error: `Token invalido o expirado: ${e?.message || e}` }, { status: 401 });
+    }
 
     const country = req.nextUrl.searchParams.get("country");
     const fechaStr = req.nextUrl.searchParams.get("fecha");
@@ -60,9 +73,13 @@ export async function DELETE(req: NextRequest) {
     if (fechaStr) q = q.eq("fecha", parseInt(fechaStr));
 
     const { error } = await q;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error("[daily-tracking DELETE] Supabase error:", error);
+      return NextResponse.json({ error: `DB error: ${error.message}` }, { status: 500 });
+    }
     return NextResponse.json({ success: true });
-  } catch (err) {
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+  } catch (err: any) {
+    console.error("[daily-tracking DELETE] Exception:", err);
+    return NextResponse.json({ error: `Error interno: ${err?.message || err}` }, { status: 500 });
   }
 }

@@ -98,11 +98,13 @@ export default function DailyTracker({
   const [inputDay, setInputDay] = useState("");
   const [inputOrdenes, setInputOrdenes] = useState("");
   const [dbLoaded, setDbLoaded] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
+  const [trackingSuccess, setTrackingSuccess] = useState<string | null>(null);
 
   // Load from DB on mount — DB is source of truth
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/data/daily-tracking?country=${country}`)
+    fetch(`/api/data/daily-tracking?country=${country}`, { credentials: "include" })
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
@@ -122,33 +124,62 @@ export default function DailyTracker({
     } catch { /* ignore quota errors */ }
   }, [abrilData, STORAGE_KEY]);
 
-  const addDay = useCallback(() => {
+  const showSuccess = (msg: string) => {
+    setTrackingSuccess(msg);
+    setTimeout(() => setTrackingSuccess(null), 3000);
+  };
+
+  const addDay = useCallback(async () => {
     const day = parseInt(inputDay);
     const ordenes = parseInt(inputOrdenes);
     if (isNaN(day) || isNaN(ordenes) || day < 1 || day > 30) return;
 
     const dia_semana = DIAS_SEMANA_ABRIL[day - 1];
-    setAbrilData((prev) => {
-      const filtered = prev.filter((d) => d.fecha !== day);
-      return [...filtered, { fecha: day, ordenes, dia_semana }].sort(
-        (a, b) => a.fecha - b.fecha
-      );
-    });
-    setInputDay(String(day + 1));
-    setInputOrdenes("");
+    setTrackingError(null);
 
-    // Persist to DB
-    fetch("/api/data/daily-tracking", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ country, fecha: day, ordenes, dia_semana }),
-    }).catch((e) => console.error("Error saving day to DB:", e));
+    // Persist to DB FIRST so the user gets immediate error feedback
+    try {
+      const res = await fetch("/api/data/daily-tracking", {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country, fecha: day, ordenes, dia_semana }),
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        setTrackingError(`No se pudo guardar el dia ${day} (${res.status}): ${msg || res.statusText}. Verifica tu sesion (re-login).`);
+        return;
+      }
+      // Update local state only after successful save
+      setAbrilData((prev) => {
+        const filtered = prev.filter((d) => d.fecha !== day);
+        return [...filtered, { fecha: day, ordenes, dia_semana }].sort((a, b) => a.fecha - b.fecha);
+      });
+      setInputDay(String(day + 1));
+      setInputOrdenes("");
+      showSuccess(`✓ Dia ${day} guardado: ${ordenes.toLocaleString()} ordenes`);
+    } catch (e: any) {
+      setTrackingError(`Error de red guardando dia ${day}: ${e?.message || e}`);
+    }
   }, [inputDay, inputOrdenes, country]);
 
-  const deleteDay = useCallback((day: number) => {
-    setAbrilData((prev) => prev.filter((d) => d.fecha !== day));
-    fetch(`/api/data/daily-tracking?country=${country}&fecha=${day}`, { method: "DELETE" })
-      .catch((e) => console.error("Error deleting day from DB:", e));
+  const deleteDay = useCallback(async (day: number) => {
+    setTrackingError(null);
+    try {
+      const res = await fetch(`/api/data/daily-tracking?country=${country}&fecha=${day}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const msg = await res.text().catch(() => "");
+        setTrackingError(`No se pudo eliminar el dia ${day} (${res.status}): ${msg || res.statusText}`);
+        return;
+      }
+      setAbrilData((prev) => prev.filter((d) => d.fecha !== day));
+      showSuccess(`✓ Dia ${day} eliminado`);
+    } catch (e: any) {
+      setTrackingError(`Error de red eliminando dia ${day}: ${e?.message || e}`);
+    }
   }, [country]);
 
   const analysis = useMemo(() => {
@@ -513,6 +544,19 @@ export default function DailyTracker({
         </div>
       )}
 
+      {/* Save status banners */}
+      {trackingError && (
+        <div className="mb-3 p-3 rounded-lg border border-red-500/40 bg-red-500/10 flex items-start justify-between gap-3">
+          <p className="text-xs text-red-600 font-medium">⚠ {trackingError}</p>
+          <button onClick={() => setTrackingError(null)} className="text-red-500 text-xs">✕</button>
+        </div>
+      )}
+      {trackingSuccess && (
+        <div className="mb-3 p-2 rounded-lg border border-green-500/40 bg-green-500/10">
+          <p className="text-xs text-green-600 font-medium">{trackingSuccess}</p>
+        </div>
+      )}
+
       {/* Input form for Abril */}
       <div className="mb-6 p-4 rounded-xl border border-green-500/20" style={{ background: "rgba(16,185,129,0.03)" }}>
         <h3 className="text-sm font-medium text-green-400 mb-3">Cargar datos de Abril</h3>
@@ -548,10 +592,22 @@ export default function DailyTracker({
           </button>
           {abrilData.length > 0 && (
             <button
-              onClick={() => {
-                setAbrilData([]);
-                try { localStorage.removeItem(STORAGE_KEY); } catch {}
-                fetch(`/api/data/daily-tracking?country=${country}`, { method: "DELETE" }).catch(() => {});
+              onClick={async () => {
+                if (!confirm("¿Eliminar TODOS los dias cargados de Abril?")) return;
+                setTrackingError(null);
+                try {
+                  const res = await fetch(`/api/data/daily-tracking?country=${country}`, { method: "DELETE", credentials: "include" });
+                  if (!res.ok) {
+                    const msg = await res.text().catch(() => "");
+                    setTrackingError(`No se pudo borrar todo (${res.status}): ${msg || res.statusText}`);
+                    return;
+                  }
+                  setAbrilData([]);
+                  try { localStorage.removeItem(STORAGE_KEY); } catch {}
+                  showSuccess("✓ Todos los dias eliminados");
+                } catch (e: any) {
+                  setTrackingError(`Error de red borrando todo: ${e?.message || e}`);
+                }
               }}
               className="px-3 py-2 text-xs rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10"
             >
