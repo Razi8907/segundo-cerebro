@@ -522,7 +522,7 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
   /* ───── KPI calculations ───── */
   const kpis = useMemo(() => {
     const pareto = enrichedPareto;
-    const totalUsuarios = (data?.info_general || []).length;
+    const totalUsuarios = dashData?.resumen?.total_sellers || dashData?.dropshippers?.length || (data?.info_general || []).length;
     const paretoCount = pareto.length;
     const activos = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("activo")).length;
     const enRiesgo = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("riesgo")).length;
