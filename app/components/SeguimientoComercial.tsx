@@ -203,7 +203,7 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
               presupuesto_diario: safeStr(r[idx("Presupuesto")]),
               nivel_educativo: safeStr(r[idx("Nivel")]),
               mentor: safeStr(r[idx("Mentor")]),
-              observacion: safeStr(r[idx("Observación") >= 0 ? "Observación" : "Observacion"]),
+              observacion: safeStr(r[idx("Observación") >= 0 ? idx("Observación") : idx("Observacion")]),
             });
           }
         }
@@ -228,20 +228,20 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
               plataforma: safeStr(r[idx("Plataforma")]),
               presupuesto_diario: safeStr(r[idx("Presupuesto")]),
               ventas_mes: safeStr(r[idx("Ventas Mes")]),
-              ordenes_totales: safeStr(r[idx("Órdenes Totales") >= 0 ? "Órdenes Totales" : "Ordenes Totales"]),
+              ordenes_totales: safeStr(r[idx("Órdenes Totales") >= 0 ? idx("Órdenes Totales") : idx("Ordenes Totales")]),
               productos_activos: safeStr(r[idx("Productos Activos")]),
-              facturacion_mensual: safeStr(r[idx("Facturación") >= 0 ? "Facturación" : "Facturacion"]),
+              facturacion_mensual: safeStr(r[idx("Facturación") >= 0 ? idx("Facturación") : idx("Facturacion")]),
               tendencia: safeStr(r[idx("Tendencia")]),
               roas: safeStr(r[idx("ROAS")]),
               canal_contacto: safeStr(r[idx("Canal Contacto")]),
-              fecha_ultimo_contacto: safeStr(r[idx("Fecha Último Contacto") >= 0 ? "Fecha Último Contacto" : "Ultimo Contacto"]),
+              fecha_ultimo_contacto: safeStr(r[idx("Fecha Último Contacto") >= 0 ? idx("Fecha Último Contacto") : idx("Ultimo Contacto")]),
               resultado_contacto: safeStr(r[idx("Resultado")]),
-              proximo_contacto: safeStr(r[idx("Próximo") >= 0 ? "Próximo" : "Proximo"]),
+              proximo_contacto: safeStr(r[idx("Próximo") >= 0 ? idx("Próximo") : idx("Proximo")]),
               estado: safeStr(r[idx("Estado")]),
-              accion_requerida: safeStr(r[idx("Acción Requerida") >= 0 ? "Acción" : "Accion"]),
+              accion_requerida: safeStr(r[idx("Acción Requerida") >= 0 ? idx("Acción Requerida") : idx("Accion Requerida")]),
               responsable: safeStr(r[idx("Responsable")]),
               prioridad: safeStr(r[idx("Prioridad")]),
-              fecha_limite: safeStr(r[idx("Fecha Límite") >= 0 ? "Fecha Límite" : "Fecha Limite"]),
+              fecha_limite: safeStr(r[idx("Fecha Límite") >= 0 ? idx("Fecha Límite") : idx("Fecha Limite")]),
               observaciones: safeStr(r[idx("Observaciones")]),
             });
           }
@@ -258,7 +258,7 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
             const r = rows[i];
             if (!r || !r.length) continue;
             campanas.push({
-              columna_1: safeStr(r[idx("Columna 1") >= 0 ? "Columna 1" : "columna"]),
+              columna_1: safeStr(r[idx("Columna 1") >= 0 ? idx("Columna 1") : idx("columna")]),
               fecha_registro: safeStr(r[idx("Fecha de Registro")]),
               id_cliente: safeStr(r[idx("ID de cliente")]),
               nombre_cliente: safeStr(r[idx("Nombre de cliente")]),
@@ -271,13 +271,13 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
               producto_propio: safeStr(r[idx("Producto propio")]),
               precio: safeStr(r[idx("Precio")]),
               promedio_diario_ordenes: safeStr(r[idx("Promedio diario")]),
-              gestion_privatizacion: safeStr(r[idx("Gestión de privatización") >= 0 ? "Gestión" : "Gestion"]),
+              gestion_privatizacion: safeStr(r[idx("Gestión de privatización") >= 0 ? idx("Gestión de privatización") : idx("Gestion de privatizacion")]),
               privatizado: safeStr(r[idx("Privatizado")]),
-              duracion_stock_dias: safeStr(r[idx("Duración con stock") >= 0 ? "Duración" : "Duracion"]),
+              duracion_stock_dias: safeStr(r[idx("Duración con stock") >= 0 ? idx("Duración con stock") : idx("Duracion con stock")]),
               prioridad: safeStr(r[idx("Prioridad")]),
               fecha_reporte_prioridad_alta: safeStr(r[idx("Fecha de reporte")]),
               busqueda_proveedores: safeStr(r[idx("Busqueda")]),
-              estado_campana: safeStr(r[idx("Estado de la Campaña") >= 0 ? "Estado de la Campaña" : "Estado de la Campana"]),
+              estado_campana: safeStr(r[idx("Estado de la Campaña") >= 0 ? idx("Estado de la Campaña") : idx("Estado de la Campana")]),
               fecha_inicio_ventas: safeStr(r[idx("Fecha Inicio")]),
               fecha_final_ventas: safeStr(r[idx("Fecha Final")]),
               dias_actividad: safeStr(r[idx("Dias de Actividad")]),
