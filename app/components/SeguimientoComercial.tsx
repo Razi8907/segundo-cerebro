@@ -497,10 +497,9 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
 
   /* ───── KPI calculations ───── */
   const kpis = useMemo(() => {
-    if (!data) return null;
     const pareto = enrichedPareto;
-    const totalUsuarios = data.info_general.length;
-    const paretoCount = data.info_general.filter((u) => safeStr(u.pareto).toLowerCase() === "si" || safeStr(u.pareto).toLowerCase() === "sí" || safeStr(u.pareto).toLowerCase() === "true").length;
+    const totalUsuarios = (data?.info_general || []).length;
+    const paretoCount = pareto.length;
     const activos = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("activo")).length;
     const enRiesgo = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("riesgo")).length;
     const pendientes = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("pendiente")).length;
@@ -514,7 +513,7 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
       } catch { return true; }
     }).length;
 
-    const campanasActivas = data.campanas.filter((c) =>
+    const campanasActivas = (data?.campanas || []).filter((c) =>
       safeStr(c.estado_campana).toLowerCase().includes("activ")
     ).length;
 
@@ -670,17 +669,8 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
         </div>
       </div>
 
-      {/* No data state */}
-      {!data && (
-        <div className="glass-card p-8 text-center border border-orange-500/20">
-          <span className="text-4xl mb-4 block">📋</span>
-          <h3 className="text-lg font-bold t-primary mb-2">Sin datos cargados</h3>
-          <p className="t-muted text-sm">Sube un archivo Excel con las hojas: Información General, Seguimiento Pareto, Cuidado de Campañas</p>
-        </div>
-      )}
-
       {/* ─── RESUMEN ─── */}
-      {data && subTab === "resumen" && kpis && (
+      {subTab === "resumen" && kpis && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
             { title: "Total Usuarios", value: kpis.totalUsuarios.toLocaleString(), icon: "👥", borderColor: "border-orange-500/30", textColor: "text-orange-400", subtitle: "Cartera completa" },
@@ -793,11 +783,41 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
       )}
 
       {/* ─── CAMPAÑAS ─── */}
-      {data && subTab === "campanas" && (
+      {subTab === "campanas" && (
         <div className="glass-card p-4 border border-orange-500/20 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold t-primary">Cuidado de Campañas</h3>
-            <span className="text-xs t-muted">{data.campanas.length} campañas</span>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-bold t-primary">Cuidado de Campañas</h3>
+              <span className="text-xs t-muted">{(data?.campanas || []).length} campañas</span>
+            </div>
+            <button
+              onClick={() => {
+                const empty: CampanaRow = {
+                  columna_1: "", fecha_registro: new Date().toISOString().split("T")[0], id_cliente: "", nombre_cliente: "", correo: "",
+                  id_producto: "", nombre_producto: "", categoria: "", estado_producto: "", stock: "", producto_propio: "",
+                  precio: "", promedio_diario_ordenes: "", gestion_privatizacion: "", privatizado: "", duracion_stock_dias: "",
+                  prioridad: "", fecha_reporte_prioridad_alta: "", busqueda_proveedores: "", estado_campana: "Activa",
+                  fecha_inicio_ventas: "", fecha_final_ventas: "", dias_actividad: "",
+                  unidades_enero: "", unidades_febrero: "", unidades_marzo: "", unidades_abril: "",
+                  unidades_mayo: "", unidades_junio: "", unidades_julio: "", unidades_agosto: "",
+                  unidades_septiembre: "", unidades_octubre: "", unidades_noviembre: "", unidades_diciembre: "",
+                  total_unidades: "", observaciones: "", gasto_ads: "",
+                };
+                const newData = { ...(data || { info_general: [], pareto: [], campanas: [] }) };
+                newData.campanas = [empty, ...newData.campanas];
+                setData(newData);
+                // Save
+                fetch(`/api/data/seguimiento-comercial`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ country, data: newData }),
+                }).catch(() => {});
+                showBanner("success", "Fila agregada. Editá los campos haciendo click en cada celda.");
+              }}
+              className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white font-medium hover:bg-green-500"
+            >
+              + Agregar campaña
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -820,55 +840,71 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
                 </tr>
               </thead>
               <tbody>
-                {data.campanas.slice(pageCampanas * ROWS_PER_PAGE, (pageCampanas + 1) * ROWS_PER_PAGE).map((c, i) => {
+                {(data?.campanas || []).slice(pageCampanas * ROWS_PER_PAGE, (pageCampanas + 1) * ROWS_PER_PAGE).map((c, i) => {
                   const realIdx = pageCampanas * ROWS_PER_PAGE + i;
                   const facturacion = safeNum(c.precio) * safeNum(c.total_unidades);
                   const gastoAds = safeNum(c.gasto_ads);
                   const roas = gastoAds > 0 ? (facturacion / gastoAds).toFixed(2) : "--";
                   return (
                     <tr key={`${c.id_producto}-${i}`} className="border-b border-gray-800 hover:bg-orange-500/5">
-                      <td className="py-2 px-2 t-primary font-medium max-w-[100px] truncate" title={c.nombre_cliente}>{c.nombre_cliente}</td>
-                      <td className="py-2 px-2 t-secondary max-w-[120px] truncate" title={c.nombre_producto}>{c.nombre_producto}</td>
-                      <td className="py-2 px-2 t-muted">{c.categoria}</td>
-                      <td className="py-2 px-2 t-muted">{c.estado_producto}</td>
-                      <td className="py-2 px-2 text-right t-secondary">{c.stock}</td>
-                      <td className="py-2 px-2 text-right t-secondary">{c.precio}</td>
-                      <td className="py-2 px-2 text-right t-secondary">{c.promedio_diario_ordenes}</td>
-                      <td className="py-2 px-2">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                          safeStr(c.prioridad).toLowerCase().includes("alta") ? "bg-red-500/10 text-red-400" :
-                          safeStr(c.prioridad).toLowerCase().includes("media") ? "bg-yellow-500/10 text-yellow-400" :
-                          "bg-green-500/10 text-green-400"
-                        }`}>
-                          {c.prioridad || "--"}
-                        </span>
-                      </td>
-                      <td className="py-2 px-2 t-secondary">{c.estado_campana}</td>
-                      <td className="py-2 px-2 text-right t-secondary">{c.dias_actividad}</td>
-                      <td className="py-2 px-2 text-right t-secondary">{c.total_unidades}</td>
-                      <td className="py-2 px-2 text-right">
-                        <EditableCell value={c.gasto_ads} sheet="campanas" rowIndex={realIdx} field="gasto_ads" type="number" />
-                      </td>
+                      <td className="py-2 px-2"><EditableCell value={c.nombre_cliente} sheet="campanas" rowIndex={realIdx} field="nombre_cliente" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.nombre_producto} sheet="campanas" rowIndex={realIdx} field="nombre_producto" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.categoria} sheet="campanas" rowIndex={realIdx} field="categoria" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.estado_producto} sheet="campanas" rowIndex={realIdx} field="estado_producto" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.stock} sheet="campanas" rowIndex={realIdx} field="stock" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.precio} sheet="campanas" rowIndex={realIdx} field="precio" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.promedio_diario_ordenes} sheet="campanas" rowIndex={realIdx} field="promedio_diario_ordenes" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.prioridad} sheet="campanas" rowIndex={realIdx} field="prioridad" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.estado_campana} sheet="campanas" rowIndex={realIdx} field="estado_campana" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.dias_actividad} sheet="campanas" rowIndex={realIdx} field="dias_actividad" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.total_unidades} sheet="campanas" rowIndex={realIdx} field="total_unidades" /></td>
+                      <td className="py-2 px-2"><EditableCell value={c.gasto_ads} sheet="campanas" rowIndex={realIdx} field="gasto_ads" type="number" /></td>
                       <td className="py-2 px-2 text-right font-medium" style={{ color: roas !== "--" && parseFloat(roas) >= 2 ? "#16a34a" : roas !== "--" ? "#ea580c" : undefined }}>
                         {roas}
                       </td>
-                      <td className="py-2 px-2 t-muted max-w-[100px] truncate" title={c.observaciones}>{c.observaciones}</td>
+                      <td className="py-2 px-2"><EditableCell value={c.observaciones} sheet="campanas" rowIndex={realIdx} field="observaciones" /></td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
-          <Pagination page={pageCampanas} setPage={setPageCampanas} total={data.campanas.length} />
+          <Pagination page={pageCampanas} setPage={setPageCampanas} total={(data?.campanas || []).length} />
         </div>
       )}
 
       {/* ─── INFO GENERAL ─── */}
-      {data && subTab === "info_general" && (
+      {subTab === "info_general" && (
         <div className="glass-card p-4 border border-orange-500/20 space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold t-primary">Información General</h3>
-            <span className="text-xs t-muted">{data.info_general.length} usuarios</span>
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-bold t-primary">Información General</h3>
+              <span className="text-xs t-muted">{(data?.info_general || []).length} usuarios</span>
+            </div>
+            <button
+              onClick={() => {
+                const empty: InfoGeneralRow = {
+                  comercial_responsable: "", fecha_registro: new Date().toISOString().split("T")[0],
+                  id_cliente: "", nombre_cliente: "", correo: "", pareto: "", cambio_cuentas: "",
+                  cuenta_proveedor: "", tipo_cuenta: "", tipo_usuario: "Dropshipper", ciudad: "",
+                  comunidad: "", telefono: "", modalidad_venta: "", plataforma_tienda: "",
+                  lugar_pauta: "", automatizaciones: "", presupuesto_diario: "",
+                  nivel_educativo: "", mentor: "", observacion: "",
+                };
+                const newData = { ...(data || { info_general: [], pareto: [], campanas: [] }) };
+                newData.info_general = [empty, ...newData.info_general];
+                setData(newData);
+                fetch(`/api/data/seguimiento-comercial`, {
+                  method: "POST", credentials: "include",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ country, data: newData }),
+                }).catch(() => {});
+                showBanner("success", "Usuario agregado. Editá los campos haciendo click en cada celda.");
+              }}
+              className="px-3 py-1.5 text-xs rounded-lg bg-green-600 text-white font-medium hover:bg-green-500"
+            >
+              + Agregar usuario
+            </button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -890,35 +926,30 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
                 </tr>
               </thead>
               <tbody>
-                {data.info_general.slice(pageInfo * ROWS_PER_PAGE, (pageInfo + 1) * ROWS_PER_PAGE).map((u, i) => (
+                {(data?.info_general || []).slice(pageInfo * ROWS_PER_PAGE, (pageInfo + 1) * ROWS_PER_PAGE).map((u, i) => {
+                  const realIdx = pageInfo * ROWS_PER_PAGE + i;
+                  return (
                   <tr key={`${u.id_cliente}-${i}`} className="border-b border-gray-800 hover:bg-orange-500/5">
-                    <td className="py-2 px-2 t-muted">{u.id_cliente}</td>
-                    <td className="py-2 px-2 t-primary font-medium max-w-[120px] truncate" title={u.nombre_cliente}>{u.nombre_cliente}</td>
-                    <td className="py-2 px-2 t-muted text-[10px] max-w-[120px] truncate">{u.correo}</td>
-                    <td className="py-2 px-2 t-secondary">{u.comercial_responsable}</td>
-                    <td className="py-2 px-2">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
-                        safeStr(u.pareto).toLowerCase() === "si" || safeStr(u.pareto).toLowerCase() === "sí"
-                          ? "bg-yellow-500/10 text-yellow-400"
-                          : "bg-gray-500/10 text-gray-400"
-                      }`}>
-                        {u.pareto || "No"}
-                      </span>
-                    </td>
-                    <td className="py-2 px-2 t-muted">{u.tipo_cuenta}</td>
-                    <td className="py-2 px-2 t-muted">{u.tipo_usuario}</td>
-                    <td className="py-2 px-2 t-muted">{u.ciudad}</td>
-                    <td className="py-2 px-2 t-muted">{u.modalidad_venta}</td>
-                    <td className="py-2 px-2 t-muted">{u.plataforma_tienda}</td>
-                    <td className="py-2 px-2 t-secondary">{u.presupuesto_diario}</td>
-                    <td className="py-2 px-2 t-muted">{u.mentor}</td>
-                    <td className="py-2 px-2 t-muted max-w-[100px] truncate" title={u.observacion}>{u.observacion}</td>
+                    <td className="py-2 px-2"><EditableCell value={u.id_cliente} sheet="info_general" rowIndex={realIdx} field="id_cliente" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.nombre_cliente} sheet="info_general" rowIndex={realIdx} field="nombre_cliente" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.correo} sheet="info_general" rowIndex={realIdx} field="correo" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.comercial_responsable} sheet="info_general" rowIndex={realIdx} field="comercial_responsable" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.pareto} sheet="info_general" rowIndex={realIdx} field="pareto" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.tipo_cuenta} sheet="info_general" rowIndex={realIdx} field="tipo_cuenta" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.tipo_usuario} sheet="info_general" rowIndex={realIdx} field="tipo_usuario" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.ciudad} sheet="info_general" rowIndex={realIdx} field="ciudad" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.modalidad_venta} sheet="info_general" rowIndex={realIdx} field="modalidad_venta" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.plataforma_tienda} sheet="info_general" rowIndex={realIdx} field="plataforma_tienda" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.presupuesto_diario} sheet="info_general" rowIndex={realIdx} field="presupuesto_diario" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.mentor} sheet="info_general" rowIndex={realIdx} field="mentor" /></td>
+                    <td className="py-2 px-2"><EditableCell value={u.observacion} sheet="info_general" rowIndex={realIdx} field="observacion" /></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
-          <Pagination page={pageInfo} setPage={setPageInfo} total={data.info_general.length} />
+          <Pagination page={pageInfo} setPage={setPageInfo} total={(data?.info_general || []).length} />
         </div>
       )}
     </div>
