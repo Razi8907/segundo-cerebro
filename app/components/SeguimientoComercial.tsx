@@ -473,27 +473,51 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
 
   /* ───── inline edit ───── */
   const saveField = useCallback(async (sheet: string, rowIndex: number, field: string, value: string) => {
+    // For pareto: save the entire enrichedPareto (with edit) as data.pareto
+    // so manual edits persist and get picked up by savedManual on next render
+    if (sheet === "pareto") {
+      const updatedPareto = enrichedPareto.map((p, i) =>
+        i === rowIndex ? { ...p, [field]: value } : p
+      );
+      const newData = { ...(data || { info_general: [], pareto: [], campanas: [] }), pareto: updatedPareto };
+      setData(newData);
+      try {
+        const res = await fetch("/api/data/seguimiento-comercial", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ country, data: newData }),
+        });
+        const json = await res.json();
+        if (json.error) throw new Error(json.error);
+      } catch (err: any) {
+        showBanner("error", `Error guardando: ${err?.message || err}`);
+      }
+      return;
+    }
+
+    // For campanas / info_general: update by index in data
     if (!data) return;
-    // Optimistic update
     const updated = { ...data };
     const arr = [...(updated as any)[sheet]];
+    if (!arr[rowIndex]) return;
     arr[rowIndex] = { ...arr[rowIndex], [field]: value };
     (updated as any)[sheet] = arr;
     setData(updated);
 
     try {
       const res = await fetch("/api/data/seguimiento-comercial", {
-        method: "PUT",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ country, sheet, rowIndex, field, value }),
+        body: JSON.stringify({ country, data: updated }),
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
     } catch (err: any) {
       showBanner("error", `Error guardando: ${err?.message || err}`);
     }
-  }, [country, data, showBanner]);
+  }, [country, data, enrichedPareto, showBanner]);
 
   /* ───── KPI calculations ───── */
   const kpis = useMemo(() => {
