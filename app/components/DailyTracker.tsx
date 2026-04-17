@@ -496,11 +496,11 @@ export default function DailyTracker({
       </p>
 
       {/* KPIs row - solo Abril */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
         <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Acumulado Abril</p>
           <p className="text-lg font-bold text-blue-400">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</p>
-          <p className="text-[10px] text-gray-500">{analysis.diasCargados} días · Prom: {analysis.diasCargados > 0 ? Math.round(analysis.promedioAbril).toLocaleString() : "—"}/día</p>
+          <p className="text-[10px] text-gray-500">{analysis.diasCargados} días cargados</p>
         </div>
         <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "rgba(16,185,129,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Proy. Ingresadas</p>
@@ -515,6 +515,13 @@ export default function DailyTracker({
             {analysis.proyMovilizadas > 0 ? analysis.proyMovilizadas.toLocaleString() : "—"}
           </p>
           <p className="text-[10px] text-gray-500">Meta: {metaInfo.meta_movilizadas_abril.toLocaleString()} mov.</p>
+        </div>
+        <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
+          <p className="text-[10px] text-gray-400 uppercase">Promedio diario actual</p>
+          <p className="text-lg font-bold text-purple-400">
+            {analysis.diasCargados > 0 ? Math.round(analysis.promedioAbril).toLocaleString() : "—"}
+          </p>
+          <p className="text-[10px] text-gray-500">{analysis.diasCargados > 0 ? `${Math.round(analysis.promedioAbril) >= META_DIARIA ? "✅ Sobre meta" : "⚠ Bajo meta"} (meta: ${META_DIARIA.toLocaleString()}/día)` : "Sin datos"}</p>
         </div>
         <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "rgba(239,68,68,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Necesario/día rest.</p>
