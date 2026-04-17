@@ -553,8 +553,8 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
   }, [enrichedPareto]);
 
   /* ───── editable cell ───── */
-  const EditableCell = ({ value, sheet, rowIndex, field, type = "text" }: {
-    value: string; sheet: string; rowIndex: number; field: string; type?: string;
+  const EditableCell = ({ value, sheet, rowIndex, field, type = "text", options }: {
+    value: string; sheet: string; rowIndex: number; field: string; type?: string; options?: string[];
   }) => {
     const [editing, setEditing] = useState(false);
     const [val, setVal] = useState(value);
@@ -570,6 +570,22 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
         >
           {value || <span className="t-muted text-[10px]">--</span>}
         </span>
+      );
+    }
+
+    if (options) {
+      return (
+        <select
+          value={val}
+          onChange={(e) => { setVal(e.target.value); setEditing(false); saveField(sheet, rowIndex, field, e.target.value); }}
+          onBlur={() => setEditing(false)}
+          autoFocus
+          className="text-xs px-1 py-0.5 rounded border border-orange-500/40 outline-none t-primary"
+          style={{ background: "var(--bg-input)", minWidth: "80px" }}
+        >
+          <option value="">--</option>
+          {options.map((o) => <option key={o} value={o}>{o}</option>)}
+        </select>
       );
     }
 
@@ -769,7 +785,7 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
                       <td className="py-2 px-2"><EditableCell value={p.estado} sheet="pareto" rowIndex={realIdx} field="estado" /></td>
                       <td className="py-2 px-2"><EditableCell value={p.accion_requerida} sheet="pareto" rowIndex={realIdx} field="accion_requerida" /></td>
                       <td className="py-2 px-2"><EditableCell value={p.responsable} sheet="pareto" rowIndex={realIdx} field="responsable" /></td>
-                      <td className="py-2 px-2"><EditableCell value={p.prioridad} sheet="pareto" rowIndex={realIdx} field="prioridad" /></td>
+                      <td className="py-2 px-2"><EditableCell value={p.prioridad} sheet="pareto" rowIndex={realIdx} field="prioridad" options={["Alta", "Media", "Baja"]} /></td>
                       <td className="py-2 px-2"><EditableCell value={p.fecha_limite} sheet="pareto" rowIndex={realIdx} field="fecha_limite" type="date" /></td>
                       <td className="py-2 px-2"><EditableCell value={p.observaciones} sheet="pareto" rowIndex={realIdx} field="observaciones" /></td>
                     </tr>
