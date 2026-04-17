@@ -35,22 +35,25 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "country, fecha, ordenes, dia_semana required" }, { status: 400 });
     }
 
+    const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+    const keyUsed = svcKey ? "service_role" : "anon";
+    const keyPrefix = (svcKey || anonKey).substring(0, 20);
+
     const supabase = getSupabase();
 
-    // Delete existing row first, then insert (avoids upsert + RLS conflicts)
-    await supabase
-      .from("daily_tracking")
-      .delete()
-      .eq("country", country)
-      .eq("fecha", fecha);
+    // Delete existing row first, then insert
+    await supabase.from("daily_tracking").delete().eq("country", country).eq("fecha", fecha);
 
     const { error } = await supabase
       .from("daily_tracking")
       .insert({ country, fecha, ordenes, dia_semana, updated_at: new Date().toISOString() });
 
     if (error) {
-      console.error("[daily-tracking PUT] Supabase error:", error);
-      return NextResponse.json({ error: `DB error: ${error.message}` }, { status: 500 });
+      console.error("[daily-tracking PUT]", error, "key:", keyUsed, "prefix:", keyPrefix);
+      return NextResponse.json({
+        error: `DB error (${keyUsed}, prefix=${keyPrefix}...): ${error.message}`,
+      }, { status: 500 });
     }
     return NextResponse.json({ success: true });
   } catch (err: any) {
