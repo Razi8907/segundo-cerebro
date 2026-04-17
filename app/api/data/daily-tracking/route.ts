@@ -37,8 +37,17 @@ export async function PUT(req: NextRequest) {
 
     const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-    const keyUsed = svcKey ? "service_role" : "anon";
-    const keyPrefix = (svcKey || anonKey).substring(0, 20);
+    const activeKey = svcKey || anonKey;
+    // Decode JWT payload to check actual role
+    let jwtRole = "unknown";
+    try {
+      const parts = activeKey.split(".");
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+        jwtRole = payload.role || "no-role-field";
+      }
+    } catch { jwtRole = "decode-error"; }
+    const sameKey = svcKey === anonKey;
 
     const supabase = getSupabase();
 
@@ -52,7 +61,7 @@ export async function PUT(req: NextRequest) {
     if (error) {
       console.error("[daily-tracking PUT]", error, "key:", keyUsed, "prefix:", keyPrefix);
       return NextResponse.json({
-        error: `DB error (${keyUsed}, prefix=${keyPrefix}...): ${error.message}`,
+        error: `DB error (role=${jwtRole}, sameAsAnon=${sameKey}): ${error.message}`,
       }, { status: 500 });
     }
     return NextResponse.json({ success: true });
