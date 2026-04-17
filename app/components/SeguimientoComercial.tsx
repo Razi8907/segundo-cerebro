@@ -168,78 +168,88 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // AUTO-GENERATE Pareto from dashboard dropshippers + operational data
-  // The Pareto is NOT from the Excel — it's built from existing system data
+  // AUTO-GENERATE Pareto from Análisis Operacional (top 80% dropshippers)
+  // Source: by_dropshipper + by_ds_daily + by_ds_producto from /api/data/operational
   const enrichedPareto = useMemo((): ParetoRow[] => {
-    if (!dashData?.dropshippers?.length) return data?.pareto || [];
+    if (!opsData?.by_dropshipper?.length) return data?.pareto || [];
 
-    // Saved manual edits (from DB) keyed by email
+    // Saved manual edits (from DB) keyed by DS name (lowercase)
     const savedManual = new Map<string, Partial<ParetoRow>>();
     if (data?.pareto) {
       for (const p of data.pareto) {
-        if (p.correo) savedManual.set(p.correo.toLowerCase().trim(), p);
+        const key = (p.nombre_cliente || p.correo || "").toLowerCase().trim();
+        if (key) savedManual.set(key, p);
       }
     }
 
-    // Operational data lookups
-    const opsByName = new Map<string, any>();
-    const opsProductsByName = new Map<string, Set<string>>();
-    if (opsData?.by_dropshipper) {
-      for (const ds of opsData.by_dropshipper) {
-        if (ds.nombre) opsByName.set(ds.nombre.toLowerCase().trim(), ds);
+    // 1. Calculate Pareto: top DS that make 80% of orders
+    const sorted = [...opsData.by_dropshipper].sort((a: any, b: any) => b.total - a.total);
+    const totalOrdenes = sorted.reduce((s: number, d: any) => s + d.total, 0);
+    let acum = 0;
+    const paretoDS: any[] = [];
+    for (const ds of sorted) {
+      if (paretoDS.length > 0 && acum >= totalOrdenes * 0.8) break;
+      acum += ds.total;
+      paretoDS.push(ds);
+    }
+    if (paretoDS.length === 0 && sorted.length > 0) paretoDS.push(sorted[0]);
+
+    // 2. Build lookup from by_ds_daily (has email, celular, dsId)
+    const dsInfoMap = new Map<string, { dsId: string; dsEmail: string; dsCelular: string; dailyOrders: number[] }>();
+    if (opsData.by_ds_daily) {
+      for (const d of opsData.by_ds_daily) {
+        const key = d.ds?.toLowerCase().trim();
+        if (!dsInfoMap.has(key)) dsInfoMap.set(key, { dsId: d.dsId || "", dsEmail: d.dsEmail || "", dsCelular: d.dsCelular || "", dailyOrders: [] });
+        const info = dsInfoMap.get(key)!;
+        if (!info.dsId && d.dsId) info.dsId = d.dsId;
+        if (!info.dsEmail && d.dsEmail) info.dsEmail = d.dsEmail;
+        if (!info.dsCelular && d.dsCelular) info.dsCelular = d.dsCelular;
+        info.dailyOrders.push(d.ordenes);
       }
     }
-    if (opsData?.by_ds_producto) {
+
+    // 3. Products per DS
+    const dsProductCount = new Map<string, number>();
+    if (opsData.by_ds_producto) {
       for (const dp of opsData.by_ds_producto) {
         const key = dp.ds?.toLowerCase().trim();
-        if (!opsProductsByName.has(key)) opsProductsByName.set(key, new Set());
-        opsProductsByName.get(key)!.add(dp.producto);
+        dsProductCount.set(key, (dsProductCount.get(key) || 0) + 1);
       }
     }
 
-    // Generate pareto rows from dashboard dropshippers
-    return dashData.dropshippers.map((ds: any): ParetoRow => {
-      const email = (ds.email || "").toLowerCase().trim();
-      const saved = savedManual.get(email);
+    // 4. Generate Pareto rows
+    return paretoDS.map((ds: any): ParetoRow => {
+      const nameKey = (ds.nombre || "").toLowerCase().trim();
+      const dsInfo = dsInfoMap.get(nameKey);
+      const saved = savedManual.get(nameKey) || savedManual.get(dsInfo?.dsEmail?.toLowerCase().trim() || "");
 
-      // Dashboard metrics
-      const totalIng = ds.total?.ing || 0;
-      const totalMov = ds.total?.mov || 0;
-      const totalEnt = ds.total?.ent || 0;
-      const growth = ds.growth || 0;
-      const pctEnt = ds.pct_ent || 0;
-      const numProveedores = ds.num_proveedores || 0;
-      const proveedores = ds.proveedores || [];
-
-      // Operational data (April)
-      const opsDs = opsByName.get(email);
-      const abrilOrdenes = opsDs?.total || 0;
-      const abrilEntregadas = opsDs?.estados?.["ENTREGADO"] || 0;
-      const productCount = opsProductsByName.get(email)?.size || 0;
-
-      const ordenes = abrilOrdenes || totalIng;
-      const ventas = abrilEntregadas || totalEnt;
-      const productos = productCount || numProveedores;
+      const totalOrds = ds.total || 0;
+      const entregados = ds.estados?.["ENTREGADO"] || 0;
+      const cancelados = ds.estados?.["CANCELADO"] || 0;
+      const devoluciones = (ds.estados?.["DEVOLUCION"] || 0) + (ds.estados?.["EN PROCESO DE DEVOLUCION"] || 0);
+      const sinCancelados = totalOrds - cancelados;
+      const pctEntrega = sinCancelados > 0 ? (entregados / sinCancelados * 100) : 0;
+      const productos = dsProductCount.get(nameKey) || 0;
 
       let tendencia = "";
-      if (growth > 10) tendencia = "📈 Positiva";
-      else if (growth > -10) tendencia = "➡️ Estable";
-      else if (growth !== 0) tendencia = "📉 Negativa";
+      if (pctEntrega >= 60) tendencia = "📈 Positiva";
+      else if (pctEntrega >= 40) tendencia = "➡️ Estable";
+      else if (totalOrds > 0) tendencia = "📉 Negativa";
 
       return {
-        id_cliente: saved?.id_cliente || "",
-        nombre_cliente: saved?.nombre_cliente || ds.email?.split("@")[0] || "",
-        correo: ds.email || "",
+        id_cliente: saved?.id_cliente || dsInfo?.dsId || "",
+        nombre_cliente: ds.nombre || "",
+        correo: saved?.correo || dsInfo?.dsEmail || "",
         comercial_responsable: saved?.comercial_responsable || "",
         tipo_cuenta: saved?.tipo_cuenta || "",
         ciudad: saved?.ciudad || "",
         plataforma: saved?.plataforma || "",
         presupuesto_diario: saved?.presupuesto_diario || "",
-        // Auto-filled from system data
-        ventas_mes: String(ventas),
-        ordenes_totales: String(ordenes),
+        // Auto-filled from Análisis Operacional
+        ventas_mes: String(entregados),
+        ordenes_totales: String(totalOrds),
         productos_activos: String(productos),
-        facturacion_mensual: String(totalMov),
+        facturacion_mensual: `${pctEntrega.toFixed(1)}% entrega`,
         tendencia,
         // Manual fields — restored from saved data
         roas: saved?.roas || "",
@@ -254,8 +264,8 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
         fecha_limite: saved?.fecha_limite || "",
         observaciones: saved?.observaciones || "",
       };
-    }).sort((a: ParetoRow, b: ParetoRow) => Number(b.ordenes_totales) - Number(a.ordenes_totales));
-  }, [dashData, opsData, data?.pareto]);
+    });
+  }, [opsData, data?.pareto]);
 
   /* ───── show banner ───── */
   const showBanner = useCallback((type: "success" | "error", msg: string) => {
