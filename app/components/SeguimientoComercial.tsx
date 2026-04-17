@@ -168,19 +168,20 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
 
   useEffect(() => { loadData(); }, [loadData]);
 
-  // Auto-fill pareto metrics from dashboard data (dropshippers) + operational data
-  const enrichedPareto = useMemo(() => {
-    if (!data?.pareto?.length) return data?.pareto || [];
+  // AUTO-GENERATE Pareto from dashboard dropshippers + operational data
+  // The Pareto is NOT from the Excel — it's built from existing system data
+  const enrichedPareto = useMemo((): ParetoRow[] => {
+    if (!dashData?.dropshippers?.length) return data?.pareto || [];
 
-    // Build lookup from dashboard dropshippers (matched by email)
-    const dsByEmail = new Map<string, any>();
-    if (dashData?.dropshippers) {
-      for (const ds of dashData.dropshippers) {
-        if (ds.email) dsByEmail.set(ds.email.toLowerCase().trim(), ds);
+    // Saved manual edits (from DB) keyed by email
+    const savedManual = new Map<string, Partial<ParetoRow>>();
+    if (data?.pareto) {
+      for (const p of data.pareto) {
+        if (p.correo) savedManual.set(p.correo.toLowerCase().trim(), p);
       }
     }
 
-    // Build lookup from operational data (matched by dropshipper name)
+    // Operational data lookups
     const opsByName = new Map<string, any>();
     const opsProductsByName = new Map<string, Set<string>>();
     if (opsData?.by_dropshipper) {
@@ -196,53 +197,65 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
       }
     }
 
-    return data.pareto.map((p: ParetoRow) => {
-      const emailKey = p.correo?.toLowerCase().trim();
-      const nameKey = p.nombre_cliente?.toLowerCase().trim();
+    // Generate pareto rows from dashboard dropshippers
+    return dashData.dropshippers.map((ds: any): ParetoRow => {
+      const email = (ds.email || "").toLowerCase().trim();
+      const saved = savedManual.get(email);
 
-      // Match from dashboard data (Q1 metrics by email)
-      const dashDs = dsByEmail.get(emailKey);
-      // Match from operational data (April by name)
-      const opsDs = opsByName.get(nameKey) || opsByName.get(emailKey);
-      const productCount = opsProductsByName.get(nameKey)?.size || opsProductsByName.get(emailKey)?.size || 0;
+      // Dashboard metrics
+      const totalIng = ds.total?.ing || 0;
+      const totalMov = ds.total?.mov || 0;
+      const totalEnt = ds.total?.ent || 0;
+      const growth = ds.growth || 0;
+      const pctEnt = ds.pct_ent || 0;
+      const numProveedores = ds.num_proveedores || 0;
+      const proveedores = ds.proveedores || [];
 
-      if (!dashDs && !opsDs) return p;
-
-      // Dashboard data has: total.ing, total.mov, total.ent, total.dev, pct_ent, pct_dev, growth, num_proveedores
-      const totalIng = dashDs?.total?.ing || 0;
-      const totalMov = dashDs?.total?.mov || 0;
-      const totalEnt = dashDs?.total?.ent || 0;
-      const totalDev = dashDs?.total?.dev || 0;
-      const growth = dashDs?.growth || 0;
-      const pctEnt = dashDs?.pct_ent || 0;
-      const numProveedores = dashDs?.num_proveedores || 0;
-
-      // Operational data has April-specific: total orders, by status
+      // Operational data (April)
+      const opsDs = opsByName.get(email);
       const abrilOrdenes = opsDs?.total || 0;
       const abrilEntregadas = opsDs?.estados?.["ENTREGADO"] || 0;
+      const productCount = opsProductsByName.get(email)?.size || 0;
 
-      // Determine which data to use (prefer April if available, otherwise Q1)
       const ordenes = abrilOrdenes || totalIng;
       const ventas = abrilEntregadas || totalEnt;
       const productos = productCount || numProveedores;
 
-      // Tendencia from growth
       let tendencia = "";
       if (growth > 10) tendencia = "📈 Positiva";
       else if (growth > -10) tendencia = "➡️ Estable";
-      else tendencia = "📉 Negativa";
+      else if (growth !== 0) tendencia = "📉 Negativa";
 
-      // Only auto-fill empty fields
       return {
-        ...p,
-        ordenes_totales: p.ordenes_totales || (ordenes > 0 ? String(ordenes) : ""),
-        ventas_mes: p.ventas_mes || (ventas > 0 ? String(ventas) : ""),
-        productos_activos: p.productos_activos || (productos > 0 ? String(productos) : ""),
-        facturacion_mensual: p.facturacion_mensual || (totalMov > 0 ? String(totalMov) : ""),
-        tendencia: p.tendencia || tendencia,
+        id_cliente: saved?.id_cliente || "",
+        nombre_cliente: saved?.nombre_cliente || ds.email?.split("@")[0] || "",
+        correo: ds.email || "",
+        comercial_responsable: saved?.comercial_responsable || "",
+        tipo_cuenta: saved?.tipo_cuenta || "",
+        ciudad: saved?.ciudad || "",
+        plataforma: saved?.plataforma || "",
+        presupuesto_diario: saved?.presupuesto_diario || "",
+        // Auto-filled from system data
+        ventas_mes: String(ventas),
+        ordenes_totales: String(ordenes),
+        productos_activos: String(productos),
+        facturacion_mensual: String(totalMov),
+        tendencia,
+        // Manual fields — restored from saved data
+        roas: saved?.roas || "",
+        canal_contacto: saved?.canal_contacto || "",
+        fecha_ultimo_contacto: saved?.fecha_ultimo_contacto || "",
+        resultado_contacto: saved?.resultado_contacto || "",
+        proximo_contacto: saved?.proximo_contacto || "",
+        estado: saved?.estado || "",
+        accion_requerida: saved?.accion_requerida || "",
+        responsable: saved?.responsable || "",
+        prioridad: saved?.prioridad || "",
+        fecha_limite: saved?.fecha_limite || "",
+        observaciones: saved?.observaciones || "",
       };
-    });
-  }, [data?.pareto, dashData, opsData]);
+    }).sort((a: ParetoRow, b: ParetoRow) => Number(b.ordenes_totales) - Number(a.ordenes_totales));
+  }, [dashData, opsData, data?.pareto]);
 
   /* ───── show banner ───── */
   const showBanner = useCallback((type: "success" | "error", msg: string) => {
