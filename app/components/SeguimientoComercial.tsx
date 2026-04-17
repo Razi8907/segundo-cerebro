@@ -139,12 +139,20 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
   const [pageCampanas, setPageCampanas] = useState(0);
   const [pageInfo, setPageInfo] = useState(0);
 
+  // Operational data for auto-filling pareto metrics
+  const [opsData, setOpsData] = useState<any>(null);
+
   /* ───── load data ───── */
   const loadData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/data/seguimiento-comercial?country=${country}`, { credentials: "include" });
-      const json = await res.json();
-      if (json.data) setData(json.data);
+      const [segRes, opsRes] = await Promise.all([
+        fetch(`/api/data/seguimiento-comercial?country=${country}`, { credentials: "include" }),
+        fetch(`/api/data/operational?country=${country}`, { credentials: "include" }),
+      ]);
+      const segJson = await segRes.json();
+      if (segJson.data) setData(segJson.data);
+      const opsJson = await opsRes.json();
+      if (opsJson.data) setOpsData(opsJson.data);
     } catch (err) {
       console.error("Error loading seguimiento data:", err);
     } finally {
@@ -153,6 +161,63 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
   }, [country]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  // Auto-fill pareto metrics from operational data
+  const enrichedPareto = useMemo(() => {
+    if (!data?.pareto?.length) return data?.pareto || [];
+    if (!opsData) return data.pareto;
+
+    // Build lookup maps from operational data
+    const dsByName = new Map<string, any>();
+    const dsByEmail = new Map<string, any>();
+    if (opsData.by_dropshipper) {
+      for (const ds of opsData.by_dropshipper) {
+        dsByName.set(ds.nombre?.toLowerCase().trim(), ds);
+      }
+    }
+    // Also try ds_daily for more detail
+    const dsDailyMap = new Map<string, number>();
+    if (opsData.by_ds_daily) {
+      for (const d of opsData.by_ds_daily) {
+        const key = d.ds?.toLowerCase().trim();
+        dsDailyMap.set(key, (dsDailyMap.get(key) || 0) + d.ordenes);
+      }
+    }
+    // Products per DS
+    const dsProductCount = new Map<string, Set<string>>();
+    if (opsData.by_ds_producto) {
+      for (const dp of opsData.by_ds_producto) {
+        const key = dp.ds?.toLowerCase().trim();
+        if (!dsProductCount.has(key)) dsProductCount.set(key, new Set());
+        dsProductCount.get(key)!.add(dp.producto);
+      }
+    }
+
+    return data.pareto.map((p: ParetoRow) => {
+      const nameKey = p.nombre_cliente?.toLowerCase().trim();
+      const emailKey = p.correo?.toLowerCase().trim();
+      const dsMatch = dsByName.get(nameKey) || dsByName.get(emailKey);
+
+      if (!dsMatch) return p;
+
+      const totalOrdenes = dsMatch.total || 0;
+      const entregadas = dsMatch.estados?.["ENTREGADO"] || 0;
+      const canceladas = dsMatch.estados?.["CANCELADO"] || 0;
+      const productosActivos = dsProductCount.get(nameKey)?.size || dsProductCount.get(emailKey)?.size || 0;
+
+      // Only auto-fill if the field is empty (don't overwrite manual data)
+      return {
+        ...p,
+        ordenes_totales: p.ordenes_totales || String(totalOrdenes),
+        ventas_mes: p.ventas_mes || String(entregadas),
+        productos_activos: p.productos_activos || String(productosActivos),
+        facturacion_mensual: p.facturacion_mensual || "",
+        tendencia: p.tendencia || (totalOrdenes > 0 && entregadas > 0
+          ? (entregadas / (totalOrdenes - canceladas) * 100 > 60 ? "📈 Positiva" : entregadas / (totalOrdenes - canceladas) * 100 > 40 ? "➡️ Estable" : "📉 Negativa")
+          : p.tendencia),
+      };
+    });
+  }, [data?.pareto, opsData]);
 
   /* ───── show banner ───── */
   const showBanner = useCallback((type: "success" | "error", msg: string) => {
@@ -385,14 +450,15 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
   /* ───── KPI calculations ───── */
   const kpis = useMemo(() => {
     if (!data) return null;
+    const pareto = enrichedPareto;
     const totalUsuarios = data.info_general.length;
-    const paretoCount = data.info_general.filter((u) => safeStr(u.pareto).toLowerCase() === "si" || safeStr(u.pareto).toLowerCase() === "sí").length;
-    const activos = data.pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("activo")).length;
-    const enRiesgo = data.pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("riesgo")).length;
-    const pendientes = data.pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("pendiente")).length;
+    const paretoCount = data.info_general.filter((u) => safeStr(u.pareto).toLowerCase() === "si" || safeStr(u.pareto).toLowerCase() === "sí" || safeStr(u.pareto).toLowerCase() === "true").length;
+    const activos = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("activo")).length;
+    const enRiesgo = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("riesgo")).length;
+    const pendientes = pareto.filter((p) => safeStr(p.estado).toLowerCase().includes("pendiente")).length;
 
     const today = new Date();
-    const sinContacto7 = data.pareto.filter((p) => {
+    const sinContacto7 = pareto.filter((p) => {
       if (!p.fecha_ultimo_contacto) return true;
       try {
         const d = new Date(p.fecha_ultimo_contacto);
@@ -404,39 +470,40 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
       safeStr(c.estado_campana).toLowerCase().includes("activ")
     ).length;
 
-    const roasValues = data.pareto.map((p) => safeNum(p.roas)).filter((r) => r > 0);
+    const roasValues = pareto.map((p) => safeNum(p.roas)).filter((r) => r > 0);
     const roasPromedio = roasValues.length > 0
       ? roasValues.reduce((a, b) => a + b, 0) / roasValues.length
       : 0;
 
-    return { totalUsuarios, paretoCount, activos, enRiesgo, pendientes, sinContacto7, campanasActivas, roasPromedio };
-  }, [data]);
+    // Auto-filled metrics summary
+    const totalOrdenes = pareto.reduce((s, p) => s + safeNum(p.ordenes_totales), 0);
+    const totalVentas = pareto.reduce((s, p) => s + safeNum(p.ventas_mes), 0);
+
+    return { totalUsuarios, paretoCount, activos, enRiesgo, pendientes, sinContacto7, campanasActivas, roasPromedio, totalOrdenes, totalVentas };
+  }, [data, enrichedPareto]);
 
   /* ───── filtered pareto ───── */
   const filteredPareto = useMemo(() => {
-    if (!data) return [];
-    let rows = data.pareto;
+    if (!enrichedPareto.length) return [];
+    let rows = enrichedPareto;
     if (filterComercial) rows = rows.filter((p) => p.comercial_responsable.toLowerCase().includes(filterComercial.toLowerCase()));
     if (filterEstado) rows = rows.filter((p) => p.estado.toLowerCase().includes(filterEstado.toLowerCase()));
     if (filterPrioridad) rows = rows.filter((p) => p.prioridad.toLowerCase().includes(filterPrioridad.toLowerCase()));
     return rows;
-  }, [data, filterComercial, filterEstado, filterPrioridad]);
+  }, [enrichedPareto, filterComercial, filterEstado, filterPrioridad]);
 
   /* ───── unique values for filters ───── */
   const uniqueComerciales = useMemo(() => {
-    if (!data) return [];
-    return Array.from(new Set(data.pareto.map((p) => p.comercial_responsable).filter(Boolean))).sort();
-  }, [data]);
+    return Array.from(new Set(enrichedPareto.map((p) => p.comercial_responsable).filter(Boolean))).sort();
+  }, [enrichedPareto]);
 
   const uniqueEstados = useMemo(() => {
-    if (!data) return [];
-    return Array.from(new Set(data.pareto.map((p) => p.estado).filter(Boolean))).sort();
-  }, [data]);
+    return Array.from(new Set(enrichedPareto.map((p) => p.estado).filter(Boolean))).sort();
+  }, [enrichedPareto]);
 
   const uniquePrioridades = useMemo(() => {
-    if (!data) return [];
-    return Array.from(new Set(data.pareto.map((p) => p.prioridad).filter(Boolean))).sort();
-  }, [data]);
+    return Array.from(new Set(enrichedPareto.map((p) => p.prioridad).filter(Boolean))).sort();
+  }, [enrichedPareto]);
 
   /* ───── editable cell ───── */
   const EditableCell = ({ value, sheet, rowIndex, field, type = "text" }: {
@@ -647,7 +714,7 @@ export default function SeguimientoComercial({ country }: { country: "py" | "ar"
               </thead>
               <tbody>
                 {filteredPareto.slice(pagePareto * ROWS_PER_PAGE, (pagePareto + 1) * ROWS_PER_PAGE).map((p, i) => {
-                  const realIdx = data.pareto.indexOf(p);
+                  const realIdx = enrichedPareto.indexOf(p);
                   return (
                     <tr key={`${p.id_cliente}-${i}`} className="border-b border-gray-800 hover:bg-orange-500/5">
                       <td className="py-2 px-2 t-muted">{p.id_cliente}</td>
