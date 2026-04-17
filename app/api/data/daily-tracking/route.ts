@@ -59,7 +59,7 @@ export async function PUT(req: NextRequest) {
       .insert({ country, fecha, ordenes, dia_semana, updated_at: new Date().toISOString() });
 
     if (error) {
-      console.error("[daily-tracking PUT]", error, "key:", keyUsed, "prefix:", keyPrefix);
+      console.error("[daily-tracking PUT]", error, "role:", jwtRole, "sameAsAnon:", sameKey);
       return NextResponse.json({
         error: `DB error (role=${jwtRole}, sameAsAnon=${sameKey}): ${error.message}`,
       }, { status: 500 });
