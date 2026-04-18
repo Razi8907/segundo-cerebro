@@ -769,6 +769,23 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                         <span className="text-[10px] t-muted">{obj.krs.length} KRs</span>
                       </div>
                     </button>
+                    {/* Monthly mini-scorecard on objective row */}
+                    <div className="px-4 pb-2 flex flex-wrap gap-1 border-t" style={{ borderColor: "var(--bg-card-border)" }}>
+                      {filteredMonthIndices.map(mi => {
+                        const r = obj.resultado[mi];
+                        const pct = r?.pct || 0;
+                        return (
+                          <div key={mi} className="flex flex-col items-center min-w-[38px]">
+                            <span className="text-[9px] t-muted">{MONTH_LABELS[mi]}</span>
+                            {pct > 0 ? (
+                              <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${pctBg(pct)}`}>{Math.round(pct)}%</span>
+                            ) : (
+                              <span className="text-[10px] t-muted">-</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
 
                     {/* Expanded content */}
                     {isExpanded && (
