@@ -777,9 +777,9 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                           <table className="w-full text-xs">
                             <thead>
                               <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                                <th className="text-left py-2 px-2 t-muted font-medium min-w-[200px] sticky left-0" style={{ background: "var(--bg-card)" }}>KR</th>
+                                <th className="text-left py-2 px-2 font-bold min-w-[200px] sticky left-0" style={{ background: "var(--bg-card)", color: "var(--text-primary)" }}>KR</th>
                                 {filteredMonthIndices.map(mi => (
-                                  <th key={mi} colSpan={3} className="text-center py-2 px-1 t-muted font-medium border-l" style={{ borderColor: "var(--bg-card-border)" }}>
+                                  <th key={mi} colSpan={3} className="text-center py-2 px-1 font-bold border-l" style={{ borderColor: "var(--bg-card-border)", color: "var(--text-primary)" }}>
                                     {MONTH_LABELS[mi]}
                                   </th>
                                 ))}
@@ -788,9 +788,9 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                                 <th className="sticky left-0" style={{ background: "var(--bg-card)" }}></th>
                                 {filteredMonthIndices.map(mi => (
                                   <React.Fragment key={mi}>
-                                    <th className="text-center py-1 px-1 t-muted text-[10px] font-normal border-l" style={{ borderColor: "var(--bg-card-border)" }}>Obj</th>
-                                    <th className="text-center py-1 px-1 t-muted text-[10px] font-normal">Res</th>
-                                    <th className="text-center py-1 px-1 t-muted text-[10px] font-normal">%</th>
+                                    <th className="text-center py-1 px-1 text-[10px] font-medium border-l" style={{ borderColor: "var(--bg-card-border)", color: "var(--text-primary)" }}>Obj</th>
+                                    <th className="text-center py-1 px-1 text-[10px] font-medium" style={{ color: "var(--text-primary)" }}>Res</th>
+                                    <th className="text-center py-1 px-1 text-[10px] font-medium" style={{ color: "var(--text-primary)" }}>%</th>
                                   </React.Fragment>
                                 ))}
                               </tr>
