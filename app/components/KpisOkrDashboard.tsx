@@ -98,6 +98,9 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
   const [uploading, setUploading] = useState(false);
   const [banner, setBanner] = useState<{ type: "success" | "error"; msg: string } | null>(null);
   const [expandedObj, setExpandedObj] = useState<Record<number, boolean>>({});
+  const [filterMes, setFilterMes] = useState("");
+  const [filterObjetivo, setFilterObjetivo] = useState("");
+  const [dashData, setDashData] = useState<any>(null);
 
   /* ───── show banner ───── */
   const showBanner = useCallback((type: "success" | "error", msg: string) => {
@@ -108,9 +111,14 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
   /* ───── load data ───── */
   const loadData = useCallback(async () => {
     try {
-      const res = await fetch(`/api/data/kpis-okr?country=${country}`, { credentials: "include" });
-      const json = await res.json();
-      if (json.data) setData(json.data);
+      const [okrRes, dashRes] = await Promise.all([
+        fetch(`/api/data/kpis-okr?country=${country}`, { credentials: "include" }),
+        fetch(`/api/data/${country}`, { credentials: "include" }),
+      ]);
+      const okrJson = await okrRes.json();
+      if (okrJson.data) setData(okrJson.data);
+      const dJson = await dashRes.json();
+      setDashData(dJson);
     } catch (err) {
       console.error("Error loading KPIs OKR data:", err);
     } finally {
@@ -119,6 +127,43 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
   }, [country]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  /* ───── auto KPIs from dashboard data ───── */
+  const autoKpis = React.useMemo(() => {
+    if (!dashData) return null;
+    const r = dashData.resumen || {};
+    const ene = r.enero || {}, feb = r.febrero || {}, mar = r.marzo || {};
+    const totalIng = (ene.ingresadas||0)+(feb.ingresadas||0)+(mar.ingresadas||0);
+    const totalMov = (ene.movilizadas||0)+(feb.movilizadas||0)+(mar.movilizadas||0);
+    const totalEnt = (ene.entregados||0)+(feb.entregados||0)+(mar.entregados||0);
+    const totalDev = (ene.devoluciones||0)+(feb.devoluciones||0)+(mar.devoluciones||0);
+    return {
+      ordenes_ytd: totalIng,
+      movilizadas_ytd: totalMov,
+      entregados_ytd: totalEnt,
+      devoluciones_ytd: totalDev,
+      proveedores: r.total_proveedores || dashData.proveedores?.length || 0,
+      sellers: r.total_sellers || 0,
+      dropshippers: dashData.dropshippers?.length || 0,
+      pct_entrega: totalMov > 0 ? ((totalEnt / totalMov) * 100).toFixed(1) : "0",
+      pct_dev: totalMov > 0 ? ((totalDev / totalMov) * 100).toFixed(1) : "0",
+      meses: { ene, feb, mar },
+    };
+  }, [dashData]);
+
+  /* ───── filtered month indices ───── */
+  const filteredMonthIndices = React.useMemo(() => {
+    if (!filterMes) return [0,1,2,3,4,5,6,7,8,9,10,11];
+    const idx = MONTH_KEYS.indexOf(filterMes as any);
+    return idx >= 0 ? [idx] : [0,1,2,3,4,5,6,7,8,9,10,11];
+  }, [filterMes]);
+
+  /* ───── filtered objectives ───── */
+  const filteredObjectives = React.useMemo(() => {
+    if (!data?.objectives) return [];
+    if (!filterObjetivo) return data.objectives;
+    return data.objectives.filter((_, i) => String(i) === filterObjetivo);
+  }, [data?.objectives, filterObjetivo]);
 
   /* ───── save full data ───── */
   const saveData = useCallback(async (newData: KpisOkrData) => {
@@ -462,6 +507,64 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
         </div>
       </div>
 
+      {/* ─── FILTERS ─── */}
+      <div className="glass-card p-3 border border-orange-500/20">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Mes</label>
+            <select value={filterMes} onChange={(e) => setFilterMes(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[120px]" style={{ background: "var(--bg-input)" }}>
+              <option value="">Todos los meses</option>
+              {MONTH_LABELS.map((l, i) => <option key={i} value={MONTH_KEYS[i]}>{l}</option>)}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Objetivo</label>
+            <select value={filterObjetivo} onChange={(e) => setFilterObjetivo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[200px]" style={{ background: "var(--bg-input)" }}>
+              <option value="">Todos los objetivos</option>
+              {(data?.objectives || []).map((o, i) => <option key={i} value={String(i)}>{o.name.substring(0, 50)}</option>)}
+            </select>
+          </div>
+          {(filterMes || filterObjetivo) && (
+            <button onClick={() => { setFilterMes(""); setFilterObjetivo(""); }} className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-400 hover:bg-red-500/10">Limpiar</button>
+          )}
+        </div>
+      </div>
+
+      {/* ─── AUTO KPIs from Dashboard ─── */}
+      {autoKpis && (
+        <div className="glass-card p-4 border border-blue-500/20">
+          <h3 className="text-xs font-bold t-muted uppercase tracking-wider mb-3">Datos Operacionales (automático del Dashboard)</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="p-3 rounded-xl border border-blue-500/15" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted">Órdenes Q1</p>
+              <p className="text-lg font-bold text-blue-400">{autoKpis.ordenes_ytd.toLocaleString()}</p>
+            </div>
+            <div className="p-3 rounded-xl border border-green-500/15" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted">Entregados Q1</p>
+              <p className="text-lg font-bold text-green-400">{autoKpis.entregados_ytd.toLocaleString()}</p>
+              <p className="text-[10px] t-muted">{autoKpis.pct_entrega}% entrega</p>
+            </div>
+            <div className="p-3 rounded-xl border border-red-500/15" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted">Devoluciones Q1</p>
+              <p className="text-lg font-bold text-red-400">{autoKpis.devoluciones_ytd.toLocaleString()}</p>
+              <p className="text-[10px] t-muted">{autoKpis.pct_dev}% devolucion</p>
+            </div>
+            <div className="p-3 rounded-xl border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted">Proveedores</p>
+              <p className="text-lg font-bold text-orange-400">{autoKpis.proveedores}</p>
+            </div>
+            <div className="p-3 rounded-xl border border-purple-500/15" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted">Sellers</p>
+              <p className="text-lg font-bold text-purple-400">{autoKpis.sellers.toLocaleString()}</p>
+            </div>
+            <div className="p-3 rounded-xl border border-cyan-500/15" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px] t-muted">Dropshippers</p>
+              <p className="text-lg font-bold text-cyan-400">{autoKpis.dropshippers.toLocaleString()}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!data ? (
         <div className="glass-card p-8 text-center border border-orange-500/20">
           <span className="text-4xl mb-4 block">🎯</span>
@@ -525,8 +628,8 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                       <thead>
                         <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
                           <th className="text-left py-2 px-2 t-muted font-medium min-w-[200px]">Objetivo</th>
-                          {MONTH_LABELS.map(m => (
-                            <th key={m} className="text-center py-2 px-1 t-muted font-medium w-[50px]">{m}</th>
+                          {filteredMonthIndices.map(mi => (
+                            <th key={mi} className="text-center py-2 px-1 t-muted font-medium w-[50px]">{MONTH_LABELS[mi]}</th>
                           ))}
                         </tr>
                       </thead>
@@ -534,7 +637,8 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                         {data.scorecard.map((row, i) => (
                           <tr key={i} className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
                             <td className="py-2 px-2 t-primary font-medium text-[11px]">{row.objetivo}</td>
-                            {MONTH_KEYS.map(mk => {
+                            {filteredMonthIndices.map(mi => {
+                              const mk = MONTH_KEYS[mi];
                               const val = safeNum(row[mk]);
                               const displayVal = val > 0 && val <= 1 ? Math.round(val * 100) : Math.round(val);
                               return (
@@ -637,7 +741,8 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                 </div>
               )}
 
-              {data.objectives.map((obj, objIdx) => {
+              {filteredObjectives.map((obj, _fi) => {
+                const objIdx = data.objectives.indexOf(obj);
                 const isExpanded = expandedObj[objIdx] ?? false;
                 // Calculate average resultado
                 const avgPct = obj.resultado.filter(r => r.pct > 0);
@@ -673,16 +778,16 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                             <thead>
                               <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
                                 <th className="text-left py-2 px-2 t-muted font-medium min-w-[200px] sticky left-0" style={{ background: "var(--bg-card)" }}>KR</th>
-                                {MONTH_LABELS.map(m => (
-                                  <th key={m} colSpan={3} className="text-center py-2 px-1 t-muted font-medium border-l" style={{ borderColor: "var(--bg-card-border)" }}>
-                                    {m}
+                                {filteredMonthIndices.map(mi => (
+                                  <th key={mi} colSpan={3} className="text-center py-2 px-1 t-muted font-medium border-l" style={{ borderColor: "var(--bg-card-border)" }}>
+                                    {MONTH_LABELS[mi]}
                                   </th>
                                 ))}
                               </tr>
                               <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
                                 <th className="sticky left-0" style={{ background: "var(--bg-card)" }}></th>
-                                {MONTH_LABELS.map(m => (
-                                  <React.Fragment key={m}>
+                                {filteredMonthIndices.map(mi => (
+                                  <React.Fragment key={mi}>
                                     <th className="text-center py-1 px-1 t-muted text-[10px] font-normal border-l" style={{ borderColor: "var(--bg-card-border)" }}>Obj</th>
                                     <th className="text-center py-1 px-1 t-muted text-[10px] font-normal">Res</th>
                                     <th className="text-center py-1 px-1 t-muted text-[10px] font-normal">%</th>
@@ -696,7 +801,8 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                                   <td className="py-2 px-2 t-primary text-[11px] font-medium sticky left-0" style={{ background: "var(--bg-card)" }}>
                                     {kr.name}
                                   </td>
-                                  {kr.months.map((md, mIdx) => {
+                                  {filteredMonthIndices.map(mIdx => {
+                                    const md = kr.months[mIdx] || { objetivo: 0, resultado: 0, pct: 0 };
                                     const computedPct = md.objetivo > 0 ? Math.round((md.resultado / md.objetivo) * 100 * 10) / 10 : 0;
                                     return (
                                       <React.Fragment key={mIdx}>
@@ -732,7 +838,9 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                                 <td className="py-2 px-2 t-primary text-[11px] font-bold sticky left-0" style={{ background: "var(--bg-card)" }}>
                                   RESULTADO OBJETIVO
                                 </td>
-                                {obj.resultado.map((r, mIdx) => (
+                                {filteredMonthIndices.map(mIdx => {
+                                  const r = obj.resultado[mIdx] || { pct: 0 };
+                                  return (
                                   <td key={mIdx} colSpan={3} className="py-1 px-1 text-center border-l" style={{ borderColor: "var(--bg-card-border)" }}>
                                     {r.pct > 0 ? (
                                       <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-bold ${pctBg(r.pct)}`}>
@@ -742,7 +850,8 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                                       <span className="t-muted text-[10px]">-</span>
                                     )}
                                   </td>
-                                ))}
+                                  );
+                                })}
                               </tr>
                             </tbody>
                           </table>
