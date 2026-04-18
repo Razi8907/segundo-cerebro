@@ -21,6 +21,7 @@ import OperationalUpload from "../components/OperationalUpload";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboard from "../components/FinanzasDashboard";
 import SeguimientoComercial from "../components/SeguimientoComercial";
+import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
 import type { MesFilter } from "../types";
@@ -46,7 +47,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
   return r[mes];
 }
 
-type Sector = "comercial" | "operaciones" | "finanzas" | "seguimiento";
+type Sector = "comercial" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
 
 export default function ParaguayDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
@@ -121,6 +122,7 @@ export default function ParaguayDashboard() {
             { key: "operaciones" as Sector, label: "🏭 Operaciones", allowed: canOperaciones },
             { key: "finanzas" as Sector, label: "💰 Finanzas", allowed: canFinanzas },
             { key: "seguimiento" as Sector, label: "📋 Seg. Comercial", allowed: canComercial },
+            { key: "kpis_okr" as Sector, label: "🎯 KPIs & OKRs", allowed: canComercial },
           ]).filter((s) => s.allowed).map((s) => (
             <button
               key={s.key}
@@ -207,6 +209,10 @@ export default function ParaguayDashboard() {
 
         {sector === "seguimiento" && (
           <SeguimientoComercial country="py" />
+        )}
+
+        {sector === "kpis_okr" && (
+          <KpisOkrDashboard country="py" />
         )}
 
         <footer className="text-center text-gray-500 text-xs py-6 border-t border-gray-800">
