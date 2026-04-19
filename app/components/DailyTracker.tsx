@@ -950,34 +950,35 @@ export default function DailyTracker({
             </div>
           </div>
 
-          {/* Gráfico acumulado comparativo */}
-          <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Acumulado diario: Marzo vs Abril (real + proyección)</p>
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={analysis.acumComparisonData.filter(d => d.dia <= 31)}>
+          {/* Gráfico barras lado a lado: Marzo vs Abril día a día */}
+          <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Órdenes diarias: Marzo (naranja) vs Abril (verde) — día a día</p>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={analysis.comparisonData.filter(d => d.dia <= 30)} barGap={0} barCategoryGap="15%">
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-              <XAxis dataKey="dia" tick={{ fill: "#9ca3af", fontSize: 10 }} label={{ value: "Día del mes", position: "insideBottom", offset: -5, fill: "#6b7280", fontSize: 10 }} />
-              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)} />
+              <XAxis dataKey="dia" tick={{ fill: "#9ca3af", fontSize: 9 }} />
+              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
               <Tooltip
                 contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(16,185,129,0.4)", borderRadius: "12px", color: "#e5e7eb", fontSize: 11 }}
                 formatter={(value, name) => {
                   if (value == null) return ["—", name];
-                  const labels: Record<string, string> = { acumMarzo: "Marzo acum.", acumAbril: "Abril acum. (real)", acumProy: "Abril acum. (proyección)" };
+                  const labels: Record<string, string> = { marzo: "Marzo", abril: "Abril (real)", proyAbril: "Abril (proyección)" };
                   return [Number(value).toLocaleString(), labels[String(name)] || String(name)];
                 }}
+                labelFormatter={(dia) => `Día ${dia}`}
               />
-              <Line type="monotone" dataKey="acumMarzo" stroke="#F97316" strokeWidth={2} dot={{ r: 2, fill: "#F97316" }} name="acumMarzo" />
-              <Line type="monotone" dataKey="acumAbril" stroke="#10B981" strokeWidth={3} dot={{ r: 3, fill: "#10B981" }} name="acumAbril" />
-              <Line type="monotone" dataKey="acumProy" stroke="#10B981" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2, fill: "#10B981" }} name="acumProy" />
-              <ReferenceLine y={analysis.marzoTotal} stroke="#F97316" strokeDasharray="4 4" label={{ value: `Marzo: ${analysis.marzoTotal.toLocaleString()}`, fill: "#F97316", fontSize: 10, position: "right" }} />
-              <ReferenceLine y={META_TOTAL} stroke="#EF4444" strokeDasharray="4 4" label={{ value: `Meta: ${META_TOTAL.toLocaleString()}`, fill: "#EF4444", fontSize: 10, position: "right" }} />
-            </ComposedChart>
+              <ReferenceLine y={META_DIARIA} stroke="#EF4444" strokeDasharray="4 4" label={{ value: `Meta/día: ${META_DIARIA.toLocaleString()}`, fill: "#EF4444", fontSize: 9, position: "insideTopRight" }} />
+              <ReferenceLine y={metaInfo.marzo_promedio_diario} stroke="#F97316" strokeDasharray="4 4" label={{ value: `Prom Marzo: ${metaInfo.marzo_promedio_diario.toLocaleString()}`, fill: "#F97316", fontSize: 9, position: "insideBottomRight" }} />
+              <Bar dataKey="marzo" name="marzo" fill="#F97316" opacity={0.6} radius={[3, 3, 0, 0]} />
+              <Bar dataKey="abril" name="abril" fill="#10B981" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="proyAbril" name="proyAbril" fill="#10B981" opacity={0.25} radius={[3, 3, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
           <div className="flex gap-4 mt-2 justify-center flex-wrap text-[10px]">
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-orange-500 inline-block" />Marzo acumulado</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500 inline-block" />Abril real</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500 inline-block" style={{ opacity: 0.5 }} />Abril proyección</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-orange-500 inline-block" style={{ opacity: 0.5 }} />Línea Marzo total</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500 inline-block" style={{ opacity: 0.5 }} />Línea Meta</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500 inline-block" style={{ opacity: 0.6 }} />Marzo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" />Abril real</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" style={{ opacity: 0.25 }} />Abril proyección</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500 inline-block" />Meta diaria</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-orange-500 inline-block" />Prom. Marzo</span>
           </div>
 
           {/* Status message */}
