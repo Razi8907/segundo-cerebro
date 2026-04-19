@@ -435,8 +435,8 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
           }
         }}
         autoFocus
-        className="text-xs px-1 py-0.5 rounded border border-orange-500/40 outline-none w-full text-center" style={{ color: "var(--text-primary)" }}
-        style={{ background: "var(--bg-input)", minWidth: "50px", maxWidth: "80px" }}
+        className="text-xs px-1 py-0.5 rounded border border-orange-500/40 outline-none w-full text-center"
+        style={{ color: "var(--text-primary)", background: "var(--bg-input)", minWidth: "50px", maxWidth: "80px" }}
       />
     );
   };
