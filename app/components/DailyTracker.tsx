@@ -283,6 +283,67 @@ export default function DailyTracker({
       };
     });
 
+    // Marzo vs Abril comparison (day by day) + projection
+    const marzoTotal = marzoData.reduce((s, d) => s + d.ordenes, 0);
+    const marzoByDay = new Map<number, number>();
+    marzoData.forEach((d) => marzoByDay.set(d.fecha, d.ordenes));
+    const maxDays = Math.max(31, 30); // marzo 31, abril 30
+
+    const comparisonData: { dia: number; marzo: number | null; abril: number | null; proyAbril: number | null; necesarioParaSuperarMarzo: number | null }[] = [];
+    let acumMarzo = 0;
+    let acumAbril = 0;
+    const marzoFinalTotal = marzoTotal;
+    for (let i = 1; i <= 31; i++) {
+      const mVal = marzoByDay.get(i) || 0;
+      acumMarzo += mVal;
+      const aDay = abrilData.find((d) => d.fecha === i);
+      const aVal = aDay ? aDay.ordenes : null;
+      if (aVal !== null) acumAbril += aVal;
+
+      // Projected April (for days not yet loaded)
+      let proyAbril: number | null = null;
+      if (i <= 30) {
+        if (aVal !== null) {
+          proyAbril = aVal;
+        } else if (diasCargados > 0) {
+          proyAbril = Math.round(promedioAbril);
+        }
+      }
+
+      comparisonData.push({
+        dia: i,
+        marzo: i <= 31 ? mVal : null,
+        abril: i <= 30 ? aVal : null,
+        proyAbril: i <= 30 ? proyAbril : null,
+        necesarioParaSuperarMarzo: null,
+      });
+    }
+
+    // Calculate what's needed per remaining day to beat March
+    const necesarioParaSuperarMarzo = diasRestantes > 0
+      ? Math.round((marzoFinalTotal - abrilTotal + 1) / diasRestantes)
+      : 0;
+    // Also what's needed per remaining day to hit meta
+    const necesarioParaMeta = necesarioPorDiaRestante;
+
+    // Acumulado comparison for chart
+    const acumComparisonData: { dia: number; acumMarzo: number; acumAbril: number | null; acumProy: number | null }[] = [];
+    let cMarzo = 0, cAbril = 0;
+    for (let i = 1; i <= 31; i++) {
+      cMarzo += marzoByDay.get(i) || 0;
+      const aDay = abrilData.find((d) => d.fecha === i);
+      if (aDay) cAbril += aDay.ordenes;
+
+      acumComparisonData.push({
+        dia: i,
+        acumMarzo: i <= 31 ? cMarzo : cMarzo,
+        acumAbril: i <= 30 && abrilData.some((d) => d.fecha <= i) ? cAbril : null,
+        acumProy: i <= 30 && i > diasCargados && diasCargados > 0
+          ? cAbril + Math.round(promedioAbril * (i - diasCargados))
+          : null,
+      });
+    }
+
     return {
       dowAvg,
       abrilTotal,
@@ -296,6 +357,12 @@ export default function DailyTracker({
       abrilProjected,
       weeklyData,
       proyMovilizadas,
+      // New: comparison
+      marzoTotal: marzoFinalTotal,
+      comparisonData,
+      acumComparisonData,
+      necesarioParaSuperarMarzo,
+      crecimientoVsMarzo: marzoFinalTotal > 0 ? ((proyeccionFinal - marzoFinalTotal) / marzoFinalTotal * 100) : 0,
     };
   }, [marzoData, abrilData, META_DIARIA, META_TOTAL, metaInfo]);
 
@@ -840,6 +907,99 @@ export default function DailyTracker({
           </table>
         </div>
       </div>
+
+      {/* ═══ MARZO vs ABRIL COMPARISON ═══ */}
+      {analysis.diasCargados > 0 && (
+        <div className="mb-6 p-4 rounded-xl border border-emerald-500/20" style={{ background: "rgba(16,185,129,0.03)" }}>
+          <h3 className="text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>
+            📊 Marzo vs Abril — Comparación y Proyección de Crecimiento
+          </h3>
+          <p className="text-[10px] mb-4" style={{ color: "var(--text-secondary)" }}>
+            Acumulado diario: Marzo (real) vs Abril (real + proyección). El país siempre tiene que crecer vs mes anterior.
+          </p>
+
+          {/* KPIs de comparación */}
+          <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
+            <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Total Marzo</p>
+              <p className="text-lg font-bold text-orange-400">{analysis.marzoTotal.toLocaleString()}</p>
+            </div>
+            <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Acumulado Abril</p>
+              <p className="text-lg font-bold text-blue-400">{analysis.abrilTotal.toLocaleString()}</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{analysis.diasCargados} días</p>
+            </div>
+            <div className="rounded-xl p-3 border border-green-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Proy. Final Abril</p>
+              <p className={`text-lg font-bold ${analysis.proyeccionFinal > analysis.marzoTotal ? "text-green-400" : "text-red-400"}`}>
+                {analysis.proyeccionFinal.toLocaleString()}
+              </p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+                {analysis.crecimientoVsMarzo > 0 ? "📈" : "📉"} {analysis.crecimientoVsMarzo > 0 ? "+" : ""}{analysis.crecimientoVsMarzo.toFixed(1)}% vs Marzo
+              </p>
+            </div>
+            <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Necesario/día para superar Marzo</p>
+              <p className="text-lg font-bold text-purple-400">{analysis.necesarioParaSuperarMarzo.toLocaleString()}</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{analysis.diasRestantes} días restantes</p>
+            </div>
+            <div className="rounded-xl p-3 border border-red-500/20" style={{ background: "var(--bg-card)" }}>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Necesario/día para Meta</p>
+              <p className="text-lg font-bold text-red-400">{analysis.necesarioPorDiaRestante > 0 ? analysis.necesarioPorDiaRestante.toLocaleString() : META_DIARIA.toLocaleString()}</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Meta: {META_TOTAL.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* Gráfico acumulado comparativo */}
+          <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Acumulado diario: Marzo vs Abril (real + proyección)</p>
+          <ResponsiveContainer width="100%" height={280}>
+            <ComposedChart data={analysis.acumComparisonData.filter(d => d.dia <= 31)}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
+              <XAxis dataKey="dia" tick={{ fill: "#9ca3af", fontSize: 10 }} label={{ value: "Día del mes", position: "insideBottom", offset: -5, fill: "#6b7280", fontSize: 10 }} />
+              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} tickFormatter={(v) => v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)} />
+              <Tooltip
+                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(16,185,129,0.4)", borderRadius: "12px", color: "#e5e7eb", fontSize: 11 }}
+                formatter={(value, name) => {
+                  if (value == null) return ["—", name];
+                  const labels: Record<string, string> = { acumMarzo: "Marzo acum.", acumAbril: "Abril acum. (real)", acumProy: "Abril acum. (proyección)" };
+                  return [Number(value).toLocaleString(), labels[String(name)] || String(name)];
+                }}
+              />
+              <Line type="monotone" dataKey="acumMarzo" stroke="#F97316" strokeWidth={2} dot={{ r: 2, fill: "#F97316" }} name="acumMarzo" />
+              <Line type="monotone" dataKey="acumAbril" stroke="#10B981" strokeWidth={3} dot={{ r: 3, fill: "#10B981" }} name="acumAbril" />
+              <Line type="monotone" dataKey="acumProy" stroke="#10B981" strokeWidth={2} strokeDasharray="6 3" dot={{ r: 2, fill: "#10B981" }} name="acumProy" />
+              <ReferenceLine y={analysis.marzoTotal} stroke="#F97316" strokeDasharray="4 4" label={{ value: `Marzo: ${analysis.marzoTotal.toLocaleString()}`, fill: "#F97316", fontSize: 10, position: "right" }} />
+              <ReferenceLine y={META_TOTAL} stroke="#EF4444" strokeDasharray="4 4" label={{ value: `Meta: ${META_TOTAL.toLocaleString()}`, fill: "#EF4444", fontSize: 10, position: "right" }} />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <div className="flex gap-4 mt-2 justify-center flex-wrap text-[10px]">
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-orange-500 inline-block" />Marzo acumulado</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500 inline-block" />Abril real</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-green-500 inline-block" style={{ opacity: 0.5 }} />Abril proyección</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-orange-500 inline-block" style={{ opacity: 0.5 }} />Línea Marzo total</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500 inline-block" style={{ opacity: 0.5 }} />Línea Meta</span>
+          </div>
+
+          {/* Status message */}
+          <div className="mt-3 p-3 rounded-lg border" style={{
+            borderColor: analysis.proyeccionFinal > analysis.marzoTotal && analysis.pctMeta >= 100
+              ? "rgba(16,185,129,0.3)" : analysis.proyeccionFinal > analysis.marzoTotal
+              ? "rgba(234,179,8,0.3)" : "rgba(239,68,68,0.3)",
+            background: analysis.proyeccionFinal > analysis.marzoTotal && analysis.pctMeta >= 100
+              ? "rgba(16,185,129,0.06)" : analysis.proyeccionFinal > analysis.marzoTotal
+              ? "rgba(234,179,8,0.06)" : "rgba(239,68,68,0.06)",
+          }}>
+            <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
+              {analysis.proyeccionFinal > analysis.marzoTotal && analysis.pctMeta >= 100
+                ? `✅ Excelente: La proyeccion de Abril (${analysis.proyeccionFinal.toLocaleString()}) supera a Marzo (${analysis.marzoTotal.toLocaleString()}) y alcanza la meta (${META_TOTAL.toLocaleString()}). Mantener el ritmo de ${Math.round(analysis.promedioAbril).toLocaleString()}/día.`
+                : analysis.proyeccionFinal > analysis.marzoTotal
+                ? `⚠ Abril (${analysis.proyeccionFinal.toLocaleString()}) supera a Marzo (${analysis.marzoTotal.toLocaleString()}) pero no alcanza la meta (${META_TOTAL.toLocaleString()}). Necesitas ${analysis.necesarioPorDiaRestante.toLocaleString()}/día los próximos ${analysis.diasRestantes} días.`
+                : `🚨 Alerta: Al ritmo actual, Abril (${analysis.proyeccionFinal.toLocaleString()}) NO supera a Marzo (${analysis.marzoTotal.toLocaleString()}). Necesitas al menos ${analysis.necesarioParaSuperarMarzo.toLocaleString()}/día para superar Marzo, y ${analysis.necesarioPorDiaRestante.toLocaleString()}/día para la meta.`
+              }
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Marzo reference chart */}
       <div className="mb-6">
