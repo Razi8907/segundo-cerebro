@@ -950,35 +950,129 @@ export default function DailyTracker({
             </div>
           </div>
 
-          {/* Gráfico barras lado a lado: Marzo vs Abril día a día */}
-          <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Órdenes diarias: Marzo (naranja) vs Abril (verde) — día a día</p>
-          <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={analysis.comparisonData.filter(d => d.dia <= 30)} barGap={0} barCategoryGap="15%">
-              <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
-              <XAxis dataKey="dia" tick={{ fill: "#9ca3af", fontSize: 9 }} />
-              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
-              <Tooltip
-                contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(16,185,129,0.4)", borderRadius: "12px", color: "#e5e7eb", fontSize: 11 }}
-                formatter={(value, name) => {
-                  if (value == null) return ["—", name];
-                  const labels: Record<string, string> = { marzo: "Marzo", abril: "Abril (real)", proyAbril: "Abril (proyección)" };
-                  return [Number(value).toLocaleString(), labels[String(name)] || String(name)];
-                }}
-                labelFormatter={(dia) => `Día ${dia}`}
-              />
-              <ReferenceLine y={META_DIARIA} stroke="#EF4444" strokeDasharray="4 4" label={{ value: `Meta/día: ${META_DIARIA.toLocaleString()}`, fill: "#EF4444", fontSize: 9, position: "insideTopRight" }} />
-              <ReferenceLine y={metaInfo.marzo_promedio_diario} stroke="#F97316" strokeDasharray="4 4" label={{ value: `Prom Marzo: ${metaInfo.marzo_promedio_diario.toLocaleString()}`, fill: "#F97316", fontSize: 9, position: "insideBottomRight" }} />
-              <Bar dataKey="marzo" name="marzo" fill="#F97316" opacity={0.6} radius={[3, 3, 0, 0]} />
-              <Bar dataKey="abril" name="abril" fill="#10B981" radius={[3, 3, 0, 0]} />
-              <Bar dataKey="proyAbril" name="proyAbril" fill="#10B981" opacity={0.25} radius={[3, 3, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="flex gap-4 mt-2 justify-center flex-wrap text-[10px]">
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-orange-500 inline-block" style={{ opacity: 0.6 }} />Marzo</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" />Abril real</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded bg-green-500 inline-block" style={{ opacity: 0.25 }} />Abril proyección</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-500 inline-block" />Meta diaria</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-orange-500 inline-block" />Prom. Marzo</span>
+          {/* ═══ 1. GAUGE VELOCÍMETROS ═══ */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
+            {[
+              { label: "vs Marzo", pct: analysis.marzoTotal > 0 ? Math.min((analysis.proyeccionFinal / analysis.marzoTotal) * 100, 150) : 0, target: 100, color: analysis.proyeccionFinal > analysis.marzoTotal ? "#10B981" : "#EF4444", sub: `Proy: ${analysis.proyeccionFinal.toLocaleString()} / Marzo: ${analysis.marzoTotal.toLocaleString()}` },
+              { label: "vs Meta", pct: Math.min(analysis.pctMeta, 150), target: 100, color: analysis.pctMeta >= 100 ? "#10B981" : analysis.pctMeta >= 80 ? "#F59E0B" : "#EF4444", sub: `Proy: ${analysis.proyeccionFinal.toLocaleString()} / Meta: ${META_TOTAL.toLocaleString()}` },
+              { label: "Ritmo diario", pct: META_DIARIA > 0 ? Math.min((Math.round(analysis.promedioAbril) / META_DIARIA) * 100, 150) : 0, target: 100, color: analysis.promedioAbril >= META_DIARIA ? "#10B981" : analysis.promedioAbril >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444", sub: `Actual: ${Math.round(analysis.promedioAbril).toLocaleString()} / Necesario: ${META_DIARIA.toLocaleString()}` },
+            ].map((g) => {
+              const angle = Math.min(g.pct, 150) / 150 * 180;
+              return (
+                <div key={g.label} className="flex flex-col items-center p-4 rounded-xl border" style={{ borderColor: `${g.color}30`, background: "var(--bg-card)" }}>
+                  <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-secondary)" }}>{g.label}</p>
+                  <svg width="140" height="80" viewBox="0 0 140 80">
+                    {/* Background arc */}
+                    <path d="M 10 75 A 60 60 0 0 1 130 75" fill="none" stroke="#374151" strokeWidth="10" strokeLinecap="round" />
+                    {/* Colored arc */}
+                    <path d="M 10 75 A 60 60 0 0 1 130 75" fill="none" stroke={g.color} strokeWidth="10" strokeLinecap="round"
+                      strokeDasharray={`${angle / 180 * 188.5} 188.5`}
+                      style={{ transition: "stroke-dasharray 0.8s ease" }} />
+                    {/* Needle */}
+                    {(() => {
+                      const needleAngle = (angle - 90) * Math.PI / 180;
+                      const cx = 70, cy = 75, len = 45;
+                      const nx = cx + len * Math.cos(needleAngle - Math.PI);
+                      const ny = cy + len * Math.sin(needleAngle - Math.PI);
+                      return <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={g.color} strokeWidth="2.5" strokeLinecap="round" style={{ transition: "all 0.8s ease" }} />;
+                    })()}
+                    <circle cx="70" cy="75" r="4" fill={g.color} />
+                    {/* Labels */}
+                    <text x="10" y="78" fontSize="8" fill="#6b7280" textAnchor="start">0%</text>
+                    <text x="130" y="78" fontSize="8" fill="#6b7280" textAnchor="end">150%</text>
+                  </svg>
+                  <p className="text-2xl font-bold mt-1" style={{ color: g.color }}>{Math.round(g.pct)}%</p>
+                  <p className="text-[10px] text-center" style={{ color: "var(--text-muted)" }}>{g.sub}</p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ═══ 2. DONUT RINGS ═══ */}
+          <div className="flex flex-col items-center mb-5">
+            <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Progreso: Meta vs Marzo vs Abril</p>
+            <svg width="200" height="200" viewBox="0 0 200 200">
+              {/* Meta ring (outer) */}
+              <circle cx="100" cy="100" r="85" fill="none" stroke="#374151" strokeWidth="12" />
+              <circle cx="100" cy="100" r="85" fill="none" stroke="#EF4444" strokeWidth="12" strokeLinecap="round"
+                strokeDasharray={`${Math.min(analysis.abrilTotal / META_TOTAL, 1) * 534} 534`}
+                transform="rotate(-90 100 100)" style={{ transition: "stroke-dasharray 1s ease" }} />
+              {/* Marzo ring (middle) */}
+              <circle cx="100" cy="100" r="68" fill="none" stroke="#374151" strokeWidth="12" />
+              <circle cx="100" cy="100" r="68" fill="none" stroke="#F97316" strokeWidth="12" strokeLinecap="round"
+                strokeDasharray={`${Math.min(analysis.abrilTotal / analysis.marzoTotal, 1) * 427} 427`}
+                transform="rotate(-90 100 100)" style={{ transition: "stroke-dasharray 1s ease" }} />
+              {/* Abril ring (inner) */}
+              <circle cx="100" cy="100" r="51" fill="none" stroke="#374151" strokeWidth="12" />
+              <circle cx="100" cy="100" r="51" fill="none" stroke="#10B981" strokeWidth="12" strokeLinecap="round"
+                strokeDasharray={`${Math.min(analysis.diasCargados / 30, 1) * 320} 320`}
+                transform="rotate(-90 100 100)" style={{ transition: "stroke-dasharray 1s ease" }} />
+              {/* Center text */}
+              <text x="100" y="95" textAnchor="middle" fontSize="22" fontWeight="bold" fill={analysis.proyeccionFinal > analysis.marzoTotal ? "#10B981" : "#EF4444"}>
+                {analysis.diasCargados > 0 ? `${Math.round(analysis.abrilTotal / analysis.marzoTotal * 100)}%` : "—"}
+              </text>
+              <text x="100" y="112" textAnchor="middle" fontSize="10" fill="#6b7280">vs Marzo</text>
+            </svg>
+            <div className="flex gap-4 mt-2 text-[10px]">
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "#EF4444" }} />Meta ({Math.round(analysis.abrilTotal / META_TOTAL * 100)}%)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "#F97316" }} />vs Marzo ({Math.round(analysis.abrilTotal / analysis.marzoTotal * 100)}%)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "#10B981" }} />Días cargados ({analysis.diasCargados}/30)</span>
+            </div>
+          </div>
+
+          {/* ═══ 3. HEATMAP CALENDAR ═══ */}
+          <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Calendario Abril — Rendimiento diario vs Marzo</p>
+          <div className="grid grid-cols-7 gap-1 mb-2">
+            {["Lun", "Mar", "Mie", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
+              <div key={d} className="text-center text-[9px] font-medium py-1" style={{ color: "var(--text-muted)" }}>{d}</div>
+            ))}
+            {/* April 2026 starts on Wednesday (offset 2) */}
+            {Array.from({ length: 2 }).map((_, i) => <div key={`empty-${i}`} />)}
+            {Array.from({ length: 30 }).map((_, i) => {
+              const dia = i + 1;
+              const abrilDay = abrilData.find((d) => d.fecha === dia);
+              const marzoDay = analysis.comparisonData.find((d) => d.dia === dia);
+              const marzoVal = marzoDay?.marzo || 0;
+              const abrilVal = abrilDay?.ordenes || 0;
+              const isLoaded = !!abrilDay;
+              const isProjected = !isLoaded && analysis.diasCargados > 0;
+              const proyVal = isProjected ? Math.round(analysis.promedioAbril) : 0;
+              const displayVal = isLoaded ? abrilVal : proyVal;
+
+              let bg = "#1f2937";
+              let textCol = "#6b7280";
+              if (isLoaded) {
+                const ratio = marzoVal > 0 ? abrilVal / marzoVal : 1;
+                if (ratio >= 1.2) { bg = "#065f46"; textCol = "#6ee7b7"; }
+                else if (ratio >= 1) { bg = "#047857"; textCol = "#a7f3d0"; }
+                else if (ratio >= 0.8) { bg = "#92400e"; textCol = "#fcd34d"; }
+                else { bg = "#7f1d1d"; textCol = "#fca5a5"; }
+              } else if (isProjected) {
+                bg = "#1e3a5f"; textCol = "#60a5fa";
+              }
+
+              return (
+                <div key={dia} className="relative rounded-lg p-1 text-center cursor-default" style={{ background: bg, minHeight: "48px" }}
+                  title={isLoaded ? `Día ${dia}: ${abrilVal.toLocaleString()} (Marzo: ${marzoVal.toLocaleString()}) ${abrilVal >= marzoVal ? "✓ Superó" : "✗ Bajo"}` : isProjected ? `Día ${dia}: Proyección ${proyVal.toLocaleString()}` : `Día ${dia}: Sin datos`}>
+                  <p className="text-[9px] font-bold" style={{ color: textCol }}>{dia}</p>
+                  <p className="text-[11px] font-bold" style={{ color: textCol }}>
+                    {isLoaded ? abrilVal.toLocaleString() : isProjected ? `~${proyVal.toLocaleString()}` : "—"}
+                  </p>
+                  {isLoaded && (
+                    <p className="text-[8px]" style={{ color: textCol, opacity: 0.7 }}>
+                      {abrilVal >= marzoVal ? "▲" : "▼"}{marzoVal > 0 ? Math.round((abrilVal / marzoVal - 1) * 100) : 0}%
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div className="flex gap-3 justify-center flex-wrap text-[9px]" style={{ color: "var(--text-muted)" }}>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#065f46" }} />+20% vs Marzo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#047857" }} />Superó Marzo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#92400e" }} />80-100% de Marzo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#7f1d1d" }} />Bajo Marzo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#1e3a5f" }} />Proyección</span>
           </div>
 
           {/* Status message */}
