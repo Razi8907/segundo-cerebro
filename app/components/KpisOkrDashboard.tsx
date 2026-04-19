@@ -102,10 +102,17 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
   const [filterMes, setFilterMes] = useState("");
   const [filterObjetivo, setFilterObjetivo] = useState("");
   const [dashData, setDashData] = useState<any>(null);
-  const { theme } = useTheme();
-  const cPrimary = theme === "dark" ? "#f9fafb" : "#111827";
-  const cSecondary = theme === "dark" ? "#9ca3af" : "#4b5563";
-  const cMuted = theme === "dark" ? "#6b7280" : "#6b7280";
+  const [isDark, setIsDark] = useState(false);
+  useEffect(() => {
+    const check = () => setIsDark(document.documentElement.classList.contains("dark"));
+    check();
+    const obs = new MutationObserver(check);
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => obs.disconnect();
+  }, []);
+  const cPrimary = isDark ? "#f3f4f6" : "#000000";
+  const cSecondary = isDark ? "#9ca3af" : "#374151";
+  const cMuted = isDark ? "#6b7280" : "#4b5563";
 
   /* ───── show banner ───── */
   const showBanner = useCallback((type: "success" | "error", msg: string) => {
