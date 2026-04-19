@@ -86,7 +86,7 @@ function pctBg(pct: number): string {
   if (pct >= 80) return "bg-green-500/20 text-green-400";
   if (pct >= 50) return "bg-yellow-500/20 text-yellow-400";
   if (pct > 0) return "bg-red-500/20 text-red-400";
-  return "bg-gray-500/10 t-muted";
+  return "bg-gray-500/10 text-gray-600 dark:text-gray-400";
 }
 
 /* ───────── component ───────── */
@@ -412,7 +412,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
           onClick={() => setEditing(true)}
           title="Click para editar"
         >
-          {value || <span className="t-muted text-[10px]">--</span>}
+          {value || <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>--</span>}
         </span>
       );
     }
@@ -435,7 +435,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
           }
         }}
         autoFocus
-        className="text-xs px-1 py-0.5 rounded border border-orange-500/40 outline-none t-primary w-full text-center"
+        className="text-xs px-1 py-0.5 rounded border border-orange-500/40 outline-none w-full text-center" style={{ color: "var(--text-primary)" }}
         style={{ background: "var(--bg-input)", minWidth: "50px", maxWidth: "80px" }}
       />
     );
@@ -451,7 +451,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
   if (loading) {
     return (
       <div className="glass-card p-8 text-center border border-orange-500/20">
-        <div className="animate-pulse t-muted">Cargando KPIs & OKRs...</div>
+        <div className="animate-pulse" style={{ color: "var(--text-muted)" }}>Cargando KPIs & OKRs...</div>
       </div>
     );
   }
@@ -476,13 +476,13 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
       <div className="glass-card p-4 border border-orange-500/20">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
           <div>
-            <h2 className="text-lg font-bold t-primary">KPIs & OKRs</h2>
-            <p className="text-xs t-muted">Planeacion 2026 - Objetivos y Resultados Clave</p>
+            <h2 className="text-lg font-bold" style={{ color: "var(--text-primary)" }}>KPIs & OKRs</h2>
+            <p className="text-xs" style={{ color: "var(--text-muted)" }}>Planeacion 2026 - Objetivos y Resultados Clave</p>
           </div>
           <label className={`text-xs px-4 py-2 rounded-full border cursor-pointer transition-all ${
             uploading
               ? "bg-orange-500/20 text-orange-400 border-orange-500/30"
-              : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
+              : "bg-transparent border-gray-700 hover:border-orange-500/40 hover:text-orange-300" + " " + "text-gray-700 dark:text-gray-300"
           }`}>
             {uploading ? "Procesando..." : "Subir Excel (.xlsx)"}
             <input type="file" accept=".xlsx,.xls" onChange={handleUpload} className="hidden" disabled={uploading} />
@@ -498,7 +498,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
               className={`px-4 py-2 text-xs font-medium border-b-2 transition-all ${
                 subTab === t.key
                   ? "border-orange-500 text-orange-500"
-                  : "border-transparent t-muted hover:text-orange-400"
+                  : "border-transparent hover:text-orange-400 text-gray-600 dark:text-gray-400"
               }`}
             >
               {t.label}
@@ -511,15 +511,15 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
       <div className="glass-card p-3 border border-orange-500/20">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] t-muted uppercase tracking-wider">Mes</label>
-            <select value={filterMes} onChange={(e) => setFilterMes(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[120px]" style={{ background: "var(--bg-input)" }}>
+            <label className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Mes</label>
+            <select value={filterMes} onChange={(e) => setFilterMes(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 focus:outline-none min-w-[120px]" style={{ color: "var(--text-primary)", background: "var(--bg-input)" }}>
               <option value="">Todos los meses</option>
               {MONTH_LABELS.map((l, i) => <option key={i} value={MONTH_KEYS[i]}>{l}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] t-muted uppercase tracking-wider">Objetivo</label>
-            <select value={filterObjetivo} onChange={(e) => setFilterObjetivo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 t-primary focus:outline-none min-w-[200px]" style={{ background: "var(--bg-input)" }}>
+            <label className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-muted)" }}>Objetivo</label>
+            <select value={filterObjetivo} onChange={(e) => setFilterObjetivo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-orange-500/20 focus:outline-none min-w-[200px]" style={{ color: "var(--text-primary)", background: "var(--bg-input)" }}>
               <option value="">Todos los objetivos</option>
               {(data?.objectives || []).map((o, i) => <option key={i} value={String(i)}>{o.name.substring(0, 50)}</option>)}
             </select>
@@ -533,32 +533,32 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
       {/* ─── AUTO KPIs from Dashboard ─── */}
       {autoKpis && (
         <div className="glass-card p-4 border border-blue-500/20">
-          <h3 className="text-xs font-bold t-muted uppercase tracking-wider mb-3">Datos Operacionales (automático del Dashboard)</h3>
+          <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "var(--text-muted)" }}>Datos Operacionales (automático del Dashboard)</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
             <div className="p-3 rounded-xl border border-blue-500/15" style={{ background: "var(--bg-card)" }}>
-              <p className="text-[10px] t-muted">Órdenes Q1</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Órdenes Q1</p>
               <p className="text-lg font-bold text-blue-400">{autoKpis.ordenes_ytd.toLocaleString()}</p>
             </div>
             <div className="p-3 rounded-xl border border-green-500/15" style={{ background: "var(--bg-card)" }}>
-              <p className="text-[10px] t-muted">Entregados Q1</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Entregados Q1</p>
               <p className="text-lg font-bold text-green-400">{autoKpis.entregados_ytd.toLocaleString()}</p>
-              <p className="text-[10px] t-muted">{autoKpis.pct_entrega}% entrega</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{autoKpis.pct_entrega}% entrega</p>
             </div>
             <div className="p-3 rounded-xl border border-red-500/15" style={{ background: "var(--bg-card)" }}>
-              <p className="text-[10px] t-muted">Devoluciones Q1</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Devoluciones Q1</p>
               <p className="text-lg font-bold text-red-400">{autoKpis.devoluciones_ytd.toLocaleString()}</p>
-              <p className="text-[10px] t-muted">{autoKpis.pct_dev}% devolucion</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>{autoKpis.pct_dev}% devolucion</p>
             </div>
             <div className="p-3 rounded-xl border border-orange-500/15" style={{ background: "var(--bg-card)" }}>
-              <p className="text-[10px] t-muted">Proveedores</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Proveedores</p>
               <p className="text-lg font-bold text-orange-400">{autoKpis.proveedores}</p>
             </div>
             <div className="p-3 rounded-xl border border-purple-500/15" style={{ background: "var(--bg-card)" }}>
-              <p className="text-[10px] t-muted">Sellers</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Sellers</p>
               <p className="text-lg font-bold text-purple-400">{autoKpis.sellers.toLocaleString()}</p>
             </div>
             <div className="p-3 rounded-xl border border-cyan-500/15" style={{ background: "var(--bg-card)" }}>
-              <p className="text-[10px] t-muted">Dropshippers</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Dropshippers</p>
               <p className="text-lg font-bold text-cyan-400">{autoKpis.dropshippers.toLocaleString()}</p>
             </div>
           </div>
@@ -568,8 +568,8 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
       {!data ? (
         <div className="glass-card p-8 text-center border border-orange-500/20">
           <span className="text-4xl mb-4 block">🎯</span>
-          <h3 className="text-lg font-bold t-primary mb-2">Sin datos de KPIs & OKRs</h3>
-          <p className="t-secondary text-sm">Subi el Excel de Planeacion 2026 / OKRs para cargar los datos.</p>
+          <h3 className="text-lg font-bold mb-2" style={{ color: "var(--text-primary)" }}>Sin datos de KPIs & OKRs</h3>
+          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>Subi el Excel de Planeacion 2026 / OKRs para cargar los datos.</p>
         </div>
       ) : (
         <>
@@ -579,18 +579,18 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
               {/* Dashboard Principal KPIs */}
               {data.dashboard_kpis.length > 0 && (
                 <div className="glass-card p-4 border border-orange-500/20">
-                  <h3 className="text-sm font-bold t-primary mb-3">Dashboard Principal KPIs</h3>
+                  <h3 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>Dashboard Principal KPIs</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                          <th className="text-left py-2 px-2 t-muted font-medium">KPI</th>
-                          <th className="text-right py-2 px-2 t-muted font-medium">YTD Real</th>
-                          <th className="text-right py-2 px-2 t-muted font-medium">Meta YTD</th>
-                          <th className="text-right py-2 px-2 t-muted font-medium">% Cumpl.</th>
-                          <th className="text-right py-2 px-2 t-muted font-medium">Meta Anual</th>
-                          <th className="text-right py-2 px-2 t-muted font-medium">% Avance</th>
-                          <th className="text-right py-2 px-2 t-muted font-medium">Meses</th>
+                          <th className="text-left py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>KPI</th>
+                          <th className="text-right py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>YTD Real</th>
+                          <th className="text-right py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>Meta YTD</th>
+                          <th className="text-right py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>% Cumpl.</th>
+                          <th className="text-right py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>Meta Anual</th>
+                          <th className="text-right py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>% Avance</th>
+                          <th className="text-right py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>Meses</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -599,17 +599,17 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                           const pctAnual = safeNum(kpi.pct_anual);
                           return (
                             <tr key={i} className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                              <td className="py-2 px-2 t-primary font-medium">{kpi.name}</td>
-                              <td className="py-2 px-2 text-right t-secondary">{kpi.ytd_real}</td>
-                              <td className="py-2 px-2 text-right t-secondary">{kpi.meta_ytd}</td>
+                              <td className="py-2 px-2 font-medium" style={{ color: "var(--text-primary)" }}>{kpi.name}</td>
+                              <td className="py-2 px-2 text-right" style={{ color: "var(--text-secondary)" }}>{kpi.ytd_real}</td>
+                              <td className="py-2 px-2 text-right" style={{ color: "var(--text-secondary)" }}>{kpi.meta_ytd}</td>
                               <td className={`py-2 px-2 text-right font-medium ${pctColor(pctYtd)}`}>
                                 {kpi.pct_ytd}{kpi.pct_ytd && !kpi.pct_ytd.includes("%") ? "%" : ""}
                               </td>
-                              <td className="py-2 px-2 text-right t-secondary">{kpi.meta_anual}</td>
+                              <td className="py-2 px-2 text-right" style={{ color: "var(--text-secondary)" }}>{kpi.meta_anual}</td>
                               <td className={`py-2 px-2 text-right font-medium ${pctColor(pctAnual)}`}>
                                 {kpi.pct_anual}{kpi.pct_anual && !kpi.pct_anual.includes("%") ? "%" : ""}
                               </td>
-                              <td className="py-2 px-2 text-right t-muted">{kpi.meses}</td>
+                              <td className="py-2 px-2 text-right" style={{ color: "var(--text-muted)" }}>{kpi.meses}</td>
                             </tr>
                           );
                         })}
@@ -622,21 +622,21 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
               {/* Scorecard by Objective */}
               {data.scorecard.length > 0 && (
                 <div className="glass-card p-4 border border-orange-500/20">
-                  <h3 className="text-sm font-bold t-primary mb-3">Scorecard por Objetivo (Mensual)</h3>
+                  <h3 className="text-sm font-bold mb-3" style={{ color: "var(--text-primary)" }}>Scorecard por Objetivo (Mensual)</h3>
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                          <th className="text-left py-2 px-2 t-muted font-medium min-w-[200px]">Objetivo</th>
+                          <th className="text-left py-2 px-2 font-medium min-w-[200px]" style={{ color: "var(--text-muted)" }}>Objetivo</th>
                           {filteredMonthIndices.map(mi => (
-                            <th key={mi} className="text-center py-2 px-1 t-muted font-medium w-[50px]">{MONTH_LABELS[mi]}</th>
+                            <th key={mi} className="text-center py-2 px-1 font-medium w-[50px]" style={{ color: "var(--text-muted)" }}>{MONTH_LABELS[mi]}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
                         {data.scorecard.map((row, i) => (
                           <tr key={i} className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                            <td className="py-2 px-2 t-primary font-medium text-[11px]">{row.objetivo}</td>
+                            <td className="py-2 px-2 font-medium text-[11px]" style={{ color: "var(--text-primary)" }}>{row.objetivo}</td>
                             {filteredMonthIndices.map(mi => {
                               const mk = MONTH_KEYS[mi];
                               const val = safeNum(row[mk]);
@@ -648,7 +648,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                                       {displayVal}%
                                     </span>
                                   ) : (
-                                    <span className="t-muted text-[10px]">-</span>
+                                    <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>-</span>
                                   )}
                                 </td>
                               );
@@ -671,23 +671,23 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                            <th className="text-left py-2 px-2 t-muted font-medium">KR</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Ene</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Feb</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Mar</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Prom Q1</th>
-                            <th className="text-left py-2 px-2 t-muted font-medium">Lectura</th>
+                            <th className="text-left py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>KR</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Ene</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Feb</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Mar</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Prom Q1</th>
+                            <th className="text-left py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>Lectura</th>
                           </tr>
                         </thead>
                         <tbody>
                           {data.top_performers.map((p, i) => (
                             <tr key={i} className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                              <td className="py-2 px-2 t-primary text-[11px]">{p.kr}</td>
+                              <td className="py-2 px-2 text-[11px]" style={{ color: "var(--text-primary)" }}>{p.kr}</td>
                               <td className="py-2 px-1 text-center text-green-400">{p.ene}</td>
                               <td className="py-2 px-1 text-center text-green-400">{p.feb}</td>
                               <td className="py-2 px-1 text-center text-green-400">{p.mar}</td>
                               <td className="py-2 px-1 text-center font-medium text-green-400">{p.prom_q1}</td>
-                              <td className="py-2 px-2 t-secondary text-[11px]">{p.lectura}</td>
+                              <td className="py-2 px-2 text-[11px]" style={{ color: "var(--text-secondary)" }}>{p.lectura}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -704,23 +704,23 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                            <th className="text-left py-2 px-2 t-muted font-medium">KR</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Ene</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Feb</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Mar</th>
-                            <th className="text-center py-2 px-1 t-muted font-medium">Prom Q1</th>
-                            <th className="text-left py-2 px-2 t-muted font-medium">Accion</th>
+                            <th className="text-left py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>KR</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Ene</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Feb</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Mar</th>
+                            <th className="text-center py-2 px-1 font-medium" style={{ color: "var(--text-muted)" }}>Prom Q1</th>
+                            <th className="text-left py-2 px-2 font-medium" style={{ color: "var(--text-muted)" }}>Accion</th>
                           </tr>
                         </thead>
                         <tbody>
                           {data.alerts.map((a, i) => (
                             <tr key={i} className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                              <td className="py-2 px-2 t-primary text-[11px]">{a.kr}</td>
+                              <td className="py-2 px-2 text-[11px]" style={{ color: "var(--text-primary)" }}>{a.kr}</td>
                               <td className="py-2 px-1 text-center text-red-400">{a.ene}</td>
                               <td className="py-2 px-1 text-center text-red-400">{a.feb}</td>
                               <td className="py-2 px-1 text-center text-red-400">{a.mar}</td>
                               <td className="py-2 px-1 text-center font-medium text-red-400">{a.prom_q1}</td>
-                              <td className="py-2 px-2 t-secondary text-[11px]">{a.accion}</td>
+                              <td className="py-2 px-2 text-[11px]" style={{ color: "var(--text-secondary)" }}>{a.accion}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -737,7 +737,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
             <div className="space-y-4">
               {data.objectives.length === 0 && (
                 <div className="glass-card p-6 text-center border border-orange-500/20">
-                  <p className="t-muted text-sm">No hay objetivos cargados. Subi el Excel para cargar los OKRs.</p>
+                  <p className="text-sm" style={{ color: "var(--text-muted)" }}>No hay objetivos cargados. Subi el Excel para cargar los OKRs.</p>
                 </div>
               )}
 
@@ -758,15 +758,15 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                       <div className="flex items-center gap-3 text-left">
                         <span className="text-lg">{isExpanded ? "▾" : "▸"}</span>
                         <div>
-                          <h3 className="text-sm font-bold t-primary">{obj.name}</h3>
-                          {obj.description && <p className="text-[11px] t-muted">{obj.description}</p>}
+                          <h3 className="text-sm font-bold" style={{ color: "var(--text-primary)" }}>{obj.name}</h3>
+                          {obj.description && <p className="text-[11px]" style={{ color: "var(--text-muted)" }}>{obj.description}</p>}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className={`text-xs font-medium px-2 py-1 rounded ${pctBg(avgVal)}`}>
                           {avgVal > 0 ? `${Math.round(avgVal)}%` : "Sin datos"}
                         </span>
-                        <span className="text-[10px] t-muted">{obj.krs.length} KRs</span>
+                        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{obj.krs.length} KRs</span>
                       </div>
                     </button>
                     {/* Monthly mini-scorecard on objective row */}
@@ -776,11 +776,11 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                         const pct = r?.pct || 0;
                         return (
                           <div key={mi} className="flex flex-col items-center min-w-[38px]">
-                            <span className="text-[9px] t-muted">{MONTH_LABELS[mi]}</span>
+                            <span className="text-[9px]" style={{ color: "var(--text-muted)" }}>{MONTH_LABELS[mi]}</span>
                             {pct > 0 ? (
                               <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${pctBg(pct)}`}>{Math.round(pct)}%</span>
                             ) : (
-                              <span className="text-[10px] t-muted">-</span>
+                              <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>-</span>
                             )}
                           </div>
                         );
@@ -815,7 +815,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                             <tbody>
                               {obj.krs.map((kr, krIdx) => (
                                 <tr key={krIdx} className="border-b" style={{ borderColor: "var(--bg-card-border)" }}>
-                                  <td className="py-2 px-2 t-primary text-[11px] font-medium sticky left-0" style={{ background: "var(--bg-card)" }}>
+                                  <td className="py-2 px-2 text-[11px] font-medium sticky left-0" style={{ color: "var(--text-primary)", background: "var(--bg-card)" }}>
                                     {kr.name}
                                   </td>
                                   {filteredMonthIndices.map(mIdx => {
@@ -843,7 +843,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                                           />
                                         </td>
                                         <td className={`py-1 px-1 text-center text-[10px] font-medium ${pctColor(computedPct)}`}>
-                                          {computedPct > 0 ? `${computedPct}%` : <span className="t-muted">-</span>}
+                                          {computedPct > 0 ? `${computedPct}%` : <span style={{ color: "var(--text-muted)" }}>-</span>}
                                         </td>
                                       </React.Fragment>
                                     );
@@ -852,7 +852,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                               ))}
                               {/* RESULTADO OBJETIVO row */}
                               <tr className="border-t-2" style={{ borderColor: "var(--border-orange, rgba(249,115,22,0.3))" }}>
-                                <td className="py-2 px-2 t-primary text-[11px] font-bold sticky left-0" style={{ background: "var(--bg-card)" }}>
+                                <td className="py-2 px-2 text-[11px] font-bold sticky left-0" style={{ color: "var(--text-primary)", background: "var(--bg-card)" }}>
                                   RESULTADO OBJETIVO
                                 </td>
                                 {filteredMonthIndices.map(mIdx => {
@@ -864,7 +864,7 @@ export default function KpisOkrDashboard({ country }: { country: "py" | "ar" }) 
                                         {r.pct}%
                                       </span>
                                     ) : (
-                                      <span className="t-muted text-[10px]">-</span>
+                                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>-</span>
                                     )}
                                   </td>
                                   );
