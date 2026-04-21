@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
 
   const { data: users, error } = await getSupabase()
     .from("users")
-    .select("id, name, email, role, can_download, active, access_start_hour, access_end_hour, created_at")
+    .select("id, name, email, role, can_download, active, access_start_hour, access_end_hour, access_comercial, access_operaciones, access_finanzas, created_at")
     .order("created_at", { ascending: true });
 
   if (error) {
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, email, password, role, can_download, access_start_hour, access_end_hour } = body;
+    const { name, email, password, role, can_download, access_start_hour, access_end_hour, access_comercial, access_operaciones, access_finanzas } = body;
 
     if (!name || !email || !password) {
       return NextResponse.json(
@@ -66,8 +66,11 @@ export async function POST(req: NextRequest) {
         active: true,
         access_start_hour: access_start_hour ?? 0,
         access_end_hour: access_end_hour ?? 24,
+        access_comercial: access_comercial ?? true,
+        access_operaciones: access_operaciones ?? true,
+        access_finanzas: access_finanzas ?? true,
       })
-      .select("id, name, email, role, can_download, active, access_start_hour, access_end_hour, created_at")
+      .select("id, name, email, role, can_download, active, access_start_hour, access_end_hour, access_comercial, access_operaciones, access_finanzas, created_at")
       .single();
 
     if (error) {
@@ -105,7 +108,7 @@ export async function PUT(req: NextRequest) {
       .from("users")
       .update(fields)
       .eq("id", id)
-      .select("id, name, email, role, can_download, active, access_start_hour, access_end_hour, created_at")
+      .select("id, name, email, role, can_download, active, access_start_hour, access_end_hour, access_comercial, access_operaciones, access_finanzas, created_at")
       .single();
 
     if (error) {
