@@ -83,10 +83,12 @@ export const config = {
      * Match all paths except:
      * - /login
      * - /api/auth/* (login, logout, me)
+     * - /api/data/upload (Power BI)
+     * - /api/data/upload-xlsx (Cowork scheduled task → Dropi xlsx upload)
      * - /_next (Next.js internals)
      * - /favicon.ico
      * - Static files (images, etc.)
      */
-    "/((?!login|api/auth|api/data/upload|_next|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
+    "/((?!login|api/auth|api/data/upload|api/data/upload-xlsx|_next|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
   ],
 };
