@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "../../../lib/supabase";
 
-const UPLOAD_SECRET = process.env.DATA_UPLOAD_SECRET || "";
+const UPLOAD_SECRET = (process.env.DATA_UPLOAD_SECRET || "").trim();
 
 // POST /api/data/upload — Power BI pushes data here
 // Body: { country: "py" | "ar", data: { ...dashboard data }, secret: "..." }

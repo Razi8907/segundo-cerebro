@@ -26,7 +26,7 @@ import {
   buildCompactRows,
 } from "../../../lib/operational-parse";
 
-const UPLOAD_SECRET = process.env.DATA_UPLOAD_SECRET || "";
+const UPLOAD_SECRET = (process.env.DATA_UPLOAD_SECRET || "").trim();
 const ALLOWED_COUNTRIES = new Set(["py", "ar"]);
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB — Paraguay suele rondar 11 MB
 
