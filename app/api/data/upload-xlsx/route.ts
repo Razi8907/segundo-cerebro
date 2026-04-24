@@ -38,7 +38,15 @@ export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
   if (!UPLOAD_SECRET || token !== UPLOAD_SECRET) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({
+      error: "Unauthorized",
+      debug: {
+        secretConfigured: !!UPLOAD_SECRET,
+        secretLength: UPLOAD_SECRET.length,
+        tokenLength: token.length,
+        match: token === UPLOAD_SECRET,
+      },
+    }, { status: 401 });
   }
 
   // 2) Form
