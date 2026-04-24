@@ -38,15 +38,27 @@ export async function POST(req: NextRequest) {
   const auth = req.headers.get("authorization") ?? "";
   const token = auth.replace(/^Bearer\s+/i, "").trim();
   if (!UPLOAD_SECRET || token !== UPLOAD_SECRET) {
-    return NextResponse.json({
-      error: "Unauthorized",
-      debug: {
-        secretConfigured: !!UPLOAD_SECRET,
-        secretLength: UPLOAD_SECRET.length,
-        tokenLength: token.length,
-        match: token === UPLOAD_SECRET,
-      },
-    }, { status: 401 });
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  // Check if this is a JSON payload (pre-aggregated, for large files)
+  const contentType = req.headers.get("content-type") ?? "";
+  if (contentType.includes("application/json")) {
+    try {
+      const body = await req.json();
+      const { country, data, raw_count } = body;
+      if (!country || !data) {
+        return NextResponse.json({ error: "country and data required" }, { status: 400 });
+      }
+      const nowIso = new Date().toISOString();
+      const { error } = await getSupabase()
+        .from("operational_snapshots")
+        .upsert({ country, data, raw_count: raw_count || 0, uploaded_at: nowIso }, { onConflict: "country" });
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, country, raw_count, uploaded_at: nowIso, mode: "json" });
+    } catch (err: any) {
+      return NextResponse.json({ error: err?.message }, { status: 500 });
+    }
   }
 
   // 2) Form
