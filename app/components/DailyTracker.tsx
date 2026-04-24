@@ -103,64 +103,19 @@ export default function DailyTracker({
   const [manualDays, setManualDays] = useState<Set<number>>(new Set());
   const [opsData, setOpsData] = useState<any>(null);
 
-  // Load from DB + operational data on mount
+  // Load from DB only (manual entries) — no auto-sync from operational data
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      fetch(`/api/data/daily-tracking?country=${country}`, { credentials: "include" }).then((r) => r.json()).catch(() => ({ days: [] })),
-      fetch(`/api/data/operational?country=${country}`, { credentials: "include" }).then((r) => r.json()).catch(() => ({ data: null })),
-    ]).then(([trackingRes, opsRes]) => {
-      if (cancelled) return;
-
-      // Track which days were manually entered (saved in DB)
-      const dbDays = Array.isArray(trackingRes.days) ? trackingRes.days : [];
-      const manualSet = new Set<number>(dbDays.map((d: any) => d.fecha));
-      setManualDays(manualSet);
-
-      if (opsRes.data) setOpsData(opsRes.data);
-
-      // Merge: operational data as base, manual overrides on top
-      const opsByDate = opsRes.data?.by_date as { fecha: string; total: number }[] | undefined;
-      const merged: { fecha: number; ordenes: number; dia_semana: string }[] = [];
-
-      if (opsByDate && opsByDate.length > 0) {
-        // Parse operational dates to day numbers (format: DD-MM-YYYY or similar)
-        for (const od of opsByDate) {
-          const parts = od.fecha.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
-          let dayNum = 0;
-          if (parts) {
-            const d = parseInt(parts[1]), m = parseInt(parts[2]);
-            // Detect format: if first number > 12, it's DD-MM-YYYY
-            if (d > 12) dayNum = d;
-            else if (m > 12) dayNum = m;
-            else dayNum = d; // assume DD-MM-YYYY
-          }
-          if (dayNum < 1 || dayNum > 30) continue;
-
-          // If this day was manually overridden, use manual value
-          const manualEntry = dbDays.find((md: any) => md.fecha === dayNum);
-          if (manualEntry && manualSet.has(dayNum)) {
-            merged.push({ fecha: dayNum, ordenes: manualEntry.ordenes, dia_semana: DIAS_SEMANA_ABRIL[dayNum - 1] });
-          } else {
-            merged.push({ fecha: dayNum, ordenes: od.total, dia_semana: DIAS_SEMANA_ABRIL[dayNum - 1] });
-          }
+    fetch(`/api/data/daily-tracking?country=${country}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res.days) && res.days.length > 0) {
+          setAbrilData(res.days);
         }
-
-        // Also add manual-only days that aren't in operational data
-        for (const md of dbDays) {
-          if (!merged.find((m) => m.fecha === md.fecha)) {
-            merged.push({ fecha: md.fecha, ordenes: md.ordenes, dia_semana: md.dia_semana || DIAS_SEMANA_ABRIL[md.fecha - 1] });
-          }
-        }
-
-        merged.sort((a, b) => a.fecha - b.fecha);
-        if (merged.length > 0) setAbrilData(merged);
-      } else if (dbDays.length > 0) {
-        setAbrilData(dbDays);
-      }
-
-      setDbLoaded(true);
-    });
+        setDbLoaded(true);
+      })
+      .catch(() => { if (!cancelled) setDbLoaded(true); });
     return () => { cancelled = true; };
   }, [country]);
 
