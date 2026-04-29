@@ -4,708 +4,1028 @@ import { useState } from "react";
 import {
   BarChart,
   Bar,
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
+  Cell,
 } from "recharts";
 
+// ─── Paleta DROPI Argentina (igual al HTML ejecutivo) ───
+const COLOR = {
+  orange: "#E8692A",
+  orangeDark: "#C85520",
+  orangeLt: "#FFF0E8",
+  green: "#1E6B3C",
+  greenLt: "#E8F5EE",
+  red: "#B42222",
+  redLt: "#FDECEA",
+  amber: "#B35900",
+  amberLt: "#FFF3E0",
+  gray: "#4A6170",
+  grayLt: "#EEF2F5",
+  dark: "#111418",
+  muted: "#8A929B",
+};
+
 // ─── Datos financieros DROPI S.A. Argentina ───
-const DATA_AR = {
+const DATA = {
+  meta: {
+    cuit: "30-71916455-9",
+    periodo: "Oct 2025 – Abr 2026",
+    actualizado: "2026-04-27",
+  },
+  headerKpis: {
+    recaudoReal: 596212518,
+    netoDropiTotal: 512740040,
+    cajaDisponible: 107200740,
+  },
+  // Niveles del resumen
+  niveles: {
+    recaudoTotal: 596212518,
+    ingresoDropi: 512740040,
+    gananciaNeta: 2616191,
+  },
+  // Tabla principal: Oct-Dic real Fixy + Ene-Abr archivo REALES
+  tablaPrincipal: [
+    {
+      mes: "Oct '25",
+      sub: "2° quincena",
+      recaudo: 20320954,
+      fixy: -4287973,
+      netoDropi: 16032982,
+      gastos: null,
+      gastosLabel: "Préstamo Paraguay",
+      resultado: null,
+      estado: "✅ Cobrado BBVA 02/12",
+      estadoColor: "green",
+      seccion: "real",
+    },
+    {
+      mes: "Nov '25",
+      sub: "1° + 2° quinc.",
+      recaudo: 196944088,
+      fixy: -43483494,
+      netoDropi: 153448900,
+      gastos: null,
+      gastosLabel: "Préstamo PY + Ecom Day",
+      resultado: null,
+      estado: "✅ Cobrado BBVA + Efectivo",
+      estadoColor: "green",
+      seccion: "real",
+    },
+    {
+      mes: "Dic '25",
+      sub: "1° + 2° quinc.",
+      recaudo: 378947476,
+      fixy: -96962818,
+      netoDropi: 281984658,
+      gastos: -5977252,
+      gastosLabel: null,
+      resultado: 276007406,
+      resultadoLabel: "$276.0M*",
+      estado: "🔴 Retenido por Fixy",
+      estadoColor: "red",
+      seccion: "real",
+    },
+    {
+      mes: "Ene '26",
+      sub: null,
+      recaudo: 510060000,
+      recaudoEst: true,
+      fixy: null,
+      fixyEst: true,
+      netoDropi: 15209400,
+      gastos: -11184090,
+      gastosLabel: null,
+      resultado: 4025310,
+      resultadoLabel: "+$4.0M",
+      estado: "🔴 Retenido por Fixy",
+      estadoColor: "red",
+      seccion: "archivo",
+    },
+    {
+      mes: "Feb '26",
+      sub: null,
+      recaudo: 472500000,
+      recaudoEst: true,
+      fixy: null,
+      fixyEst: true,
+      netoDropi: 14031300,
+      gastos: -14611912,
+      gastosLabel: null,
+      resultado: -580612,
+      resultadoLabel: "-$580K",
+      estado: "⏳ A conciliar",
+      estadoColor: "amber",
+      seccion: "archivo",
+    },
+    {
+      mes: "Mar '26",
+      sub: null,
+      recaudo: 545160000,
+      recaudoEst: true,
+      fixy: null,
+      fixyEst: true,
+      netoDropi: 15833100,
+      gastos: -14102849,
+      gastosLabel: null,
+      resultado: 1730251,
+      resultadoLabel: "+$1.7M",
+      estado: "⏳ A conciliar",
+      estadoColor: "amber",
+      seccion: "archivo",
+    },
+    {
+      mes: "Abr '26",
+      sub: null,
+      recaudo: 553920000,
+      recaudoEst: true,
+      fixy: null,
+      fixyEst: true,
+      netoDropi: 16199700,
+      gastos: -18758458,
+      gastosLabel: null,
+      resultado: -2558758,
+      resultadoLabel: "-$2.6M",
+      estado: "⏳ A conciliar",
+      estadoColor: "amber",
+      seccion: "archivo",
+    },
+  ],
+  subtotales: {
+    octDic: { recaudo: 596212518, fixy: -144734285, netoDropi: 451466540, gastos: -5977252, resultado: 445489288 },
+    eneAbr: { recaudo: 2081640000, fixy: -520410000, netoDropi: 61273500, gastos: -58657309, resultado: 2616191 },
+    total: { recaudo: 2677852518, fixy: -144734285, netoDropi: 512740040, gastos: -64634561, resultado: 448105479 },
+  },
+  // Recaudo real Oct-Dic con órdenes
+  recaudoReal: [
+    { periodo: "Oct '25 — 2° quinc.", ordenes: 415, bruto: 20320954, fixy: -4287973, neto: 16032982, estado: "✅ Cobrado — Banco BBVA 02/12/25", estadoColor: "green" },
+    { periodo: "Nov '25 — 1° quinc.", ordenes: 1394, bruto: 76665279, fixy: -18650125, neto: 58003460, estado: "✅ Cobrado — Banco BBVA 10/12/25", estadoColor: "green" },
+    { periodo: "Nov '25 — 2° quinc.", ordenes: 2301, bruto: 120278809, fixy: -24833369, neto: 95445440, estado: "✅ Cobrado — Efectivo (Dic/Feb/Abr)", estadoColor: "green" },
+    { periodo: "Dic '25 — 1° quinc.", ordenes: 6995, bruto: 199467358, fixy: -49741073, neto: 149726285, estado: "🔴 Retenido por Fixy", estadoColor: "red" },
+    { periodo: "Dic '25 — 2° quinc.", ordenes: 7526, bruto: 179480118, fixy: -47221745, neto: 132258373, estado: "🔴 Retenido por Fixy", estadoColor: "red" },
+  ],
+  // Recaudo estimado Ene-Abr
+  recaudoEst: [
+    { periodo: "Ene '26", ordenes: 8501, bruto: 510060000, fixy: -127515000, neto: 186837690, netoLabel: "$186.837.690 ✓", estado: "🔴 Retenido confirmado por Fixy", estadoColor: "red" },
+    { periodo: "Feb '26", ordenes: 7875, bruto: 472500000, fixy: -118125000, neto: 354375000, estado: "⏳ A conciliar — Fixy", estadoColor: "amber" },
+    { periodo: "Mar '26 — Fixy + Urbano", ordenes: 9086, bruto: 545160000, fixy: -136290000, neto: 408870000, estado: "⏳ A conciliar — Fixy + Urbano", estadoColor: "amber" },
+    { periodo: "Abr '26 — Fixy + Urbano", ordenes: 9232, bruto: 553920000, fixy: -138480000, neto: 415440000, estado: "⏳ A conciliar — Fixy + Urbano", estadoColor: "amber" },
+  ],
+  // Ingreso Dropi mensual desglosado
+  ingresoDropi: [
+    { mes: "Oct '25", fleteCod: 622500, comisionCod: 124500, fleteFf: null, total: 747000, fuente: "415 órd × $1.500 + × $60k × 0.5%", seccion: "calculado" },
+    { mes: "Nov '25", fleteCod: 5542500, comisionCod: 1108500, fleteFf: null, total: 6651000, fuente: "3.695 órd × $1.500 + × $60k × 0.5%", seccion: "calculado" },
+    { mes: "Dic '25", fleteCod: 21781500, comisionCod: 4356300, fleteFf: null, total: 26137800, fuente: "14.521 órd × $1.500 + × $60k × 0.5%", seccion: "calculado" },
+    { mes: "Ene '26", fleteCod: 12289500, comisionCod: 2457900, fleteFf: 462000, total: 15209400, fuente: "Archivo REALES ARS", seccion: "archivo" },
+    { mes: "Feb '26", fleteCod: 11094000, comisionCod: 2218800, fleteFf: 718500, total: 14031300, fuente: "Archivo REALES ARS", seccion: "archivo" },
+    { mes: "Mar '26", fleteCod: 11020500, comisionCod: 2204100, fleteFf: 2608500, total: 15833100, fuente: "Archivo REALES ARS", seccion: "archivo" },
+    { mes: "Abr '26", fleteCod: 11758500, comisionCod: 2351700, fleteFf: 2089500, total: 16199700, fuente: "Archivo REALES ARS", seccion: "archivo" },
+  ],
+  ingresoDropiTotal: { fleteCod: 74109000, comisionCod: 14821800, fleteFf: 5878500, total: 94809300 },
+  // Ganancia (resultado mensual ene-abr)
+  ganancia: [
+    { mes: "Ene '26", ingreso: 15209400, egrFijos: -10202480, egrVar: -981610, total: -11184090, resultado: 4025310, margen: 0.265, acumulado: 4025310 },
+    { mes: "Feb '26", ingreso: 14031300, egrFijos: -11840915, egrVar: -2770997, total: -14611912, resultado: -580612, margen: -0.041, acumulado: 3444698 },
+    { mes: "Mar '26", ingreso: 15833100, egrFijos: -9940019, egrVar: -4162830, total: -14102849, resultado: 1730251, margen: 0.109, acumulado: 5174949 },
+    { mes: "Abr '26", ingreso: 16199700, egrFijos: -10460549, egrVar: -8297909, total: -18758458, resultado: -2558758, margen: -0.158, acumulado: 2616191 },
+  ],
+  gananciaTotal: { ingreso: 61273500, egrFijos: -42443963, egrVar: -16213346, total: -58657309, resultado: 2616191, margen: 0.043 },
+  // Breakdown gastos ene-abr
+  gastosBreakdown: [
+    { concepto: "Sueldos (sin Raziel)", detalle: "Valeria, Keimar, Tabossi, Agüero", monto: 13200000 },
+    { concepto: "Alquiler + cochera", detalle: "Oficina Fernández 1959", monto: 10400000 },
+    { concepto: "Honorarios contador + abogado", detalle: "Servicios profesionales", monto: 10500000 },
+    { concepto: "Viáticos Raziel", detalle: "60 USD/día + alojamiento", monto: 15100000 },
+    { concepto: "Viáticos Heads Comerciales", detalle: "Camilo Colombia + Paraguay", monto: 3100000 },
+    { concepto: "Fulfillment GV Nexus", detalle: "Entregadas + no entregadas", monto: 3500000 },
+  ],
+  // Fulfillment detalle
+  fulfillment: [
+    { mes: "Ene '26", subFc: "FC 07/01/2026", entregadas: 184, pEnt: 990, noEnt: 194, pNent: 495, ingreso: 276000, costoNeto: 278190, totalIva: 336609.90, ganancia: -2190, hike: false },
+    { mes: "Feb '26", subFc: "FC 03/02/2026", entregadas: 208, pEnt: 990, noEnt: 202, pNent: 495, ingreso: 312000, costoNeto: 305910, totalIva: 370151.10, ganancia: 6090, hike: false },
+    { mes: "Mar '26", subFc: "⬆ GV Nexus subió 36%", entregadas: 268, pEnt: 1350, noEnt: 123, pNent: 675, ingreso: 402000, costoNeto: 444825, totalIva: 538238.25, ganancia: -42825, hike: true },
+    { mes: "Abr '26", subFc: "FC 08/04/2026", entregadas: 911, pEnt: 1350, noEnt: 900, pNent: 675, ingreso: 1366500, costoNeto: 1837350, totalIva: 2223193.50, ganancia: -470850, hike: true },
+  ],
+  fulfillmentTotal: { entregadas: 1571, noEnt: 1419, ingreso: 2356500, costoNeto: 2866275, totalIva: 3468192.75, ganancia: -509775 },
+  // Caja flujo mensual
+  cajaFlujo: [
+    { mes: "Dic '25", recibidos: 15775000, gastos: -5977252, saldo: 9797748, nota: "Adelanto Fixy — 2° liq. noviembre" },
+    { mes: "Ene '26", recibidos: null, gastos: -9713548, saldo: 84200, nota: "Sin fondos nuevos — saldo crítico", critico: true },
+    { mes: "Feb '26", recibidos: 30000000, gastos: -13036912, saldo: 17047288, nota: "Fixy transfirió $30M en efectivo" },
+    { mes: "Mar '26", recibidos: null, gastos: -14181966, saldo: 2865322, nota: "Sin fondos — saldo muy ajustado", critico: true },
+    { mes: "Abr '26", recibidos: 49670440, gastos: -19423044, saldo: 33164298, nota: "Fixy pagó el saldo restante de nov" },
+  ],
+  // Estado liquidaciones (caja real, tabla detallada)
+  liquidaciones: [
+    { periodo: "Oct '25 2° quinc.", bruto: 20320954, fixy: -4287973, neto: 16032982, estado: "✅ Cobrado", estadoColor: "green", deposito: "02/12/25 — Banco BBVA" },
+    { periodo: "Nov '25 1° quinc.", bruto: 76665279, fixy: -18650125, neto: 58003460, estado: "✅ Cobrado", estadoColor: "green", deposito: "10/12/25 — Banco BBVA" },
+    { periodo: "Nov '25 2° quinc.", bruto: 120278809, fixy: -24833369, neto: 95445440, estado: "✅ Cobrado", estadoColor: "green", deposito: "Dic/Feb/Abr — Efectivo" },
+    { periodo: "Dic '25 1° quinc.", bruto: 199467358, fixy: -49741073, neto: 149726285, estado: "🔴 Retenido", estadoColor: "red", deposito: "Pendiente" },
+    { periodo: "Dic '25 2° quinc.", bruto: 179480118, fixy: -47221745, neto: 132258373, estado: "🔴 Retenido", estadoColor: "red", deposito: "Pendiente" },
+    { periodo: "Ene '26 1° quinc.", bruto: 95168984, fixy: -25291194, neto: 69877790, estado: "🔴 Retenido", estadoColor: "red", deposito: "Pendiente" },
+    { periodo: "Ene '26 2° quinc.", bruto: null, fixy: null, neto: 116959900, estado: "🔴 Retenido", estadoColor: "red", deposito: "Pendiente" },
+    { periodo: "Feb '26", bruto: null, fixy: null, neto: null, estado: "⏳ A conciliar", estadoColor: "amber", deposito: "Pendiente conciliación" },
+    { periodo: "Mar '26 — Fixy", bruto: null, fixy: null, neto: null, estado: "⏳ A conciliar", estadoColor: "amber", deposito: "Pendiente conciliación" },
+    { periodo: "Mar '26 — Urbano", bruto: null, fixy: null, neto: null, estado: "⏳ A conciliar", estadoColor: "amber", deposito: "Urbano — inició mar'26" },
+    { periodo: "Abr '26 — Fixy", bruto: null, fixy: null, neto: null, estado: "⏳ A conciliar", estadoColor: "amber", deposito: "Pendiente conciliación" },
+    { periodo: "Abr '26 — Urbano", bruto: null, fixy: null, neto: null, estado: "⏳ A conciliar", estadoColor: "amber", deposito: "Urbano — pendiente" },
+  ],
   caja: {
-    fechaCorte: "2026-04-23",
     bbva: 74036442,
     efectivo: 33164298,
-    fixyConfirmado: 468822348,
-    fixyPendiente: "Feb + Mar 2026 a conciliar",
+    fixyRetenido: 468822348,
   },
-  proyVsReal: [
-    { mes: "Ene'26", ingProy: 2466093, ingReal: 15209400, egrProy: 18435000, egrReal: 11184090, resProy: -15968907, resReal: 4025310 },
-    { mes: "Feb'26", ingProy: 2226196, ingReal: 14031300, egrProy: 22273400, egrReal: 14611912, resProy: -20047204, resReal: -580612 },
-    { mes: "Mar'26", ingProy: 2211447, ingReal: 15833100, egrProy: 27409502, egrReal: 14102849, resProy: -25198055, resReal: 1730251 },
-    { mes: "Abr'26", ingProy: 2823982, ingReal: 16199700, egrProy: 29576400, egrReal: 18758458, resProy: -26752418, resReal: -2558758 },
-    { mes: "May'26", ingProy: 2965151, ingReal: null, egrProy: 30170200, egrReal: null, resProy: -27205049, resReal: null },
-    { mes: "Jun'26", ingProy: 3261636, ingReal: null, egrProy: 34367200, egrReal: null, resProy: -31105564, resReal: null },
-  ],
-  ordenes: [
-    { mes: "Ene'26", cod: 8193, ff: 308, total: 8501 },
-    { mes: "Feb'26", cod: 7396, ff: 479, total: 7875 },
-    { mes: "Mar'26", cod: 7347, ff: 1739, total: 9086 },
-    { mes: "Abr'26", cod: 7839, ff: 1393, total: 9232 },
-  ],
-  fulfillment: [
-    { mes: "Ene'26", ent: 184, nent: 194, ingreso: 276000, costo: 278190, ganancia: -2190, margen: -0.0079, pEnt: 990, pNent: 495 },
-    { mes: "Feb'26", ent: null, nent: null, ingreso: null, costo: null, ganancia: 6090, margen: 0.0195, pEnt: 990, pNent: 495 },
-    { mes: "Mar'26", ent: 268, nent: 123, ingreso: 402000, costo: 444825, ganancia: -42825, margen: -0.1065, pEnt: 1350, pNent: 675 },
-    { mes: "Abr'26", ent: 911, nent: 900, ingreso: 1366500, costo: 1837350, ganancia: -470850, margen: -0.3446, pEnt: 1350, pNent: 675 },
-  ],
-  fulfillmentTotal: { ent: 1571, nent: 1419, ingreso: 2356500, costo: 2866275, ganancia: -509775, margen: -0.2163 },
-  salarios: {
-    enero: {
-      empleados: [
-        { nombre: "Busto Domanizcky, Raziel", cargo: "Country Manager", bruto: 2485000, neto: 2485000, obs: "Cubierto por Colombia (intercompany)" },
-        { nombre: "Díaz Fajardo, Valeria", cargo: "Gerente Administrativa", bruto: 2200000, neto: 2200000, obs: "Honorario neto" },
-        { nombre: "Campo, Keimar Gisel", cargo: "Ag. Servicio al Cliente", bruto: 1251738.67, neto: 1251738.67, obs: "Honorario neto" },
-      ],
-      total: 3451738.67,
-    },
-    febrero: {
-      empleados: [
-        { nombre: "Busto Domanizcky, Raziel", cargo: "Country Manager", bruto: 2485000, neto: 2485000, obs: "Cubierto por Colombia" },
-        { nombre: "Díaz Fajardo, Valeria", cargo: "Gerente Administrativa", bruto: 2200000, neto: 2200000, obs: "Honorario neto" },
-        { nombre: "Campo, Keimar Gisel", cargo: "Account Manager Junior", bruto: 1475237, neto: 1475237, obs: "" },
-      ],
-      total: 3675237,
-    },
-    marzo: {
-      empleados: [
-        { nombre: "Busto Domanizcky, Raziel", cargo: "Country Manager", bruto: 2485000, neto: 2485000, obs: "Cubierto por Colombia" },
-        { nombre: "Díaz Fajardo, Valeria", cargo: "Gerente Administrativa", bruto: 2200000, neto: 2200000, obs: "Honorario neto" },
-        { nombre: "Campo, Keimar Gisel", cargo: "Account Mgr — Liquidación Final", bruto: 1896316, neto: 1896316, obs: "Última liq." },
-      ],
-      total: 4096316.62,
-    },
-    abril: {
-      empleados: [
-        { nombre: "Busto Domanizcky, Raziel", cargo: "Country Manager", bruto: 2485000, neto: 6999999.9, obs: "Incluye saldos retroactivos" },
-        { nombre: "Díaz Fajardo, Valeria", cargo: "Gerente Administrativa", bruto: 3000000, neto: 2199999.9, obs: "Honorario neto" },
-        { nombre: "Tabossi Benitez, Julio C.", cargo: "Account Manager Senior", bruto: 2900000, neto: 2407000.08, obs: "Aporte 17% descontado" },
-        { nombre: "Agüero, Franco Nicolás", cargo: "Account Manager Senior", bruto: 2800000, neto: 2323999.92, obs: "Aporte 17% descontado" },
-      ],
-      total: 9100000,
-    },
-    proyMayo: 14900000,
-    proyJunio: 14900000,
-  },
-  pasivos: {
-    items: [
-      {
-        concepto: "Salario Raziel Busto",
-        operacion: "Colombia",
-        montoOrig: 29000000,
-        monedaOrig: "ARS",
-        tc: 1,
-        equivArs: 29000000,
-        periodo: "Abril 2025–Abr 2026",
-        estado: "⚠ Pendiente",
-      },
-      {
-        concepto: "Gastos preoperativos Raziel",
-        operacion: "Paraguay",
-        montoOrig: 201641907,
-        monedaOrig: "GS",
-        tc: 4.8,
-        equivArs: 42000000,
-        periodo: "Mar–Nov 2025",
-        estado: "⚠ Pendiente",
-      },
-    ],
-    totalArs: 71000000,
-  },
-  cajaHistorial: {
-    bbvaDepositos: [
-      { periodo: "2° quinc oct 2025", fecha: "02/12/2025", bruto: 20320954, fixy: 4287973, neto: 16032982, estado: "✅ Acreditado" },
-      { periodo: "1° quinc nov 2025", fecha: "10/12/2025", bruto: 76665279, fixy: 18650125, neto: 58003460, estado: "✅ Acreditado" },
-    ],
-    bbvaTotalNeto: 74036442,
-    efectivo: [
-      { fecha: "17/12/2025", concepto: "Adelanto efectivo Fixy", recibido: 15775000, gastos: 5977252, saldo: 9797748 },
-      { fecha: "Feb 2026", concepto: "Fondos acordados Fixy", recibido: 30000000, gastos: 13036912, saldo: 17047288 },
-      { fecha: "Abr 2026", concepto: "Saldo restante Fixy", recibido: 49670440, gastos: 19411464, saldo: 33164298 },
-    ],
-    efectivoSaldo: 33164298,
-    fixyRetenciones: [
-      { liq: "1° quinc dic 2025", ordenes: 6995, bruto: 199467358, fixy: 49741073, neto: 149726285, estado: "🔴 Retenido" },
-      { liq: "2° quinc dic 2025", ordenes: 7526, bruto: 179480118, fixy: 47221745, neto: 132258373, estado: "🔴 Retenido" },
-      { liq: "1° quinc ene 2026", ordenes: 3391, bruto: 95168984, fixy: 25291194, neto: 69877790, estado: "🔴 Retenido" },
-      { liq: "2° quinc ene 2026", ordenes: null, bruto: null, fixy: null, neto: 116959900, estado: "🔴 Retenido" },
-      { liq: "1°-2° quinc feb 2026", ordenes: null, bruto: null, fixy: null, neto: null, estado: "⏳ Pendiente concil." },
-      { liq: "1°-2° quinc mar 2026", ordenes: null, bruto: null, fixy: null, neto: null, estado: "⏳ Pendiente concil." },
-    ],
-    fixyTotalConfirmado: 468822348,
-  },
-  parametros: {
-    tarifaFlete: 1500,
-    ticketCod: 60000,
-    comisionCod: 0.005,
-    pagoComunidades: 200,
-    tcArsUsd: 1400,
+  deuda: {
+    colombia: { monto: 29800000, detalle: "USD 1.750 × TC 1.420 × 12 meses", periodo: "Abr'25–Mar'26 · Desde abr'26 lo paga Argentina" },
+    paraguay: { monto: 42000000, detalle: "GS 201.641.907 ÷ TC 7", periodo: "Mar'25–Nov'25 · Cubría viajes, estadía, operación" },
+    total: 71800000,
   },
 };
 
-const fmtArs = (v: number | null | undefined) => {
+// ─── Formatters ───
+const fmtArs = (v: number | null | undefined): string => {
   if (v === null || v === undefined) return "—";
   const abs = Math.abs(v);
-  if (abs >= 1e9) return `${v < 0 ? "-" : ""}$${(abs / 1e6).toLocaleString("es-AR", { maximumFractionDigits: 1 })}M`;
-  if (abs >= 1e6) return `${v < 0 ? "-" : ""}$${(abs / 1e6).toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}M`;
-  if (abs >= 1e3) return `${v < 0 ? "-" : ""}$${abs.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
-  return `${v < 0 ? "-" : ""}$${abs}`;
+  const sign = v < 0 ? "-" : "";
+  if (abs >= 1e9) return `${sign}$${(abs / 1e6).toLocaleString("es-AR", { maximumFractionDigits: 1 })}M`;
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}M`;
+  return `${sign}$${abs.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
 };
 
-const fmtArsExact = (v: number | null | undefined) => {
+const fmtArsExact = (v: number | null | undefined): string => {
   if (v === null || v === undefined) return "—";
-  return `$${v.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+  const sign = v < 0 ? "-" : "";
+  return `${sign}$${Math.abs(v).toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
 };
 
-const fmtPct = (v: number | null | undefined) => {
-  if (v === null || v === undefined) return "—";
-  return `${(v * 100).toFixed(2)}%`;
-};
-
-const fmtNum = (v: number | null | undefined) => {
+const fmtNum = (v: number | null | undefined): string => {
   if (v === null || v === undefined) return "—";
   return v.toLocaleString("es-AR");
 };
 
-type FinView = "resumen" | "proyreal" | "caja" | "salarios" | "pasivos" | "fulfillment";
+const fmtPct = (v: number | null | undefined): string => {
+  if (v === null || v === undefined) return "—";
+  return `${(v * 100).toFixed(1)}%`;
+};
+
+const colorFor = (key: string): string => {
+  switch (key) {
+    case "green": return COLOR.green;
+    case "red": return COLOR.red;
+    case "amber": return COLOR.amber;
+    case "orange": return COLOR.orange;
+    case "gray": return COLOR.gray;
+    default: return COLOR.muted;
+  }
+};
+
+const badgeBg = (key: string): { bg: string; color: string } => {
+  switch (key) {
+    case "green": return { bg: COLOR.greenLt, color: COLOR.green };
+    case "red": return { bg: COLOR.redLt, color: COLOR.red };
+    case "amber": return { bg: COLOR.amberLt, color: COLOR.amber };
+    default: return { bg: COLOR.grayLt, color: COLOR.gray };
+  }
+};
+
+type FinView = "resumen" | "recaudo" | "ingresos" | "ganancia" | "fulfillment" | "caja";
 
 export default function FinanzasDashboardAR() {
   const [view, setView] = useState<FinView>("resumen");
 
-  const views: { key: FinView; label: string }[] = [
+  const tabs: { key: FinView; label: string }[] = [
     { key: "resumen", label: "Resumen" },
-    { key: "proyreal", label: "Proyección vs Real" },
-    { key: "caja", label: "Caja & Fixy" },
-    { key: "salarios", label: "Salarios" },
-    { key: "pasivos", label: "Pasivos Intercompany" },
-    { key: "fulfillment", label: "Fulfillment" },
+    { key: "recaudo", label: "① Recaudo" },
+    { key: "ingresos", label: "② Ingreso Dropi" },
+    { key: "ganancia", label: "③ Ganancia" },
+    { key: "fulfillment", label: "📦 Fulfillment" },
+    { key: "caja", label: "Caja real" },
   ];
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex gap-2 flex-wrap flex-1">
-          {views.map((v) => (
+      {/* Header con KPIs principales */}
+      <div className="rounded-xl p-5" style={{ background: COLOR.dark }}>
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 mb-4">
+          <div>
+            <div className="text-[10px] tracking-[3px] font-bold mb-1" style={{ color: COLOR.orange }}>
+              DROPI S.A. · ARGENTINA · {DATA.meta.periodo.toUpperCase()}
+            </div>
+            <div className="text-2xl sm:text-3xl font-black text-white leading-tight" style={{ fontFamily: "Georgia, serif" }}>
+              Resumen Financiero Ejecutivo
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              CUIT {DATA.meta.cuit} · Moneda: ARS · Actualizado al {DATA.meta.actualizado}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-6 text-right">
+            <div>
+              <div className="font-mono text-lg font-medium" style={{ color: COLOR.gray }}>
+                {fmtArs(DATA.headerKpis.recaudoReal)}
+              </div>
+              <div className="text-[10px] text-gray-500">Recaudo real oct–dic (Fixy)</div>
+            </div>
+            <div>
+              <div className="font-mono text-lg font-medium" style={{ color: COLOR.orange }}>
+                {fmtArs(DATA.headerKpis.netoDropiTotal)}
+              </div>
+              <div className="text-[10px] text-gray-500">Neto Dropi total (oct–abr)</div>
+            </div>
+            <div>
+              <div className="font-mono text-lg font-medium" style={{ color: COLOR.green }}>
+                {fmtArs(DATA.headerKpis.cajaDisponible)}
+              </div>
+              <div className="text-[10px] text-gray-500">Caja disponible hoy</div>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {tabs.map((t) => (
             <button
-              key={v.key}
-              onClick={() => setView(v.key)}
-              className={`text-xs px-4 py-2 rounded-full border transition-all ${
-                view === v.key
-                  ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
-                  : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
-              }`}
+              key={t.key}
+              onClick={() => setView(t.key)}
+              className="text-xs px-4 py-2 rounded-t-md font-medium transition-all"
+              style={{
+                background: view === t.key ? "var(--bg-page, #F5F6F8)" : "rgba(255,255,255,0.08)",
+                color: view === t.key ? COLOR.orange : "#aaa",
+                fontWeight: view === t.key ? 700 : 400,
+              }}
             >
-              {v.label}
+              {t.label}
             </button>
           ))}
         </div>
       </div>
 
-      <div className="glass-card p-4 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm shrink-0" style={{ background: "linear-gradient(135deg, #74ACDF, #F6B40E)" }}>DR</div>
-        <div>
-          <p className="text-sm font-semibold t-primary">DROPI S.A.</p>
-          <p className="text-xs t-muted">CUIT 30-71916455-9 &middot; Argentina &middot; Dashboard Financiero</p>
-        </div>
-        <div className="ml-auto text-right">
-          <p className="text-[10px] t-muted uppercase tracking-wider">Corte</p>
-          <p className="text-xs t-secondary">{DATA_AR.caja.fechaCorte}</p>
-        </div>
-      </div>
-
-      {view === "resumen" && <ResumenAR />}
-      {view === "proyreal" && <ProyRealAR />}
-      {view === "caja" && <CajaAR />}
-      {view === "salarios" && <SalariosAR />}
-      {view === "pasivos" && <PasivosAR />}
-      {view === "fulfillment" && <FulfillmentAR />}
+      {/* Contenido del tab */}
+      {view === "resumen" && <ResumenView />}
+      {view === "recaudo" && <RecaudoView />}
+      {view === "ingresos" && <IngresosView />}
+      {view === "ganancia" && <GananciaView />}
+      {view === "fulfillment" && <FulfillmentView />}
+      {view === "caja" && <CajaView />}
     </div>
   );
 }
 
-// ═══════════════════════════════════════
-// RESUMEN
-// ═══════════════════════════════════════
-function ResumenAR() {
-  const c = DATA_AR.caja;
-  const cajaTotal = c.bbva + c.efectivo;
-  const totalActivos = cajaTotal + c.fixyConfirmado;
-  const totalDeudas = DATA_AR.pasivos.totalArs;
-  const netoDisponible = totalActivos - totalDeudas;
+// ═══════════════════════════════════════════════════════════════════
+// COMPONENTES REUTILIZABLES
+// ═══════════════════════════════════════════════════════════════════
 
-  const ingRealYTD = DATA_AR.proyVsReal.filter((r) => r.ingReal !== null).reduce((s, r) => s + (r.ingReal || 0), 0);
-  const egrRealYTD = DATA_AR.proyVsReal.filter((r) => r.egrReal !== null).reduce((s, r) => s + (r.egrReal || 0), 0);
-  const resYTD = ingRealYTD - egrRealYTD;
-
-  const ordenesYTD = DATA_AR.ordenes.reduce((s, o) => s + o.total, 0);
-
-  const kpis = [
-    { label: "Caja disponible hoy", val: fmtArs(cajaTotal), sub: `BBVA ${fmtArs(c.bbva)} + Efectivo ${fmtArs(c.efectivo)}`, color: "#3B6D11" },
-    { label: "Retenido Fixy (confirmado)", val: fmtArs(c.fixyConfirmado), sub: "Dic'25 + Ene'26 — por cobrar", color: "#A35E11" },
-    { label: "Deuda intercompany", val: fmtArs(-totalDeudas), sub: "Colombia + Paraguay", color: "#A32D2D" },
-    { label: "Resultado neto YTD (Ene–Abr)", val: fmtArs(resYTD), sub: `${ordenesYTD.toLocaleString("es-AR")} órdenes movilizadas`, color: resYTD >= 0 ? "#3B6D11" : "#A32D2D" },
-  ];
-
+function InfoBox({ tone, children }: { tone: "gray" | "orange" | "green" | "amber" | "red"; children: React.ReactNode }) {
+  const map = {
+    gray: { bg: COLOR.grayLt, border: COLOR.gray },
+    orange: { bg: COLOR.orangeLt, border: COLOR.orange },
+    green: { bg: COLOR.greenLt, border: COLOR.green },
+    amber: { bg: COLOR.amberLt, border: COLOR.amber },
+    red: { bg: COLOR.redLt, border: COLOR.red },
+  };
+  const c = map[tone];
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {kpis.map((k) => (
-          <div key={k.label} className="glass-card p-4">
-            <p className="text-[11px] t-muted uppercase tracking-wider mb-1">{k.label}</p>
-            <p className="text-xl font-medium t-primary" style={{ color: k.color }}>{k.val}</p>
-            <p className="text-[11px] t-muted mt-1">{k.sub}</p>
-          </div>
-        ))}
+    <div className="rounded-lg p-4 text-sm leading-relaxed mb-5" style={{ background: c.bg, borderLeft: `3px solid ${c.border}`, color: "#333" }}>
+      {children}
+    </div>
+  );
+}
+
+function TableWrap({ title, headerColor, children, footnote }: { title: string; headerColor?: string; children: React.ReactNode; footnote?: React.ReactNode }) {
+  return (
+    <div className="rounded-xl overflow-hidden mb-5 shadow-sm bg-white">
+      <div className="px-5 py-3" style={{ background: headerColor || COLOR.dark }}>
+        <span className="text-white text-sm font-bold" style={{ fontFamily: "Georgia, serif" }}>{title}</span>
+      </div>
+      <div className="overflow-x-auto">{children}</div>
+      {footnote && <div className="px-4 py-3 text-[11px] text-gray-500 bg-gray-50 border-t border-gray-100 leading-relaxed">{footnote}</div>}
+    </div>
+  );
+}
+
+function Badge({ children, tone }: { children: React.ReactNode; tone: string }) {
+  const c = badgeBg(tone);
+  return (
+    <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-semibold" style={{ background: c.bg, color: c.color }}>
+      {children}
+    </span>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RESUMEN
+// ═══════════════════════════════════════════════════════════════════
+function ResumenView() {
+  return (
+    <div>
+      <InfoBox tone="gray">
+        <strong>¿Cómo leer este resumen?</strong> Hay tres conceptos distintos que se suelen confundir:{" "}
+        <strong>①</strong> El <strong>recaudo</strong> es todo lo que pagaron los compradores — pasa por Fixy/Urbano.{" "}
+        <strong>②</strong> El <strong>ingreso de Dropi</strong> es lo que le corresponde a Dropi: <strong>$1.500 por cada orden</strong> (COD y fulfillment). Para COD además cobra el <strong>0.5% de comisión</strong>. El costo del fulfillment es lo que factura GV Nexus por entregadas y no entregadas.{" "}
+        <strong>③</strong> La <strong>ganancia</strong> es el ingreso de Dropi menos todos los gastos operativos.
+      </InfoBox>
+
+      {/* 3 NIVELES */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+        <NivelCard num="①" label="Recaudo total" value={DATA.niveles.recaudoTotal} sub="real oct–dic (liquidaciones Fixy)" desc="Todo lo que los compradores pagaron y cobró Fixy. No es plata de Dropi todavía. De este monto, Fixy descuenta su comisión y le transfiere el neto a Dropi." color={COLOR.gray} />
+        <NivelCard num="②" label="Ingreso Dropi" value={DATA.niveles.ingresoDropi} sub="neto Dropi oct'25–abr'26" desc="Lo que le corresponde a Dropi: $1.500 por flete (COD y FF) más 0.5% comisión COD. El fulfillment solo cobra el flete." color={COLOR.orange} />
+        <NivelCard num="③" label="Ganancia neta" value={DATA.niveles.gananciaNeta} sub="resultado ene–abr 2026 (acumulado)" desc="Del ingreso de Dropi se restan los gastos reales: sueldos, alquiler, honorarios, viáticos, fulfillment, impuestos. Solo calculado para ene–abr porque dic está retenido." color={COLOR.green} />
       </div>
 
-      <div className="glass-card p-5">
-        <p className="text-xs t-muted uppercase tracking-wider mb-3">Resultado neto mensual — Real vs Proyectado</p>
-        <ResponsiveContainer width="100%" height={260}>
-          <BarChart data={DATA_AR.proyVsReal}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-            <XAxis dataKey="mes" stroke="#888" fontSize={11} />
-            <YAxis stroke="#888" fontSize={11} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}M`} />
-            <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v) => fmtArs(typeof v === "number" ? v : null)} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="resReal" name="Real" fill="#74ACDF" />
-            <Bar dataKey="resProy" name="Proyectado" fill="#F6B40E" />
+      {/* TABLA PRINCIPAL */}
+      <TableWrap title="Datos reales por mes — Oct 2025 a Abr 2026" footnote={
+        <>
+          * El resultado de dic '25 ($276M) y ene '26 ($186.8M retenido confirmado) <strong>no están disponibles en caja todavía</strong> — Fixy los retiene.<br />
+          ~ Recaudo ene–abr es estimado (órdenes × $60.000 ticket promedio). El ingreso Dropi de ene–abr es <strong>real</strong> del archivo.
+        </>
+      }>
+        <table className="w-full text-sm">
+          <thead style={{ background: COLOR.orangeLt }}>
+            <tr>
+              <Th color={COLOR.orange} align="left">Mes</Th>
+              <Th color={COLOR.gray}>① Recaudo bruto</Th>
+              <Th color={COLOR.gray}>(-) Fixy</Th>
+              <Th color={COLOR.orange}>② Neto Dropi</Th>
+              <Th color={COLOR.red}>③ Gastos pagados</Th>
+              <Th color={COLOR.green}>Resultado</Th>
+              <Th color={COLOR.muted} align="left">Estado</Th>
+            </tr>
+          </thead>
+          <tbody>
+            <SepRow colspan={7}>Datos reales — liquidaciones Fixy</SepRow>
+            {DATA.tablaPrincipal.filter((r) => r.seccion === "real").map((r) => (
+              <RowMain key={r.mes} r={r} />
+            ))}
+            <SepRow colspan={7}>Datos reales — archivo REALES ARS · Recaudo estimado</SepRow>
+            {DATA.tablaPrincipal.filter((r) => r.seccion === "archivo").map((r) => (
+              <RowMain key={r.mes} r={r} />
+            ))}
+            {/* Subtotales */}
+            <SubtotalRow label="Neto oct–dic (real Fixy)" data={DATA.subtotales.octDic} />
+            <SubtotalRow label="Neto ene–abr (real REALES ARS)" data={DATA.subtotales.eneAbr} />
+            <TotalRow label="TOTAL PERÍODO" data={DATA.subtotales.total} />
+          </tbody>
+        </table>
+      </TableWrap>
+
+      {/* GRÁFICO RESULTADO MENSUAL */}
+      <div className="bg-white rounded-xl p-5 shadow-sm mb-5">
+        <div className="text-sm font-bold mb-3" style={{ color: COLOR.dark, fontFamily: "Georgia, serif" }}>
+          Resultado neto mensual — Ene a Abr 2026
+        </div>
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={DATA.ganancia}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+            <XAxis dataKey="mes" fontSize={11} stroke="#666" />
+            <YAxis fontSize={11} stroke="#666" tickFormatter={(v) => `${(v / 1e6).toFixed(1)}M`} />
+            <Tooltip formatter={(v) => fmtArsExact(typeof v === "number" ? v : null)} contentStyle={{ background: "#fff", border: `1px solid ${COLOR.orange}`, fontSize: 12 }} />
+            <Bar dataKey="resultado" name="Resultado">
+              {DATA.ganancia.map((d, i) => (
+                <Cell key={i} fill={d.resultado >= 0 ? COLOR.green : COLOR.red} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="glass-card p-5">
-          <p className="text-xs t-muted uppercase tracking-wider mb-3">Estado de caja (al {c.fechaCorte})</p>
-          <table className="w-full text-sm">
-            <tbody>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 t-secondary">🏦 Banco BBVA</td>
-                <td className="py-2 text-right t-primary font-mono">{fmtArsExact(c.bbva)}</td>
-              </tr>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 t-secondary">💵 Caja Efectivo</td>
-                <td className="py-2 text-right t-primary font-mono">{fmtArsExact(c.efectivo)}</td>
-              </tr>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 t-secondary">⏳ Retenido Fixy (conf.)</td>
-                <td className="py-2 text-right text-amber-400 font-mono">{fmtArsExact(c.fixyConfirmado)}</td>
-              </tr>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 t-secondary">⚠ Deuda intercompany</td>
-                <td className="py-2 text-right text-red-400 font-mono">-{fmtArsExact(totalDeudas)}</td>
-              </tr>
-              <tr className="border-t-2 border-orange-500/40">
-                <td className="py-2 font-semibold t-primary">Neto disponible (incl. Fixy)</td>
-                <td className="py-2 text-right font-bold font-mono" style={{ color: netoDisponible >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtArsExact(netoDisponible)}</td>
-              </tr>
-            </tbody>
-          </table>
+      {/* DEUDA */}
+      <div className="rounded-xl p-5 mb-5" style={{ background: "#FFF8F0", border: `1px solid ${COLOR.amber}40` }}>
+        <h3 className="text-sm font-bold mb-3" style={{ color: COLOR.amber }}>⚠ Préstamo intercompany — Colombia y Paraguay</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: COLOR.amber }}>Colombia — Salario Raziel</div>
+            <div className="text-sm font-mono">{DATA.deuda.colombia.detalle} = ~{fmtArs(DATA.deuda.colombia.monto)} ARS</div>
+            <div className="text-xs text-gray-500 mt-1">{DATA.deuda.colombia.periodo}</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: COLOR.amber }}>Paraguay — Gastos preoperativos Raziel</div>
+            <div className="text-sm font-mono">{DATA.deuda.paraguay.detalle} = ~{fmtArs(DATA.deuda.paraguay.monto)} ARS</div>
+            <div className="text-xs text-gray-500 mt-1">{DATA.deuda.paraguay.periodo}</div>
+          </div>
         </div>
+        <div className="mt-3 p-3 bg-white rounded-md text-xs text-gray-700 leading-relaxed">
+          💡 Con {fmtArs(DATA.headerKpis.cajaDisponible)} de caja disponible y {fmtArs(DATA.caja.fixyRetenido)} retenidos por cobrar a Fixy, la empresa tiene capacidad de cubrir ambas deudas ({fmtArs(DATA.deuda.total)} total) cuando se concrete la conciliación.
+        </div>
+      </div>
 
-        <div className="glass-card p-5">
-          <p className="text-xs t-muted uppercase tracking-wider mb-3">YTD Ene–Abr 2026 (real)</p>
-          <table className="w-full text-sm">
-            <tbody>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 t-secondary">Ingresos totales</td>
-                <td className="py-2 text-right t-primary font-mono">{fmtArsExact(ingRealYTD)}</td>
+      {/* CAJA KPIs */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <CajaKpi label="Banco BBVA" value={DATA.caja.bbva} sub="Oct + Nov '25 — intacto" color={COLOR.green} />
+        <CajaKpi label="Caja Efectivo" value={DATA.caja.efectivo} sub="Saldo al 23/04/2026" color={COLOR.orange} />
+        <CajaKpi label="Retenido por Fixy" value={DATA.caja.fixyRetenido} sub="Ene'26–Abr'26 pendiente conciliación" color={COLOR.amber} />
+      </div>
+    </div>
+  );
+}
+
+function NivelCard({ num, label, value, sub, desc, color }: { num: string; label: string; value: number; sub: string; desc: string; color: string }) {
+  return (
+    <div className="bg-white rounded-xl p-5 shadow-sm" style={{ borderTop: `4px solid ${color}` }}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-7 h-7 rounded-full flex items-center justify-center text-white text-sm font-black" style={{ background: color }}>{num}</div>
+        <strong className="text-sm" style={{ color: "#333" }}>{label}</strong>
+      </div>
+      <div className="font-mono text-3xl font-medium my-2" style={{ color }}>{fmtArs(value)}</div>
+      <div className="text-xs text-gray-500 mb-2">{sub}</div>
+      <div className="text-xs text-gray-700 leading-relaxed">{desc}</div>
+    </div>
+  );
+}
+
+function CajaKpi({ label, value, sub, color }: { label: string; value: number; sub: string; color: string }) {
+  return (
+    <div className="bg-white rounded-xl p-5 shadow-sm text-center" style={{ borderTop: `3px solid ${color}` }}>
+      <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">{label}</div>
+      <div className="font-mono text-2xl font-medium my-1" style={{ color }}>{fmtArsExact(value)}</div>
+      <div className="text-[11px] text-gray-500">{sub}</div>
+    </div>
+  );
+}
+
+function Th({ color, align = "right", children }: { color: string; align?: "left" | "right"; children: React.ReactNode }) {
+  return (
+    <th className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider whitespace-nowrap" style={{ color, borderBottom: `2px solid ${color}`, textAlign: align }}>
+      {children}
+    </th>
+  );
+}
+
+function SepRow({ colspan, children }: { colspan: number; children: React.ReactNode }) {
+  return (
+    <tr>
+      <td colSpan={colspan} className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50">
+        {children}
+      </td>
+    </tr>
+  );
+}
+
+function RowMain({ r }: { r: typeof DATA.tablaPrincipal[0] }) {
+  return (
+    <tr className="border-b border-gray-100 hover:bg-orange-50/30">
+      <td className="px-3 py-2.5">
+        <strong>{r.mes}</strong>
+        {r.sub && <div className="text-[11px] text-gray-400">{r.sub}</div>}
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.recaudoEst ? COLOR.muted : COLOR.gray }}>
+        {r.recaudoEst ? `~${fmtArsExact(r.recaudo)}` : fmtArsExact(r.recaudo)}
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.fixyEst ? COLOR.muted : COLOR.red }}>
+        {r.fixyEst ? "~est." : fmtArsExact(r.fixy)}
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs font-semibold" style={{ color: COLOR.orange }}>
+        {fmtArsExact(r.netoDropi)}
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.gastosLabel ? COLOR.muted : COLOR.red }}>
+        {r.gastosLabel || fmtArsExact(r.gastos)}
+      </td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs font-semibold" style={{ color: r.resultado === null ? COLOR.muted : r.resultado >= 0 ? COLOR.green : COLOR.red }}>
+        {r.resultadoLabel || (r.resultado === null ? "—" : fmtArs(r.resultado))}
+      </td>
+      <td className="px-3 py-2.5"><Badge tone={r.estadoColor}>{r.estado}</Badge></td>
+    </tr>
+  );
+}
+
+function SubtotalRow({ label, data }: { label: string; data: { recaudo: number; fixy: number; netoDropi: number; gastos: number; resultado: number } }) {
+  return (
+    <tr style={{ background: "#F0F4F0", borderTop: "1px solid #C8DCC8" }}>
+      <td className="px-3 py-2.5 font-semibold text-sm">{label}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.gray }}>{fmtArsExact(data.recaudo)}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtArsExact(data.fixy)}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: COLOR.orange }}>{fmtArsExact(data.netoDropi)}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtArsExact(data.gastos)}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: data.resultado >= 0 ? COLOR.amber : COLOR.red }}>{fmtArs(data.resultado)}</td>
+      <td className="px-3 py-2.5"><Badge tone="gray">subtotal</Badge></td>
+    </tr>
+  );
+}
+
+function TotalRow({ label, data }: { label: string; data: { recaudo: number; fixy: number; netoDropi: number; gastos: number; resultado: number } }) {
+  return (
+    <tr style={{ background: COLOR.orangeLt, borderTop: `2px solid ${COLOR.orange}` }}>
+      <td className="px-3 py-3 font-bold text-sm">{label}</td>
+      <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.gray }}>~{fmtArs(data.recaudo)}</td>
+      <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>~{fmtArs(data.fixy)}+</td>
+      <td className="px-3 py-3 text-right font-mono text-sm font-black" style={{ color: COLOR.orange }}>{fmtArsExact(data.netoDropi)}</td>
+      <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>{fmtArs(data.gastos)}</td>
+      <td className="px-3 py-3 text-right font-mono text-sm font-black" style={{ color: COLOR.amber }}>+{fmtArs(data.resultado)}*</td>
+      <td className="px-3 py-3 text-[11px] text-gray-600">*Dic retenido Fixy</td>
+    </tr>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// RECAUDO
+// ═══════════════════════════════════════════════════════════════════
+function RecaudoView() {
+  return (
+    <div>
+      <InfoBox tone="gray">
+        💡 <strong>¿Qué es el recaudo?</strong> Cuando un comprador paga su pedido, ese dinero lo recibe el transportista (Fixy o Urbano).
+        Luego Fixy descuenta su comisión y le transfiere el resto a Dropi. El <strong>recaudo bruto</strong> es el total que pagaron los compradores.
+        El <strong>neto Dropi</strong> es lo que queda después del descuento de Fixy. <strong>Oct–dic son datos reales</strong> de las liquidaciones.
+        <strong> Ene–abr son estimados</strong> porque están pendientes de conciliación.
+      </InfoBox>
+
+      <TableWrap title="📋 Datos REALES — Liquidaciones Fixy (Oct–Dic 2025)" headerColor={COLOR.green}>
+        <table className="w-full text-sm">
+          <thead style={{ background: COLOR.greenLt }}>
+            <tr>
+              <Th color={COLOR.green} align="left">Período</Th>
+              <Th color={COLOR.green}>Órdenes</Th>
+              <Th color={COLOR.green}>Recaudo bruto</Th>
+              <Th color={COLOR.green}>(-) Descuento Fixy</Th>
+              <Th color={COLOR.green}>Neto Dropi</Th>
+              <Th color={COLOR.green} align="left">Estado</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {DATA.recaudoReal.map((r) => (
+              <tr key={r.periodo} className="border-b border-gray-100">
+                <td className="px-3 py-2.5"><strong>{r.periodo}</strong></td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs">{fmtNum(r.ordenes)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.gray }}>{fmtArsExact(r.bruto)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtArsExact(r.fixy)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: COLOR.green }}>{fmtArsExact(r.neto)}</td>
+                <td className="px-3 py-2.5"><Badge tone={r.estadoColor}>{r.estado}</Badge></td>
               </tr>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 t-secondary">Egresos totales</td>
-                <td className="py-2 text-right t-primary font-mono">{fmtArsExact(egrRealYTD)}</td>
+            ))}
+            <tr style={{ background: "#F0F4F0", borderTop: "1px solid #C8DCC8" }}>
+              <td className="px-3 py-3 font-bold">SUBTOTAL Oct–Dic</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold">18.631</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.gray }}>{fmtArsExact(596212518)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>{fmtArsExact(-144734285)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-black" style={{ color: COLOR.orange }}>{fmtArsExact(451466540)}</td>
+              <td className="px-3 py-3 text-[11px] text-gray-600">$169.5M cobrado · $281.9M retenido</td>
+            </tr>
+          </tbody>
+        </table>
+      </TableWrap>
+
+      <TableWrap title="📊 ESTIMADO — Pendiente conciliación (Ene–Abr 2026)" headerColor={COLOR.gray} footnote={
+        <>⚠ El neto estimado incluye todo el recaudo (vendedor + Dropi). El ingreso real de Dropi de ene–abr es <strong>$61.3M</strong> — ver pestaña ② Ingreso Dropi.</>
+      }>
+        <table className="w-full text-sm">
+          <thead style={{ background: COLOR.grayLt }}>
+            <tr>
+              <Th color={COLOR.gray} align="left">Período</Th>
+              <Th color={COLOR.gray}>Órdenes</Th>
+              <Th color={COLOR.gray}>Recaudo est.</Th>
+              <Th color={COLOR.gray}>(-) Fixy est. ~25%</Th>
+              <Th color={COLOR.gray}>Neto est.</Th>
+              <Th color={COLOR.gray} align="left">Estado</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {DATA.recaudoEst.map((r) => (
+              <tr key={r.periodo} className="border-b border-gray-100">
+                <td className="px-3 py-2.5"><strong>{r.periodo}</strong></td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs">{fmtNum(r.ordenes)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.muted }}>~{fmtArsExact(r.bruto)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.muted }}>~{fmtArsExact(r.fixy)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: r.estadoColor === "red" ? COLOR.red : COLOR.amber }}>
+                  {r.netoLabel || `~${fmtArsExact(r.neto)}`}
+                </td>
+                <td className="px-3 py-2.5"><Badge tone={r.estadoColor}>{r.estado}</Badge></td>
               </tr>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 t-secondary">Órdenes movilizadas</td>
-                <td className="py-2 text-right t-primary font-mono">{ordenesYTD.toLocaleString("es-AR")}</td>
+            ))}
+            <tr style={{ background: "#F0F4F0", borderTop: "1px solid #C8DCC8" }}>
+              <td className="px-3 py-3 font-bold">SUBTOTAL Ene–Abr</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold">34.694</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.muted }}>~{fmtArs(2081640000)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.muted }}>~{fmtArs(-520410000)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-black" style={{ color: COLOR.amber }}>~{fmtArs(1365522690)}</td>
+              <td className="px-3 py-3 text-[11px] text-gray-600">Ene confirmado $186.8M · Feb–Abr estimado</td>
+            </tr>
+          </tbody>
+        </table>
+      </TableWrap>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// INGRESO DROPI
+// ═══════════════════════════════════════════════════════════════════
+function IngresosView() {
+  return (
+    <div>
+      <InfoBox tone="orange">
+        💡 <strong>¿Cómo gana Dropi?</strong> De cada paquete, Dropi cobra <strong>$1.500 de flete</strong> por envío.
+        Para los envíos <strong>COD</strong> (cobro contra entrega) además cobra el <strong>0.5% del valor del producto</strong>.
+        Para el <strong>fulfillment</strong> solo cobra el flete de $1.500 por orden entregada — <strong>sin comisión</strong>.
+        <br /><br />
+        <strong>Oct–dic:</strong> El ingreso Dropi está calculado desde las órdenes reales (flete + COD, sin FF porque aún no había).{" "}
+        <strong>Ene–abr:</strong> Datos reales del archivo REALES ARS — flete COD + comisión COD + flete FF.
+      </InfoBox>
+
+      <TableWrap title="Ingreso Dropi por mes — Oct 2025 a Abr 2026">
+        <table className="w-full text-sm">
+          <thead style={{ background: COLOR.orangeLt }}>
+            <tr>
+              <Th color={COLOR.orange} align="left">Mes</Th>
+              <Th color={COLOR.orange}>Flete COD</Th>
+              <Th color={COLOR.orange}>Comisión COD (0.5%)</Th>
+              <Th color={COLOR.orange}>Flete FF</Th>
+              <Th color={COLOR.orange}>Total ingreso Dropi</Th>
+              <Th color={COLOR.muted} align="left">Fuente</Th>
+            </tr>
+          </thead>
+          <tbody>
+            <SepRow colspan={6}>Oct–Dic 2025 — Calculado desde órdenes reales</SepRow>
+            {DATA.ingresoDropi.filter((r) => r.seccion === "calculado").map((r) => (
+              <RowIngreso key={r.mes} r={r} />
+            ))}
+            <SepRow colspan={6}>Ene–Abr 2026 — Datos reales archivo REALES ARS</SepRow>
+            {DATA.ingresoDropi.filter((r) => r.seccion === "archivo").map((r) => (
+              <RowIngreso key={r.mes} r={r} />
+            ))}
+            <tr style={{ background: COLOR.orangeLt, borderTop: `2px solid ${COLOR.orange}` }}>
+              <td className="px-3 py-3 font-bold">TOTAL</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold">{fmtArsExact(DATA.ingresoDropiTotal.fleteCod)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold">{fmtArsExact(DATA.ingresoDropiTotal.comisionCod)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold">{fmtArsExact(DATA.ingresoDropiTotal.fleteFf)}</td>
+              <td className="px-3 py-3 text-right font-mono text-sm font-black" style={{ color: COLOR.orange }}>{fmtArsExact(DATA.ingresoDropiTotal.total)}</td>
+              <td className="px-3 py-3 text-[11px] text-gray-500 italic">Oct'25–Abr'26</td>
+            </tr>
+          </tbody>
+        </table>
+      </TableWrap>
+
+      <InfoBox tone="amber">
+        📌 <strong>Nota:</strong> El ingreso de Dropi (${(DATA.ingresoDropiTotal.total / 1e6).toFixed(1)}M) es <em>diferente</em> al neto que transfiere Fixy ($451.5M oct–dic).
+        La diferencia es que Fixy transfiere también el valor del producto que le corresponde al vendedor.
+        El ingreso <em>real de Dropi</em> es solo flete + comisión COD.
+      </InfoBox>
+    </div>
+  );
+}
+
+function RowIngreso({ r }: { r: typeof DATA.ingresoDropi[0] }) {
+  return (
+    <tr className="border-b border-gray-100 hover:bg-orange-50/30">
+      <td className="px-3 py-2.5"><strong>{r.mes}</strong></td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs">{fmtArsExact(r.fleteCod)}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs">{fmtArsExact(r.comisionCod)}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.fleteFf ? COLOR.dark : COLOR.muted }}>{r.fleteFf ? fmtArsExact(r.fleteFf) : "—"}</td>
+      <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: COLOR.orange }}>{fmtArsExact(r.total)}</td>
+      <td className="px-3 py-2.5 text-[11px] text-gray-500 italic">{r.fuente}</td>
+    </tr>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// GANANCIA
+// ═══════════════════════════════════════════════════════════════════
+function GananciaView() {
+  return (
+    <div>
+      <InfoBox tone="green">
+        💡 <strong>¿Qué es la ganancia neta?</strong> Del ingreso de Dropi (flete + COD) se restan todos los gastos reales pagados:
+        sueldos, alquiler, honorarios, viáticos, fulfillment, Vistage, impuestos.
+        <strong> El salario de Raziel no está en los egresos</strong> porque lo cubrió Colombia como préstamo —
+        pero es una deuda real que hay que devolver ($29.8M).
+      </InfoBox>
+
+      <TableWrap title="Resultado mensual — Ene a Abr 2026">
+        <table className="w-full text-sm">
+          <thead style={{ background: COLOR.greenLt }}>
+            <tr>
+              <Th color={COLOR.green} align="left">Mes</Th>
+              <Th color={COLOR.orange}>Ingreso Dropi</Th>
+              <Th color={COLOR.red}>Egresos fijos</Th>
+              <Th color={COLOR.red}>Egresos variables</Th>
+              <Th color={COLOR.red}>Total gastos</Th>
+              <Th color={COLOR.green}>Resultado</Th>
+              <Th color={COLOR.green}>Margen</Th>
+              <Th color={COLOR.green}>Acumulado</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {DATA.ganancia.map((r) => (
+              <tr key={r.mes} className="border-b border-gray-100">
+                <td className="px-3 py-2.5"><strong>{r.mes}</strong></td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.orange }}>{fmtArsExact(r.ingreso)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtArsExact(r.egrFijos)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtArsExact(r.egrVar)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-semibold" style={{ color: COLOR.red }}>{fmtArsExact(r.total)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: r.resultado >= 0 ? COLOR.green : COLOR.red }}>{fmtArsExact(r.resultado)}</td>
+                <td className="px-3 py-2.5 text-right"><Badge tone={r.margen >= 0 ? "green" : "red"}>{fmtPct(r.margen)}</Badge></td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.green }}>{fmtArs(r.acumulado)}</td>
               </tr>
-              <tr className="border-t-2 border-orange-500/40">
-                <td className="py-2 font-semibold t-primary">Resultado neto</td>
-                <td className="py-2 text-right font-bold font-mono" style={{ color: resYTD >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtArsExact(resYTD)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p className="text-[11px] t-muted mt-3">Margen YTD: <span className="font-mono">{fmtPct(resYTD / ingRealYTD)}</span></p>
+            ))}
+            <tr style={{ background: COLOR.orangeLt, borderTop: `2px solid ${COLOR.orange}` }}>
+              <td className="px-3 py-3 font-bold">TOTAL Q1+Abr</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.orange }}>{fmtArsExact(DATA.gananciaTotal.ingreso)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>{fmtArsExact(DATA.gananciaTotal.egrFijos)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>{fmtArsExact(DATA.gananciaTotal.egrVar)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>{fmtArsExact(DATA.gananciaTotal.total)}</td>
+              <td className="px-3 py-3 text-right font-mono text-sm font-black" style={{ color: COLOR.green }}>+{fmtArsExact(DATA.gananciaTotal.resultado)}</td>
+              <td className="px-3 py-3 text-right"><Badge tone="green">{fmtPct(DATA.gananciaTotal.margen)}</Badge></td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.green }}>+{fmtArs(DATA.gananciaTotal.resultado)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </TableWrap>
+
+      {/* Breakdown gastos */}
+      <div className="bg-white rounded-xl p-5 shadow-sm mb-5">
+        <div className="text-base font-bold mb-3" style={{ fontFamily: "Georgia, serif" }}>¿En qué se gastó? — Acumulado Ene–Abr 2026</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          {DATA.gastosBreakdown.map((g) => (
+            <div key={g.concepto} className="px-4 py-3 bg-gray-50 rounded-md flex items-center justify-between">
+              <div>
+                <div className="font-semibold text-sm">{g.concepto}</div>
+                <div className="text-[11px] text-gray-500">{g.detalle}</div>
+              </div>
+              <div className="font-mono font-medium" style={{ color: COLOR.red }}>{fmtArs(g.monto)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl p-5" style={{ background: "#FFF8F0", border: `1px solid ${COLOR.amber}40` }}>
+        <h3 className="text-sm font-bold mb-2" style={{ color: COLOR.amber }}>⚠ El salario de Raziel NO está en los egresos — es préstamo Colombia</h3>
+        <div className="text-xs text-gray-700 leading-relaxed">
+          USD 1.750 × TC 1.420 × 12 meses (abr'25–mar'26) = <strong>~$29.820.000 ARS</strong>.
+          Este monto no salió de caja Argentina — lo pagó Colombia como préstamo.
+          Si se suma a los egresos, el resultado acumulado sería <strong>-$27.2M</strong> en lugar de +$2.6M.
+          Desde <strong>abril 2026</strong> Argentina asume el salario directamente.
         </div>
       </div>
     </div>
   );
 }
 
-// ═══════════════════════════════════════
-// PROYECCIÓN VS REAL
-// ═══════════════════════════════════════
-function ProyRealAR() {
+// ═══════════════════════════════════════════════════════════════════
+// FULFILLMENT
+// ═══════════════════════════════════════════════════════════════════
+function FulfillmentView() {
+  const t = DATA.fulfillmentTotal;
   return (
-    <div className="space-y-6">
-      <div className="glass-card p-5">
-        <p className="text-xs t-muted uppercase tracking-wider mb-3">Ingresos: Proyectado vs Real (mensual)</p>
-        <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={DATA_AR.proyVsReal}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-            <XAxis dataKey="mes" stroke="#888" fontSize={11} />
-            <YAxis stroke="#888" fontSize={11} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}M`} />
-            <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v) => fmtArs(typeof v === "number" ? v : null)} />
-            <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line type="monotone" dataKey="ingReal" name="Ingresos Real" stroke="#74ACDF" strokeWidth={2} />
-            <Line type="monotone" dataKey="ingProy" name="Ingresos Proy." stroke="#F6B40E" strokeWidth={2} strokeDasharray="5 5" />
-          </LineChart>
-        </ResponsiveContainer>
+    <div>
+      <InfoBox tone="orange">
+        💡 <strong>¿Cómo funciona el fulfillment?</strong>
+        Dropi cobra <strong>$1.500 por cada orden entregada</strong>.
+        GV Nexus (el operador) le cobra a Dropi por <strong>entregadas Y no entregadas</strong>.
+        En marzo 2026 GV Nexus subió sus precios un <strong>36%</strong>.
+        La ganancia neta de fulfillment = ingreso (entregadas × $1.500) − costo GV Nexus.
+      </InfoBox>
+
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+        <CajaKpi label="Total entregadas" value={t.entregadas} sub="Ene–Abr 2026" color={COLOR.orange} />
+        <CajaKpi label="Total no entregadas" value={t.noEnt} sub="Generan costo sin ingreso" color={COLOR.red} />
+        <CajaKpi label="Ingreso total FF" value={t.ingreso} sub="Entregadas × $1.500" color={COLOR.green} />
+        <CajaKpi label="Resultado neto FF" value={t.ganancia} sub="Pérdida acumulada ene–abr" color={COLOR.red} />
       </div>
 
-      <div className="glass-card overflow-x-auto">
+      <TableWrap title="Detalle por mes — Facturas GV Nexus">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-700">
-              <th className="py-3 px-4 text-left text-xs t-muted uppercase tracking-wider">Mes</th>
-              <th className="py-3 px-4 text-right text-xs t-muted uppercase tracking-wider">Ing. Proy.</th>
-              <th className="py-3 px-4 text-right text-xs t-muted uppercase tracking-wider">Ing. Real</th>
-              <th className="py-3 px-4 text-right text-xs t-muted uppercase tracking-wider">Egr. Proy.</th>
-              <th className="py-3 px-4 text-right text-xs t-muted uppercase tracking-wider">Egr. Real</th>
-              <th className="py-3 px-4 text-right text-xs t-muted uppercase tracking-wider">Res. Proy.</th>
-              <th className="py-3 px-4 text-right text-xs t-muted uppercase tracking-wider">Res. Real</th>
+          <thead style={{ background: COLOR.orangeLt }}>
+            <tr>
+              <Th color={COLOR.orange} align="left">Mes</Th>
+              <Th color={COLOR.orange}>Entregadas</Th>
+              <Th color={COLOR.orange}>Precio unit.</Th>
+              <Th color={COLOR.red}>No entregadas</Th>
+              <Th color={COLOR.red}>Precio unit.</Th>
+              <Th color={COLOR.green}>Ingreso Dropi</Th>
+              <Th color={COLOR.red}>Costo GV (neto)</Th>
+              <Th color={COLOR.red}>Total c/IVA</Th>
+              <Th color={COLOR.red}>Ganancia neta</Th>
             </tr>
           </thead>
           <tbody>
-            {DATA_AR.proyVsReal.map((r) => (
-              <tr key={r.mes} className="border-b border-gray-800/50">
-                <td className="py-2 px-4 font-medium t-primary">{r.mes}</td>
-                <td className="py-2 px-4 text-right font-mono t-secondary">{fmtArsExact(r.ingProy)}</td>
-                <td className="py-2 px-4 text-right font-mono t-primary">{fmtArsExact(r.ingReal)}</td>
-                <td className="py-2 px-4 text-right font-mono t-secondary">{fmtArsExact(r.egrProy)}</td>
-                <td className="py-2 px-4 text-right font-mono t-primary">{fmtArsExact(r.egrReal)}</td>
-                <td className="py-2 px-4 text-right font-mono" style={{ color: r.resProy >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtArsExact(r.resProy)}</td>
-                <td className="py-2 px-4 text-right font-mono font-semibold" style={{ color: (r.resReal ?? 0) >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtArsExact(r.resReal)}</td>
+            {DATA.fulfillment.map((r) => (
+              <tr key={r.mes} className="border-b border-gray-100" style={{ background: r.hike ? "#FFF8F0" : undefined }}>
+                <td className="px-3 py-2.5">
+                  <strong>{r.mes}</strong>
+                  <div className="text-[11px]" style={{ color: r.hike ? COLOR.amber : COLOR.muted }}>{r.subFc}</div>
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs">{fmtNum(r.entregadas)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.hike ? COLOR.amber : COLOR.muted, fontWeight: r.hike ? 600 : 400 }}>${r.pEnt}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtNum(r.noEnt)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.hike ? COLOR.amber : COLOR.muted, fontWeight: r.hike ? 600 : 400 }}>${r.pNent}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: COLOR.green }}>{fmtArsExact(r.ingreso)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtArsExact(r.costoNeto)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>${r.totalIva.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: r.ganancia >= 0 ? COLOR.green : COLOR.red }}>{fmtArsExact(r.ganancia)}</td>
+              </tr>
+            ))}
+            <tr style={{ background: COLOR.orangeLt, borderTop: `2px solid ${COLOR.orange}` }}>
+              <td className="px-3 py-3 font-bold">TOTAL</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold">{fmtNum(t.entregadas)}</td>
+              <td className="px-3 py-3 text-muted">—</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>{fmtNum(t.noEnt)}</td>
+              <td className="px-3 py-3 text-muted">—</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.green }}>{fmtArsExact(t.ingreso)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>{fmtArsExact(t.costoNeto)}</td>
+              <td className="px-3 py-3 text-right font-mono text-xs font-bold" style={{ color: COLOR.red }}>${t.totalIva.toLocaleString("es-AR", { minimumFractionDigits: 2 })}</td>
+              <td className="px-3 py-3 text-right font-mono text-sm font-black" style={{ color: COLOR.red }}>{fmtArsExact(t.ganancia)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </TableWrap>
+
+      {/* ANÁLISIS */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <div className="text-base font-bold mb-3" style={{ color: COLOR.amber, fontFamily: "Georgia, serif" }}>⚠ El problema del fulfillment</div>
+          <div className="text-xs text-gray-700 leading-relaxed space-y-2">
+            <p>En <strong>enero y febrero</strong> el negocio era casi neutro — el costo de GV Nexus era casi igual al ingreso.</p>
+            <p>En <strong>marzo GV Nexus subió 36%</strong>: de $990 a $1.350 por entregada. Justo cuando el volumen de FF creció de 479 a 1.739 órdenes — el peor momento para una suba de precios.</p>
+            <p>En <strong>abril</strong> el volumen siguió creciendo (911 entregadas + 900 no entregadas) y la pérdida fue de <strong>-$470.850</strong> solo en fulfillment.</p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl p-5 shadow-sm">
+          <div className="text-base font-bold mb-3" style={{ color: COLOR.green, fontFamily: "Georgia, serif" }}>💡 ¿Qué se puede hacer?</div>
+          <div className="text-xs text-gray-700 leading-relaxed space-y-2">
+            <p>Para que el fulfillment sea rentable con los precios actuales de GV Nexus ($1.350/$675), Dropi debería cobrar más de $1.500 por entrega o reducir el % de no entregadas.</p>
+            <p>Con la estructura actual: si el 100% fueran entregadas a $1.350, el margen sería solo $150 por orden. Con no entregadas al 50% (como en abr), el negocio da pérdida.</p>
+            <p><strong>Punto de equilibrio aprox:</strong> necesita que las no entregadas sean menos del 10% del total para ser rentable a $1.500 de ingreso.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// CAJA REAL
+// ═══════════════════════════════════════════════════════════════════
+function CajaView() {
+  return (
+    <div>
+      <InfoBox tone="green">
+        💡 <strong>Caja real vs ingreso calculado.</strong> Los ingresos del archivo están calculados con las órdenes.
+        Pero Fixy retiene el dinero antes de transferirlo. Esta pestaña muestra lo que
+        <strong> efectivamente entró al banco o en efectivo</strong> y lo que todavía está por cobrar.
+      </InfoBox>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+        <CajaKpi label="Banco BBVA" value={DATA.caja.bbva} sub="Oct + Nov '25 — intacto, sin movimientos" color={COLOR.green} />
+        <CajaKpi label="Caja Efectivo" value={DATA.caja.efectivo} sub="Saldo operativo al 23/04/2026" color={COLOR.orange} />
+        <CajaKpi label="Retenido por Fixy" value={DATA.caja.fixyRetenido} sub="Confirmado 07/04 · + Feb–Abr pendiente" color={COLOR.amber} />
+      </div>
+
+      <TableWrap title="Flujo de caja mensual — lo que entró y lo que salió">
+        <table className="w-full text-sm">
+          <thead style={{ background: COLOR.greenLt }}>
+            <tr>
+              <Th color={COLOR.green} align="left">Mes</Th>
+              <Th color={COLOR.green}>Fondos recibidos</Th>
+              <Th color={COLOR.red}>Gastos pagados</Th>
+              <Th color={COLOR.green}>Saldo al cierre</Th>
+              <Th color={COLOR.muted} align="left">¿Qué pasó?</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {DATA.cajaFlujo.map((r) => (
+              <tr key={r.mes} className="border-b border-gray-100">
+                <td className="px-3 py-2.5"><strong>{r.mes}</strong></td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.recibidos ? COLOR.green : COLOR.muted }}>
+                  {r.recibidos ? `+${fmtArsExact(r.recibidos)}` : "—"}
+                </td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: COLOR.red }}>{fmtArsExact(r.gastos)}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: r.critico ? COLOR.red : r.saldo > 10000000 ? COLOR.green : COLOR.orange }}>
+                  {fmtArsExact(r.saldo)}
+                </td>
+                <td className="px-3 py-2.5 text-[11px] text-gray-600 italic">{r.nota}</td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </TableWrap>
 
-      <div className="glass-card p-4 border-l-2 border-amber-500/50 bg-amber-500/5">
-        <p className="text-xs t-secondary">
-          <span className="font-semibold text-amber-400">Nota:</span> May–Jun 2026 son proyecciones. La proyección original asumió volúmenes mucho menores; los ingresos reales superan ~6× a los proyectados gracias al volumen de órdenes COD.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════
-// CAJA & FIXY
-// ═══════════════════════════════════════
-function CajaAR() {
-  const ch = DATA_AR.cajaHistorial;
-
-  return (
-    <div className="space-y-6">
-      <div className="glass-card p-5">
-        <p className="text-xs t-muted uppercase tracking-wider mb-3">▶ Depósitos en Banco BBVA</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th className="py-2 px-3 text-left text-xs t-muted">Período</th>
-                <th className="py-2 px-3 text-left text-xs t-muted">Fecha depósito</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Recaudo bruto COD</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">(-) Fixy</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Depósito neto</th>
-                <th className="py-2 px-3 text-left text-xs t-muted">Estado</th>
+      <TableWrap title="Estado de liquidaciones Fixy / Urbano" headerColor={COLOR.amber}>
+        <table className="w-full text-sm">
+          <thead style={{ background: COLOR.amberLt }}>
+            <tr>
+              <Th color={COLOR.amber} align="left">Período</Th>
+              <Th color={COLOR.amber}>Recaudo bruto</Th>
+              <Th color={COLOR.amber}>(-) Fixy</Th>
+              <Th color={COLOR.amber}>Neto Dropi</Th>
+              <Th color={COLOR.amber} align="left">Estado</Th>
+              <Th color={COLOR.amber} align="left">Depósito</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {DATA.liquidaciones.map((r) => (
+              <tr key={r.periodo} className="border-b border-gray-100">
+                <td className="px-3 py-2.5"><strong>{r.periodo}</strong></td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs">{r.bruto !== null ? fmtArsExact(r.bruto) : "—"}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs" style={{ color: r.fixy !== null ? COLOR.red : COLOR.muted }}>{r.fixy !== null ? fmtArsExact(r.fixy) : "—"}</td>
+                <td className="px-3 py-2.5 text-right font-mono text-xs font-bold" style={{ color: r.estadoColor === "green" ? COLOR.green : r.estadoColor === "red" ? COLOR.red : COLOR.muted }}>
+                  {r.neto !== null ? fmtArsExact(r.neto) : "—"}
+                </td>
+                <td className="px-3 py-2.5"><Badge tone={r.estadoColor}>{r.estado}</Badge></td>
+                <td className="px-3 py-2.5 text-[11px] text-gray-600 italic">{r.deposito}</td>
               </tr>
-            </thead>
-            <tbody>
-              {ch.bbvaDepositos.map((d) => (
-                <tr key={d.periodo} className="border-b border-gray-800/50">
-                  <td className="py-2 px-3 t-primary">{d.periodo}</td>
-                  <td className="py-2 px-3 t-secondary">{d.fecha}</td>
-                  <td className="py-2 px-3 text-right font-mono">{fmtArsExact(d.bruto)}</td>
-                  <td className="py-2 px-3 text-right font-mono text-red-400">{fmtArsExact(d.fixy)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-semibold">{fmtArsExact(d.neto)}</td>
-                  <td className="py-2 px-3 text-xs">{d.estado}</td>
-                </tr>
-              ))}
-              <tr className="border-t-2 border-orange-500/40">
-                <td colSpan={4} className="py-2 px-3 font-semibold t-primary">Total acreditado en BBVA</td>
-                <td className="py-2 px-3 text-right font-bold font-mono text-emerald-400">{fmtArsExact(ch.bbvaTotalNeto)}</td>
-                <td className="py-2 px-3 text-xs t-muted">Sin movimientos</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="glass-card p-5">
-        <p className="text-xs t-muted uppercase tracking-wider mb-3">▶ Fondos en efectivo (Fixy)</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th className="py-2 px-3 text-left text-xs t-muted">Fecha</th>
-                <th className="py-2 px-3 text-left text-xs t-muted">Concepto</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Recibido</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Gastos</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Saldo</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ch.efectivo.map((e) => (
-                <tr key={e.fecha} className="border-b border-gray-800/50">
-                  <td className="py-2 px-3 t-secondary">{e.fecha}</td>
-                  <td className="py-2 px-3 t-primary">{e.concepto}</td>
-                  <td className="py-2 px-3 text-right font-mono">{fmtArsExact(e.recibido)}</td>
-                  <td className="py-2 px-3 text-right font-mono text-red-400">{fmtArsExact(e.gastos)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-semibold">{fmtArsExact(e.saldo)}</td>
-                </tr>
-              ))}
-              <tr className="border-t-2 border-orange-500/40">
-                <td colSpan={4} className="py-2 px-3 font-semibold t-primary">Saldo disponible</td>
-                <td className="py-2 px-3 text-right font-bold font-mono text-emerald-400">{fmtArsExact(ch.efectivoSaldo)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="glass-card p-5">
-        <p className="text-xs t-muted uppercase tracking-wider mb-3">▶ Fondos retenidos por Fixy</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th className="py-2 px-3 text-left text-xs t-muted">Liquidación</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Órdenes</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Recaudo bruto</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">(-) Fixy</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Neto retenido</th>
-                <th className="py-2 px-3 text-left text-xs t-muted">Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ch.fixyRetenciones.map((r) => (
-                <tr key={r.liq} className="border-b border-gray-800/50">
-                  <td className="py-2 px-3 t-primary">{r.liq}</td>
-                  <td className="py-2 px-3 text-right font-mono">{fmtNum(r.ordenes)}</td>
-                  <td className="py-2 px-3 text-right font-mono">{fmtArsExact(r.bruto)}</td>
-                  <td className="py-2 px-3 text-right font-mono text-red-400">{fmtArsExact(r.fixy)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-semibold text-amber-400">{fmtArsExact(r.neto)}</td>
-                  <td className="py-2 px-3 text-xs">{r.estado}</td>
-                </tr>
-              ))}
-              <tr className="border-t-2 border-orange-500/40">
-                <td colSpan={4} className="py-2 px-3 font-semibold t-primary">Total confirmado retenido</td>
-                <td className="py-2 px-3 text-right font-bold font-mono text-amber-400">{fmtArsExact(ch.fixyTotalConfirmado)}</td>
-                <td className="py-2 px-3 text-xs t-muted">Conf. Fixy 07/04</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="glass-card p-4 border-l-2 border-amber-500/50 bg-amber-500/5">
-        <p className="text-xs t-secondary">
-          <span className="font-semibold text-amber-400">⚠</span> Los fondos retenidos de febrero y marzo 2026 quedan pendientes de conciliación con Fixy. La cifra final de retenciones puede crecer.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════
-// SALARIOS
-// ═══════════════════════════════════════
-function SalariosAR() {
-  const meses: { key: keyof typeof DATA_AR.salarios; label: string }[] = [
-    { key: "enero", label: "Enero 2026" },
-    { key: "febrero", label: "Febrero 2026" },
-    { key: "marzo", label: "Marzo 2026" },
-    { key: "abril", label: "Abril 2026" },
-  ];
-
-  const evolucion = [
-    { mes: "Ene'26", total: DATA_AR.salarios.enero.total },
-    { mes: "Feb'26", total: DATA_AR.salarios.febrero.total },
-    { mes: "Mar'26", total: DATA_AR.salarios.marzo.total },
-    { mes: "Abr'26", total: DATA_AR.salarios.abril.total },
-    { mes: "May'26 (proy)", total: DATA_AR.salarios.proyMayo },
-    { mes: "Jun'26 (proy)", total: DATA_AR.salarios.proyJunio },
-  ];
-
-  return (
-    <div className="space-y-6">
-      <div className="glass-card p-5">
-        <p className="text-xs t-muted uppercase tracking-wider mb-3">Evolución de la nómina mensual</p>
-        <ResponsiveContainer width="100%" height={220}>
-          <BarChart data={evolucion}>
-            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-            <XAxis dataKey="mes" stroke="#888" fontSize={11} />
-            <YAxis stroke="#888" fontSize={11} tickFormatter={(v) => `${(v / 1e6).toFixed(0)}M`} />
-            <Tooltip contentStyle={{ background: "#1a1a1a", border: "1px solid #333" }} formatter={(v) => fmtArs(typeof v === "number" ? v : null)} />
-            <Bar dataKey="total" name="Total nómina" fill="#74ACDF" />
-          </BarChart>
-        </ResponsiveContainer>
-      </div>
-
-      {meses.map((m) => {
-        const data = DATA_AR.salarios[m.key] as { empleados: { nombre: string; cargo: string; bruto: number; neto: number; obs: string }[]; total: number };
-        return (
-          <div key={m.key} className="glass-card p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-xs t-muted uppercase tracking-wider">{m.label}</p>
-              <p className="text-sm font-semibold text-orange-400">Total: <span className="font-mono">{fmtArsExact(data.total)}</span></p>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-700">
-                    <th className="py-2 px-3 text-left text-xs t-muted">Empleado</th>
-                    <th className="py-2 px-3 text-left text-xs t-muted">Cargo</th>
-                    <th className="py-2 px-3 text-right text-xs t-muted">Bruto</th>
-                    <th className="py-2 px-3 text-right text-xs t-muted">Neto</th>
-                    <th className="py-2 px-3 text-left text-xs t-muted">Observación</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.empleados.map((e, i) => (
-                    <tr key={i} className="border-b border-gray-800/50">
-                      <td className="py-2 px-3 t-primary font-medium">{e.nombre}</td>
-                      <td className="py-2 px-3 t-secondary">{e.cargo}</td>
-                      <td className="py-2 px-3 text-right font-mono">{fmtArsExact(e.bruto)}</td>
-                      <td className="py-2 px-3 text-right font-mono">{fmtArsExact(e.neto)}</td>
-                      <td className="py-2 px-3 text-xs t-muted">{e.obs || "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════
-// PASIVOS INTERCOMPANY
-// ═══════════════════════════════════════
-function PasivosAR() {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {DATA_AR.pasivos.items.map((p) => (
-          <div key={p.operacion} className="glass-card p-5 border-l-2 border-amber-500/50">
-            <p className="text-xs t-muted uppercase tracking-wider mb-1">{p.operacion}</p>
-            <p className="text-sm font-semibold t-primary mb-3">{p.concepto}</p>
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between border-b border-gray-800/50 py-1">
-                <span className="t-secondary">Monto original</span>
-                <span className="font-mono t-primary">{p.monedaOrig === "GS" ? "GS " : "$"}{p.montoOrig.toLocaleString("es-AR")}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-800/50 py-1">
-                <span className="t-secondary">Tipo de cambio</span>
-                <span className="font-mono t-primary">{p.tc === 1 ? "—" : `${p.tc} GS/ARS`}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-800/50 py-1">
-                <span className="t-secondary">Equivalente ARS</span>
-                <span className="font-mono font-semibold text-red-400">{fmtArsExact(p.equivArs)}</span>
-              </div>
-              <div className="flex justify-between border-b border-gray-800/50 py-1">
-                <span className="t-secondary">Período</span>
-                <span className="t-primary text-xs">{p.periodo}</span>
-              </div>
-              <div className="flex justify-between py-1">
-                <span className="t-secondary">Estado</span>
-                <span className="text-amber-400 text-xs">{p.estado}</span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="glass-card p-5 bg-orange-500/5 border border-orange-500/30">
-        <div className="flex items-center justify-between">
-          <p className="text-sm font-semibold t-primary">Total pasivos intercompany</p>
-          <p className="text-2xl font-bold font-mono text-red-400">{fmtArsExact(DATA_AR.pasivos.totalArs)}</p>
-        </div>
-        <p className="text-xs t-muted mt-2">
-          Colombia ($29M, salario Raziel cubierto por la operación colombiana hasta marzo 2026) + Paraguay ($42M, gastos preoperativos abonados por la operación paraguaya).
-        </p>
-      </div>
-
-      <div className="glass-card p-4 border-l-2 border-emerald-500/50 bg-emerald-500/5">
-        <p className="text-xs t-secondary">
-          💡 Con <span className="font-mono font-semibold text-emerald-400">{fmtArsExact(DATA_AR.caja.bbva + DATA_AR.caja.efectivo)}</span> de caja líquida + <span className="font-mono font-semibold text-amber-400">{fmtArsExact(DATA_AR.caja.fixyConfirmado)}</span> retenidos por cobrar a Fixy, la empresa tiene capacidad de cubrir las deudas intercompany cuando se concrete la conciliación.
-        </p>
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════
-// FULFILLMENT
-// ═══════════════════════════════════════
-function FulfillmentAR() {
-  const t = DATA_AR.fulfillmentTotal;
-
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="glass-card p-4">
-          <p className="text-[11px] t-muted uppercase tracking-wider mb-1">Total entregadas</p>
-          <p className="text-xl font-medium text-emerald-400 font-mono">{t.ent.toLocaleString("es-AR")}</p>
-        </div>
-        <div className="glass-card p-4">
-          <p className="text-[11px] t-muted uppercase tracking-wider mb-1">Total no entregadas</p>
-          <p className="text-xl font-medium text-red-400 font-mono">{t.nent.toLocaleString("es-AR")}</p>
-        </div>
-        <div className="glass-card p-4">
-          <p className="text-[11px] t-muted uppercase tracking-wider mb-1">Ganancia neta FF</p>
-          <p className="text-xl font-medium font-mono" style={{ color: t.ganancia >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtArsExact(t.ganancia)}</p>
-        </div>
-        <div className="glass-card p-4">
-          <p className="text-[11px] t-muted uppercase tracking-wider mb-1">Margen FF</p>
-          <p className="text-xl font-medium font-mono" style={{ color: t.margen >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtPct(t.margen)}</p>
-        </div>
-      </div>
-
-      <div className="glass-card p-5">
-        <p className="text-xs t-muted uppercase tracking-wider mb-3">Análisis Fulfillment mensual</p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-700">
-                <th className="py-2 px-3 text-left text-xs t-muted">Mes</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Entregadas</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">No entregadas</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Ingreso</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Costo GV Nexus</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Ganancia</th>
-                <th className="py-2 px-3 text-right text-xs t-muted">Margen</th>
-              </tr>
-            </thead>
-            <tbody>
-              {DATA_AR.fulfillment.map((f) => (
-                <tr key={f.mes} className="border-b border-gray-800/50">
-                  <td className="py-2 px-3 font-medium t-primary">{f.mes}</td>
-                  <td className="py-2 px-3 text-right font-mono">{fmtNum(f.ent)}</td>
-                  <td className="py-2 px-3 text-right font-mono">{fmtNum(f.nent)}</td>
-                  <td className="py-2 px-3 text-right font-mono">{fmtArsExact(f.ingreso)}</td>
-                  <td className="py-2 px-3 text-right font-mono text-red-400">{fmtArsExact(f.costo)}</td>
-                  <td className="py-2 px-3 text-right font-mono font-semibold" style={{ color: (f.ganancia ?? 0) >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtArsExact(f.ganancia)}</td>
-                  <td className="py-2 px-3 text-right font-mono" style={{ color: (f.margen ?? 0) >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtPct(f.margen)}</td>
-                </tr>
-              ))}
-              <tr className="border-t-2 border-orange-500/40">
-                <td className="py-2 px-3 font-semibold t-primary">TOTAL</td>
-                <td className="py-2 px-3 text-right font-mono font-semibold">{t.ent.toLocaleString("es-AR")}</td>
-                <td className="py-2 px-3 text-right font-mono font-semibold">{t.nent.toLocaleString("es-AR")}</td>
-                <td className="py-2 px-3 text-right font-mono font-semibold">{fmtArsExact(t.ingreso)}</td>
-                <td className="py-2 px-3 text-right font-mono font-semibold text-red-400">{fmtArsExact(t.costo)}</td>
-                <td className="py-2 px-3 text-right font-mono font-bold" style={{ color: t.ganancia >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtArsExact(t.ganancia)}</td>
-                <td className="py-2 px-3 text-right font-mono font-bold" style={{ color: t.margen >= 0 ? "#3B6D11" : "#A32D2D" }}>{fmtPct(t.margen)}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="glass-card p-4 border-l-2 border-red-500/50 bg-red-500/5">
-        <p className="text-xs t-secondary">
-          <span className="font-semibold text-red-400">⚠</span> El fulfillment está operando con margen negativo acumulado de <span className="font-mono font-semibold">{fmtPct(t.margen)}</span>. El costo GV Nexus por orden no entregada ($675–$495) erosiona la ganancia. Abril empeoró el margen al -34% por mayor volumen de no entregadas (900).
-        </p>
-      </div>
+            ))}
+          </tbody>
+        </table>
+      </TableWrap>
     </div>
   );
 }
