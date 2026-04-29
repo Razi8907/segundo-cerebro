@@ -17,90 +17,32 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-
-// ═══════════════════════════════════════════════════════════════════
-// DATOS BASE — del Excel "Proyección Financiera Dropi Argentina 2026"
-// + cruce con dashboard_data_argentina.json (movilizadas reales)
-// ═══════════════════════════════════════════════════════════════════
-const meses = ["ene", "feb", "mar", "abr"] as const;
-type Mes = typeof meses[number];
-
-const FIN: Record<Mes, {
-  label: string;
-  movilizadas: number;       // del JSON ops
-  ingresoDropi: number;      // flete + comisión + FF
-  fleteCod: number;
-  comisionCod: number;
-  fleteFf: number;
-  egrFijos: number;
-  egrVar: number;
-  ffEntregadas: number;
-  ffNoEntregadas: number;
-  ffPrecioEnt: number;
-  ffPrecioNoEnt: number;
-}> = {
-  ene: { label: "Ene '26", movilizadas: 8501, ingresoDropi: 15209400, fleteCod: 12289500, comisionCod: 2457900, fleteFf: 462000, egrFijos: 10202480, egrVar: 981610, ffEntregadas: 184, ffNoEntregadas: 194, ffPrecioEnt: 990, ffPrecioNoEnt: 495 },
-  feb: { label: "Feb '26", movilizadas: 7875, ingresoDropi: 14031300, fleteCod: 11094000, comisionCod: 2218800, fleteFf: 718500, egrFijos: 11840915, egrVar: 2770997, ffEntregadas: 208, ffNoEntregadas: 202, ffPrecioEnt: 990, ffPrecioNoEnt: 495 },
-  mar: { label: "Mar '26", movilizadas: 9086, ingresoDropi: 15833100, fleteCod: 11020500, comisionCod: 2204100, fleteFf: 2608500, egrFijos: 9940019, egrVar: 4162830, ffEntregadas: 268, ffNoEntregadas: 123, ffPrecioEnt: 1350, ffPrecioNoEnt: 675 },
-  abr: { label: "Abr '26", movilizadas: 9232, ingresoDropi: 16199700, fleteCod: 11758500, comisionCod: 2351700, fleteFf: 2089500, egrFijos: 10460549, egrVar: 8297909, ffEntregadas: 911, ffNoEntregadas: 900, ffPrecioEnt: 1350, ffPrecioNoEnt: 675 },
-};
-
-const CAJA_HOY = {
-  bbva: 74036442,
-  efectivo: 33164298,
-  fixyConfirmado: 468822348,    // Dic'25 + Ene'26
-  fixyPendienteEst: 1178685000, // Feb-Abr aprox (estimado del HTML)
-};
-
-const DEUDA_INTERCO = {
-  colombia: 29800000,    // salario Raziel abr'25-mar'26
-  paraguay: 42000000,    // gastos preoperativos
-};
-
-const SALARIO_RAZIEL_AR = 2485000; // Argentina lo asume desde Abr'26
-
-const GASTOS_BREAKDOWN_YTD = [
-  { concepto: "Sueldos (sin Raziel)", monto: 13200000 },
-  { concepto: "Alquiler + cochera", monto: 10400000 },
-  { concepto: "Honorarios contador + abogado", monto: 10500000 },
-  { concepto: "Viáticos Raziel", monto: 15100000 },
-  { concepto: "Viáticos Heads Comerciales", monto: 3100000 },
-  { concepto: "Fulfillment GV Nexus", monto: 3500000 },
-];
-
-const LIQUIDACIONES = [
-  { periodo: "Oct '25 — 2°", ordenes: 415, bruto: 20320954, fixy: 4287973, neto: 16032982, estado: "cobrado", deposito: "BBVA 02/12/25" },
-  { periodo: "Nov '25 — 1°", ordenes: 1394, bruto: 76665279, fixy: 18650125, neto: 58003460, estado: "cobrado", deposito: "BBVA 10/12/25" },
-  { periodo: "Nov '25 — 2°", ordenes: 2301, bruto: 120278809, fixy: 24833369, neto: 95445440, estado: "cobrado", deposito: "Efectivo Dic-Abr" },
-  { periodo: "Dic '25 — 1°", ordenes: 6995, bruto: 199467358, fixy: 49741073, neto: 149726285, estado: "retenido", deposito: "Pendiente" },
-  { periodo: "Dic '25 — 2°", ordenes: 7526, bruto: 179480118, fixy: 47221745, neto: 132258373, estado: "retenido", deposito: "Pendiente" },
-  { periodo: "Ene '26 — 1°", ordenes: 3391, bruto: 95168984, fixy: 25291194, neto: 69877790, estado: "retenido", deposito: "Pendiente" },
-  { periodo: "Ene '26 — 2°", ordenes: null, bruto: null, fixy: null, neto: 116959900, estado: "retenido", deposito: "Pendiente" },
-  { periodo: "Feb '26", ordenes: 7875, bruto: null, fixy: null, neto: null, estado: "conciliar", deposito: "Pendiente conciliación" },
-  { periodo: "Mar '26 — Fixy", ordenes: null, bruto: null, fixy: null, neto: null, estado: "conciliar", deposito: "Pendiente" },
-  { periodo: "Mar '26 — Urbano", ordenes: null, bruto: null, fixy: null, neto: null, estado: "conciliar", deposito: "Inició mar'26" },
-  { periodo: "Abr '26 — Fixy", ordenes: null, bruto: null, fixy: null, neto: null, estado: "conciliar", deposito: "Pendiente" },
-  { periodo: "Abr '26 — Urbano", ordenes: null, bruto: null, fixy: null, neto: null, estado: "conciliar", deposito: "Pendiente" },
-];
+import { useFinanzasAR } from "../lib/useFinanzasAR";
+import type { FinanzasARData, MesKey } from "../lib/finanzas-ar-types";
+import FinanzasEditor from "./FinanzasEditor";
 
 // ═══════════════════════════════════════════════════════════════════
 // DERIVADOS — los insights reales de Segundo Cerebro
 // ═══════════════════════════════════════════════════════════════════
-function derived() {
-  const monthly = meses.map((m) => {
-    const f = FIN[m];
+function derived(input: FinanzasARData) {
+  const orderedKeys: MesKey[] = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+  const presentKeys = orderedKeys.filter((k) => !!input.meses[k]);
+
+  const monthly = presentKeys.map((m) => {
+    const f = input.meses[m]!;
+    const ingresoDropi = f.fleteCod + f.comisionCod + f.fleteFf;
     const totalGastos = f.egrFijos + f.egrVar;
-    const resultado = f.ingresoDropi - totalGastos;
-    const margenPct = resultado / f.ingresoDropi;
-    const ingresoPorOrden = f.ingresoDropi / f.movilizadas;
-    const costoPorOrden = totalGastos / f.movilizadas;
+    const resultado = ingresoDropi - totalGastos;
+    const margenPct = ingresoDropi > 0 ? resultado / ingresoDropi : 0;
+    const ingresoPorOrden = f.movilizadas > 0 ? ingresoDropi / f.movilizadas : 0;
+    const costoPorOrden = f.movilizadas > 0 ? totalGastos / f.movilizadas : 0;
     const margenPorOrden = ingresoPorOrden - costoPorOrden;
     const ffTotal = f.ffEntregadas + f.ffNoEntregadas;
     const pctNoEntregadas = ffTotal > 0 ? f.ffNoEntregadas / ffTotal : 0;
     const ffIngreso = f.ffEntregadas * 1500;
     const ffCosto = f.ffEntregadas * f.ffPrecioEnt + f.ffNoEntregadas * f.ffPrecioNoEnt;
     const ffGanancia = ffIngreso - ffCosto;
-    return { mes: f.label, m, ...f, totalGastos, resultado, margenPct, ingresoPorOrden, costoPorOrden, margenPorOrden, ffTotal, pctNoEntregadas, ffIngreso, ffCosto, ffGanancia };
+    return { mes: f.label, m, ...f, ingresoDropi, totalGastos, resultado, margenPct, ingresoPorOrden, costoPorOrden, margenPorOrden, ffTotal, pctNoEntregadas, ffIngreso, ffCosto, ffGanancia };
   });
 
   const totales = monthly.reduce(
@@ -120,25 +62,43 @@ function derived() {
     { movilizadas: 0, ingresoDropi: 0, egrFijos: 0, egrVar: 0, totalGastos: 0, resultado: 0, ffEntregadas: 0, ffNoEntregadas: 0, ffIngreso: 0, ffCosto: 0, ffGanancia: 0 },
   );
 
-  const margenYtd = totales.resultado / totales.ingresoDropi;
-  const cajaLiquida = CAJA_HOY.bbva + CAJA_HOY.efectivo;
-  const burnMensualPromedio = totales.totalGastos / 4;
-  const ingresoMensualPromedio = totales.ingresoDropi / 4;
-  // Runway: cuánto aguanta la caja líquida si NO entra plata nueva (worst case)
-  const runwayMesesSinFixy = cajaLiquida / Math.max(burnMensualPromedio - ingresoMensualPromedio, 1);
-  // Si seguimos con margen positivo no hay runway crisis — mostramos meses de cushion
+  const margenYtd = totales.ingresoDropi > 0 ? totales.resultado / totales.ingresoDropi : 0;
+  const cajaLiquida = input.caja.bbva + input.caja.efectivo;
+  const monthsCount = Math.max(monthly.length, 1);
+  const burnMensualPromedio = totales.totalGastos / monthsCount;
+  const ingresoMensualPromedio = totales.ingresoDropi / monthsCount;
   const burnNeto = Math.max(burnMensualPromedio - ingresoMensualPromedio, 0);
+  const runwayMesesSinFixy = burnNeto > 0 ? cajaLiquida / burnNeto : 999;
 
   // Acumulado mensual
   let acum = 0;
   const acumulado = monthly.map((r) => ({ mes: r.mes, m: r.m, resultado: r.resultado, acumulado: (acum += r.resultado) }));
 
-  // Punto de equilibrio FF
-  // Ingreso = costo => 1500*E = pEnt*E + pNoEnt*NE => NE/E = (1500 - pEnt) / pNoEnt
-  // Con precios actuales: (1500-1350)/675 = 0.222 → NE/Total = 0.222/1.222 = 18.2%
-  const bepNeNoEntPctActual = (1500 - 1350) / 675 / (1 + (1500 - 1350) / 675);
+  // Punto de equilibrio FF: tomamos los precios del último mes con FF activo
+  const ultimo = monthly[monthly.length - 1];
+  const pEnt = ultimo?.ffPrecioEnt ?? 1350;
+  const pNoEnt = ultimo?.ffPrecioNoEnt ?? 675;
+  const bepRatio = pNoEnt > 0 ? (1500 - pEnt) / pNoEnt : 0;
+  const bepNeNoEntPctActual = bepRatio > 0 ? bepRatio / (1 + bepRatio) : 0;
 
-  return { monthly, totales, margenYtd, cajaLiquida, burnMensualPromedio, ingresoMensualPromedio, burnNeto, runwayMesesSinFixy, acumulado, bepNeNoEntPctActual };
+  return {
+    monthly,
+    totales,
+    margenYtd,
+    cajaLiquida,
+    burnMensualPromedio,
+    ingresoMensualPromedio,
+    burnNeto,
+    runwayMesesSinFixy,
+    acumulado,
+    bepNeNoEntPctActual,
+    // datos crudos para los views
+    caja: input.caja,
+    deuda: input.deuda,
+    salarioRazielAr: input.salarioRazielAr,
+    gastosBreakdownYtd: input.gastosBreakdownYtd,
+    liquidaciones: input.liquidaciones,
+  };
 }
 
 // ─── Formatters ───
@@ -187,7 +147,9 @@ type View = "salud" | "caja" | "pnl" | "fulfillment" | "liquidaciones";
 // ═══════════════════════════════════════════════════════════════════
 export default function FinanzasDashboardAR() {
   const [view, setView] = useState<View>("salud");
-  const d = useMemo(() => derived(), []);
+  const [editing, setEditing] = useState(false);
+  const { data, updatedAt, canEdit, loading, saving, save } = useFinanzasAR();
+  const d = useMemo(() => derived(data), [data]);
 
   const tabs: { key: View; label: string }[] = [
     { key: "salud", label: "🩺 Salud financiera" },
@@ -197,30 +159,63 @@ export default function FinanzasDashboardAR() {
     { key: "liquidaciones", label: "🏦 Liquidaciones Fixy" },
   ];
 
+  const handleSave = async (next: FinanzasARData) => {
+    const res = await save(next);
+    if (res.ok) setEditing(false);
+    return res;
+  };
+
   return (
     <div className="space-y-6">
-      {/* Sub-nav coherente con el resto del AR dashboard */}
-      <div className="flex flex-wrap gap-2">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setView(t.key)}
-            className={`text-xs px-4 py-2 rounded-full border transition-all ${
-              view === t.key
-                ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
-                : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setView(t.key)}
+              className={`text-xs px-4 py-2 rounded-full border transition-all ${
+                view === t.key
+                  ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
+                  : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="flex items-center gap-3">
+          {updatedAt && (
+            <span className="text-[10px] t-muted">
+              Actualizado {new Date(updatedAt).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+            </span>
+          )}
+          {canEdit && (
+            <button
+              onClick={() => setEditing(true)}
+              className="text-xs px-3 py-1.5 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/30 hover:bg-orange-500/25 transition-all"
+            >
+              ✏ Editar datos
+            </button>
+          )}
+        </div>
       </div>
 
-      {view === "salud" && <SaludView d={d} />}
-      {view === "caja" && <CajaView d={d} />}
-      {view === "pnl" && <PnlView d={d} />}
-      {view === "fulfillment" && <FulfillmentView d={d} />}
-      {view === "liquidaciones" && <LiquidacionesView />}
+      {loading && <div className="text-xs t-muted text-center py-4">Cargando datos financieros…</div>}
+
+      {!loading && view === "salud" && <SaludView d={d} />}
+      {!loading && view === "caja" && <CajaView d={d} />}
+      {!loading && view === "pnl" && <PnlView d={d} />}
+      {!loading && view === "fulfillment" && <FulfillmentView d={d} />}
+      {!loading && view === "liquidaciones" && <LiquidacionesView d={d} />}
+
+      {editing && (
+        <FinanzasEditor
+          initial={data}
+          saving={saving}
+          onCancel={() => setEditing(false)}
+          onSave={handleSave}
+        />
+      )}
     </div>
   );
 }
@@ -251,12 +246,12 @@ function SaludView({ d }: { d: ReturnType<typeof derived> }) {
         <KpiCard
           label="Caja líquida hoy"
           value={fmtArs(d.cajaLiquida)}
-          sub={`BBVA ${fmtArs(CAJA_HOY.bbva)} + Efectivo ${fmtArs(CAJA_HOY.efectivo)}`}
+          sub={`BBVA ${fmtArs(d.caja.bbva)} + Efectivo ${fmtArs(d.caja.efectivo)}`}
           tone="blue"
         />
         <KpiCard
           label="Cobranza pendiente Fixy"
-          value={fmtArs(CAJA_HOY.fixyConfirmado)}
+          value={fmtArs(d.caja.fixyConfirmado)}
           sub={`Confirmado dic'25 + ene'26 · feb–abr aún por conciliar`}
           tone="amber"
         />
@@ -347,34 +342,34 @@ function CajaView({ d }: { d: ReturnType<typeof derived> }) {
     nombre: "Pesimista",
     desc: "Fixy NO paga el retenido + Argentina asume salario Raziel desde abr'26",
     cajaInicial: cajaActual,
-    burnExtra: SALARIO_RAZIEL_AR, // se suma al burn
+    burnExtra: d.salarioRazielAr, // se suma al burn
     cobranzaFixy: 0,
-    runway: cajaActual / Math.max((d.burnMensualPromedio + SALARIO_RAZIEL_AR) - d.ingresoMensualPromedio, 1),
+    runway: cajaActual / Math.max((d.burnMensualPromedio + d.salarioRazielAr) - d.ingresoMensualPromedio, 1),
   };
   const escBase = {
     nombre: "Base",
     desc: "Fixy paga retenido confirmado ($468.8M) en próximos 3 meses + Arg asume Raziel",
-    cajaInicial: cajaActual + CAJA_HOY.fixyConfirmado,
-    burnExtra: SALARIO_RAZIEL_AR,
-    cobranzaFixy: CAJA_HOY.fixyConfirmado,
-    runway: (cajaActual + CAJA_HOY.fixyConfirmado) / Math.max((d.burnMensualPromedio + SALARIO_RAZIEL_AR) - d.ingresoMensualPromedio, 1),
+    cajaInicial: cajaActual + d.caja.fixyConfirmado,
+    burnExtra: d.salarioRazielAr,
+    cobranzaFixy: d.caja.fixyConfirmado,
+    runway: (cajaActual + d.caja.fixyConfirmado) / Math.max((d.burnMensualPromedio + d.salarioRazielAr) - d.ingresoMensualPromedio, 1),
   };
   const escOptimista = {
     nombre: "Optimista",
     desc: "Fixy paga TODO (confirmado + feb–abr conciliado) + crecimiento de margen",
-    cajaInicial: cajaActual + CAJA_HOY.fixyConfirmado + CAJA_HOY.fixyPendienteEst,
-    burnExtra: SALARIO_RAZIEL_AR,
-    cobranzaFixy: CAJA_HOY.fixyConfirmado + CAJA_HOY.fixyPendienteEst,
+    cajaInicial: cajaActual + d.caja.fixyConfirmado + d.caja.fixyPendienteEst,
+    burnExtra: d.salarioRazielAr,
+    cobranzaFixy: d.caja.fixyConfirmado + d.caja.fixyPendienteEst,
     runway: 999, // efectivamente "indefinido"
   };
 
   // Proyección 12 meses bajo cada escenario (caja al cierre de cada mes)
   const proyeccion = Array.from({ length: 13 }, (_, i) => {
-    const burnP = d.burnMensualPromedio + SALARIO_RAZIEL_AR - d.ingresoMensualPromedio;
+    const burnP = d.burnMensualPromedio + d.salarioRazielAr - d.ingresoMensualPromedio;
     const cajaPesim = Math.max(escPesimista.cajaInicial - burnP * i, 0);
     // Base: la cobranza Fixy llega prorrateada en los primeros 3 meses
-    const fixyMes = i < 3 ? CAJA_HOY.fixyConfirmado / 3 : 0;
-    const cajaBase = Math.max(escBase.cajaInicial - burnP * i + (i >= 3 ? CAJA_HOY.fixyConfirmado : (CAJA_HOY.fixyConfirmado / 3) * i) - CAJA_HOY.fixyConfirmado, 0);
+    const fixyMes = i < 3 ? d.caja.fixyConfirmado / 3 : 0;
+    const cajaBase = Math.max(escBase.cajaInicial - burnP * i + (i >= 3 ? d.caja.fixyConfirmado : (d.caja.fixyConfirmado / 3) * i) - d.caja.fixyConfirmado, 0);
     // Optimista: igual que base + flujo gradual del pendiente
     const cajaOpt = Math.max(escOptimista.cajaInicial - burnP * i, 0);
     return { mes: `M${i}`, mesIdx: i, pesimista: cajaPesim, base: cajaBase + escBase.cajaInicial - cajaActual, optimista: cajaOpt };
@@ -384,9 +379,9 @@ function CajaView({ d }: { d: ReturnType<typeof derived> }) {
     <div className="space-y-6">
       {/* KPIs caja */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Banco BBVA" value={fmtArs(CAJA_HOY.bbva)} sub="Sin movimientos desde dic'25" tone="green" />
-        <KpiCard label="Caja Efectivo" value={fmtArs(CAJA_HOY.efectivo)} sub="Saldo operativo al 23/04" tone="orange" />
-        <KpiCard label="Retenido Fixy (conf.)" value={fmtArs(CAJA_HOY.fixyConfirmado)} sub="Dic'25 + Ene'26" tone="amber" />
+        <KpiCard label="Banco BBVA" value={fmtArs(d.caja.bbva)} sub="Sin movimientos desde dic'25" tone="green" />
+        <KpiCard label="Caja Efectivo" value={fmtArs(d.caja.efectivo)} sub="Saldo operativo al 23/04" tone="orange" />
+        <KpiCard label="Retenido Fixy (conf.)" value={fmtArs(d.caja.fixyConfirmado)} sub="Dic'25 + Ene'26" tone="amber" />
         <KpiCard label="Burn neto promedio" value={fmtArs(d.burnNeto)} sub="Egresos − Ingresos / mes" tone="red" />
       </div>
 
@@ -422,22 +417,22 @@ function CajaView({ d }: { d: ReturnType<typeof derived> }) {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
           <div>
             <div className="text-[11px] t-muted uppercase tracking-wider">Colombia</div>
-            <div className="font-mono font-bold text-red-400">{fmtArs(DEUDA_INTERCO.colombia)}</div>
+            <div className="font-mono font-bold text-red-400">{fmtArs(d.deuda.colombia)}</div>
             <div className="text-[11px] t-muted">Salario Raziel abr'25–mar'26</div>
           </div>
           <div>
             <div className="text-[11px] t-muted uppercase tracking-wider">Paraguay</div>
-            <div className="font-mono font-bold text-red-400">{fmtArs(DEUDA_INTERCO.paraguay)}</div>
+            <div className="font-mono font-bold text-red-400">{fmtArs(d.deuda.paraguay)}</div>
             <div className="text-[11px] t-muted">Gastos preoperativos mar–nov'25</div>
           </div>
           <div>
             <div className="text-[11px] t-muted uppercase tracking-wider">Total a devolver</div>
-            <div className="font-mono font-bold text-red-400 text-lg">{fmtArs(DEUDA_INTERCO.colombia + DEUDA_INTERCO.paraguay)}</div>
-            <div className="text-[11px] t-muted">{fmtPct((DEUDA_INTERCO.colombia + DEUDA_INTERCO.paraguay) / (d.cajaLiquida + CAJA_HOY.fixyConfirmado))} de caja+Fixy</div>
+            <div className="font-mono font-bold text-red-400 text-lg">{fmtArs(d.deuda.colombia + d.deuda.paraguay)}</div>
+            <div className="text-[11px] t-muted">{fmtPct((d.deuda.colombia + d.deuda.paraguay) / (d.cajaLiquida + d.caja.fixyConfirmado))} de caja+Fixy</div>
           </div>
         </div>
         <p className="text-[11px] t-secondary mt-3 leading-relaxed">
-          Si Argentina sumara estos {fmtArs(DEUDA_INTERCO.colombia + DEUDA_INTERCO.paraguay)} a sus egresos YTD, el resultado pasaría de +{fmtArs(d.totales.resultado)} a {fmtArs(d.totales.resultado - DEUDA_INTERCO.colombia - DEUDA_INTERCO.paraguay)}.
+          Si Argentina sumara estos {fmtArs(d.deuda.colombia + d.deuda.paraguay)} a sus egresos YTD, el resultado pasaría de +{fmtArs(d.totales.resultado)} a {fmtArs(d.totales.resultado - d.deuda.colombia - d.deuda.paraguay)}.
         </p>
       </div>
     </div>
@@ -448,7 +443,7 @@ function CajaView({ d }: { d: ReturnType<typeof derived> }) {
 // VIEW: P&L
 // ═══════════════════════════════════════════════════════════════════
 function PnlView({ d }: { d: ReturnType<typeof derived> }) {
-  const totalGastosYtd = GASTOS_BREAKDOWN_YTD.reduce((s, g) => s + g.monto, 0);
+  const totalGastosYtd = d.gastosBreakdownYtd.reduce((s, g) => s + g.monto, 0);
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -523,7 +518,7 @@ function PnlView({ d }: { d: ReturnType<typeof derived> }) {
       <div className="glass-card p-5">
         <h3 className="text-sm font-semibold t-primary mb-3">¿En qué se gastó? — Acumulado Ene–Abr</h3>
         <div className="space-y-2">
-          {GASTOS_BREAKDOWN_YTD.sort((a, b) => b.monto - a.monto).map((g) => {
+          {d.gastosBreakdownYtd.sort((a, b) => b.monto - a.monto).map((g) => {
             const pct = g.monto / totalGastosYtd;
             return (
               <div key={g.concepto} className="flex items-center gap-3">
@@ -638,10 +633,10 @@ function FulfillmentView({ d }: { d: ReturnType<typeof derived> }) {
 // ═══════════════════════════════════════════════════════════════════
 // VIEW: LIQUIDACIONES
 // ═══════════════════════════════════════════════════════════════════
-function LiquidacionesView() {
-  const cobrado = LIQUIDACIONES.filter((l) => l.estado === "cobrado").reduce((s, l) => s + (l.neto || 0), 0);
-  const retenido = LIQUIDACIONES.filter((l) => l.estado === "retenido").reduce((s, l) => s + (l.neto || 0), 0);
-  const aConciliar = LIQUIDACIONES.filter((l) => l.estado === "conciliar").length;
+function LiquidacionesView({ d }: { d: ReturnType<typeof derived> }) {
+  const cobrado = d.liquidaciones.filter((l) => l.estado === "cobrado").reduce((s, l) => s + (l.neto || 0), 0);
+  const retenido = d.liquidaciones.filter((l) => l.estado === "retenido").reduce((s, l) => s + (l.neto || 0), 0);
+  const aConciliar = d.liquidaciones.filter((l) => l.estado === "conciliar").length;
 
   return (
     <div className="space-y-6">
@@ -665,7 +660,7 @@ function LiquidacionesView() {
             </tr>
           </thead>
           <tbody>
-            {LIQUIDACIONES.map((l) => {
+            {d.liquidaciones.map((l) => {
               const tone = l.estado === "cobrado" ? "green" : l.estado === "retenido" ? "red" : "amber";
               const label = l.estado === "cobrado" ? "✅ Cobrado" : l.estado === "retenido" ? "🔴 Retenido" : "⏳ A conciliar";
               return (
@@ -760,20 +755,20 @@ function buildAlertas(d: ReturnType<typeof derived>) {
       accion: `El % de no entregadas (${fmtPct(d.totales.ffNoEntregadas / (d.totales.ffEntregadas + d.totales.ffNoEntregadas))}) supera el break-even (${fmtPct(d.bepNeNoEntPctActual)}). Negociar con GV Nexus o subir tarifa $1.500.`,
     });
   }
-  if (CAJA_HOY.fixyConfirmado > d.cajaLiquida * 3) {
+  if (d.caja.fixyConfirmado > d.cajaLiquida * 3) {
     out.push({
       icon: "🏦",
       severidad: "orange",
-      titulo: `Cobranza Fixy retenida (${fmtArs(CAJA_HOY.fixyConfirmado)}) es ${(CAJA_HOY.fixyConfirmado / d.cajaLiquida).toFixed(1)}× la caja líquida`,
+      titulo: `Cobranza Fixy retenida (${fmtArs(d.caja.fixyConfirmado)}) es ${(d.caja.fixyConfirmado / d.cajaLiquida).toFixed(1)}× la caja líquida`,
       accion: `Acelerar conciliación con Fixy es la palanca financiera #1. Cada mes de retraso es ~${fmtArs(d.burnNeto)} de presión adicional sobre caja.`,
     });
   }
-  if (DEUDA_INTERCO.colombia + DEUDA_INTERCO.paraguay > 0) {
+  if (d.deuda.colombia + d.deuda.paraguay > 0) {
     out.push({
       icon: "⚠",
       severidad: "blue",
-      titulo: `Deuda intercompany de ${fmtArs(DEUDA_INTERCO.colombia + DEUDA_INTERCO.paraguay)} no aparece en P&L`,
-      accion: `Sumarla cambia el resultado YTD de +${fmtArs(d.totales.resultado)} a ${fmtArs(d.totales.resultado - DEUDA_INTERCO.colombia - DEUDA_INTERCO.paraguay)}. Considerar plan de devolución cuando se libere Fixy.`,
+      titulo: `Deuda intercompany de ${fmtArs(d.deuda.colombia + d.deuda.paraguay)} no aparece en P&L`,
+      accion: `Sumarla cambia el resultado YTD de +${fmtArs(d.totales.resultado)} a ${fmtArs(d.totales.resultado - d.deuda.colombia - d.deuda.paraguay)}. Considerar plan de devolución cuando se libere Fixy.`,
     });
   }
   return out;
