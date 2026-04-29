@@ -20,6 +20,7 @@ import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OperationsDashboard from "../components/OperationsDashboard";
+import FinanzasDashboardAR from "../components/FinanzasDashboardAR";
 import SeguimientoComercial from "../components/SeguimientoComercial";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
@@ -203,14 +204,7 @@ export default function ArgentinaDashboard() {
           <OperationsDashboard country="ar" />
         )}
 
-        {sector === "finanzas" && (
-          <div className="glass-card p-8 text-center border border-sky-500/20">
-            <span className="text-4xl mb-4 block">💰</span>
-            <h2 className="text-xl font-bold t-primary mb-2">Finanzas Argentina</h2>
-            <p className="t-secondary text-sm mb-1">Dashboard financiero listo para activarse.</p>
-            <p className="t-muted text-xs">Cuando tengas la informacion financiera de Argentina, se activa automaticamente con el mismo formato que Paraguay (Balance, Resultados, Indicadores, Eventos).</p>
-          </div>
-        )}
+        {sector === "finanzas" && <FinanzasDashboardAR />}
 
         {sector === "seguimiento" && (
           <SeguimientoComercial country="ar" />
