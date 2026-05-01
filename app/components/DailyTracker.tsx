@@ -724,15 +724,18 @@ export default function DailyTracker({
               🟢 &ge;{META_DIARIA.toLocaleString()} &middot; 🟡 &ge;{Math.round(META_DIARIA * 0.8).toLocaleString()} &middot; 🔴 &lt;{Math.round(META_DIARIA * 0.8).toLocaleString()}
             </span>
           </h3>
-          <ResponsiveContainer width="100%" height={320}>
-            <ComposedChart data={analysis.abrilProjected.map((d) => ({
-              ...d,
-              real: d.ordenes,
-              necesario: d.ordenes != null ? null : analysis.necesarioPorDiaRestante,
-            }))}>
+          <ResponsiveContainer width="100%" height={340}>
+            <ComposedChart
+              data={analysis.abrilProjected.map((d) => ({
+                ...d,
+                real: d.ordenes,
+                necesario: d.ordenes != null ? null : analysis.necesarioPorDiaRestante,
+              }))}
+              margin={{ top: 20, right: 110, bottom: 10, left: 110 }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="fecha" tick={{ fill: "#9ca3af", fontSize: 10 }} />
-              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+              <YAxis tick={{ fill: "#9ca3af", fontSize: 10 }} domain={[0, "dataMax + 200"]} />
               <Tooltip
                 contentStyle={{ backgroundColor: "#16213e", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "12px", color: "#e5e7eb", fontSize: 12 }}
                 itemStyle={{ color: "#F97316" }}
