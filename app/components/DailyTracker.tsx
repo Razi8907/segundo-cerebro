@@ -729,9 +729,8 @@ export default function DailyTracker({
               data={analysis.abrilProjected.map((d) => ({
                 ...d,
                 real: d.ordenes,
-                necesario: d.ordenes != null ? null : analysis.necesarioPorDiaRestante,
               }))}
-              margin={{ top: 20, right: 110, bottom: 10, left: 110 }}
+              margin={{ top: 20, right: 90, bottom: 10, left: 70 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
               <XAxis dataKey="fecha" tick={{ fill: "#9ca3af", fontSize: 10 }} />
@@ -754,18 +753,13 @@ export default function DailyTracker({
               {analysis.necesarioPorDiaRestante > 0 && analysis.necesarioPorDiaRestante !== META_DIARIA && (
                 <ReferenceLine y={analysis.necesarioPorDiaRestante} stroke="#8B5CF6" strokeDasharray="4 4" label={{ value: `Necesario: ${analysis.necesarioPorDiaRestante.toLocaleString()}`, fill: "#8B5CF6", fontSize: 10, position: "left" }} />
               )}
-              <Bar dataKey="real" name="real" radius={[4, 4, 0, 0]} barSize={16}>
+              <Bar dataKey="real" name="real" radius={[4, 4, 0, 0]} barSize={20}>
                 {analysis.abrilProjected.map((d, i) => {
                   const color = d.ordenes != null
                     ? d.ordenes >= META_DIARIA ? "#10B981" : d.ordenes >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444"
                     : "transparent";
                   return <Cell key={i} fill={color} />;
                 })}
-              </Bar>
-              <Bar dataKey="necesario" name="necesario" radius={[4, 4, 0, 0]} barSize={16} opacity={0.35}>
-                {analysis.abrilProjected.map((d, i) => (
-                  <Cell key={i} fill={d.ordenes != null ? "transparent" : "#8B5CF6"} />
-                ))}
               </Bar>
               <Line type="monotone" dataKey="proyectado" stroke="#6B7280" strokeWidth={1} strokeDasharray="6 3" dot={false} name="Proyección base" />
             </ComposedChart>
@@ -785,7 +779,7 @@ export default function DailyTracker({
               <span className="text-gray-400">Bajo meta ({"<"}{Math.round(META_DIARIA * 0.8).toLocaleString()})</span>
             </div>
             <div className="flex items-center gap-1.5 text-[10px]">
-              <span className="w-3 h-3 rounded" style={{ background: "#8B5CF6", opacity: 0.35 }} />
+              <span className="w-8 border-t-2 border-dashed" style={{ borderColor: "#8B5CF6" }} />
               <span className="text-gray-400">Necesario/día restante ({analysis.necesarioPorDiaRestante.toLocaleString()})</span>
             </div>
             <div className="flex items-center gap-1.5 text-[10px]">
