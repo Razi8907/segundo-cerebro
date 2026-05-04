@@ -224,7 +224,7 @@ const TICK_STYLE_SM = { fill: "#374151", fontSize: 9 };
 const TOOLTIP_STYLE = { backgroundColor: "#ffffff", border: "1px solid #e5e7eb", borderRadius: "8px", color: "#1f2937", fontSize: 11 };
 
 /* ═══ STOCK PROJECTION SUB-COMPONENT ═══ */
-function StockProjection({ country, aggData }: { country: string; aggData: AggData }) {
+function StockProjection({ country, aggData, mesLabel = "abril" }: { country: string; aggData: AggData; mesLabel?: string }) {
   const [stockData, setStockData] = useState<any[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [editVal, setEditVal] = useState("");
@@ -443,7 +443,7 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
               <th className="text-right py-2 px-2 text-gray-400">Vendidos</th>
               <th className="text-right py-2 px-2 text-gray-400">Dem/día</th>
               <th className="text-right py-2 px-2 text-gray-400">Dem. restante</th>
-              <th className="text-right py-2 px-2 text-gray-400">Proy. total abril</th>
+              <th className="text-right py-2 px-2 text-gray-400">Proy. total {mesLabel.toLowerCase()}</th>
               <th className="text-right py-2 px-2 text-gray-400">Stock actual</th>
               <th className="text-right py-2 px-2 text-gray-400">Días de stock</th>
               <th className="text-right py-2 px-2 text-gray-400">Déficit</th>
@@ -521,7 +521,8 @@ function StockProjection({ country, aggData }: { country: string; aggData: AggDa
   );
 }
 
-export default function OperationalUpload({ country }: { country: "py" | "ar" }) {
+export default function OperationalUpload({ country, mes = "abril" }: { country: "py" | "ar"; mes?: "abril" | "mayo" }) {
+  const mesLabel = mes === "mayo" ? "Mayo" : "Abril";
   const [rawRows, setRawRows] = useState<RawRow[]>([]);
   const [savedAgg, setSavedAgg] = useState<AggData | null>(null);
   const [uploadedAt, setUploadedAt] = useState<string | null>(null);
@@ -535,7 +536,11 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   const [recLogistic, setRecLogistic] = useState("");
 
   useEffect(() => {
-    fetch(`/api/data/operational?country=${country}`)
+    // Reset al cambiar de mes para que la UI muestre solo la data del mes activo
+    setSavedAgg(null);
+    setUploadedAt(null);
+    setRawRows([]);
+    fetch(`/api/data/operational?country=${country}&mes=${mes}`)
       .then((r) => r.json())
       .then((res) => {
         if (res.data) {
@@ -556,7 +561,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         }
       })
       .catch(() => {});
-  }, [country]);
+  }, [country, mes]);
 
   const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -581,13 +586,13 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
 
       // Try saving, if too large save without rows
       try {
-        const payload = JSON.stringify({ country, data: saveData, raw_count: agg.total_orders });
+        const payload = JSON.stringify({ country, mes, data: saveData, raw_count: agg.total_orders });
         if (payload.length > 4000000) {
           // Too large for Vercel, save without compact_rows
           delete (saveData as any).compact_rows;
           await fetch("/api/data/operational", {
             method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ country, data: saveData, raw_count: agg.total_orders }),
+            body: JSON.stringify({ country, mes, data: saveData, raw_count: agg.total_orders }),
           });
         } else {
           await fetch("/api/data/operational", {
@@ -600,7 +605,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
         delete (saveData as any).compact_rows;
         await fetch("/api/data/operational", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ country, data: saveData, raw_count: agg.total_orders }),
+          body: JSON.stringify({ country, mes, data: saveData, raw_count: agg.total_orders }),
         });
       }
       setUploadedAt(new Date().toISOString());
@@ -610,7 +615,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
     }
     setUploading(false);
     e.target.value = "";
-  }, [country]);
+  }, [country, mes]);
 
   // Full aggregation (no filter)
   const fullAgg = useMemo(() => {
@@ -778,11 +783,11 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   if (!aggData) {
     return (
       <div className="glass-card p-6 border-cyan-500/30">
-        <h2 className="text-xl font-bold t-primary mb-1">📋 Análisis Operacional — Abril {countryLabel}</h2>
+        <h2 className="text-xl font-bold t-primary mb-1">📋 Análisis Operacional — {mesLabel} {countryLabel}</h2>
         <p className="text-xs t-secondary mb-4">Subí el archivo Excel del dashboard comercial de Dropi para ver el análisis</p>
         <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg dropi-gradient text-white text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity">
           <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
-          {uploading ? "Procesando..." : "Subir Excel de Abril"}
+          {uploading ? "Procesando..." : `Subir Excel de ${mesLabel}`}
           <input type="file" accept=".xlsx,.xls,.csv" onChange={handleUpload} className="hidden" disabled={uploading} />
         </label>
       </div>
@@ -803,12 +808,12 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
   }));
 
   return (
-    <ChartDownloadBtn filename={`Operacional_Abril_${countryLabel}`}>
+    <ChartDownloadBtn filename={`Operacional_${mesLabel}_${countryLabel}`}>
     <div className="glass-card p-6 border-cyan-500/30">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <div>
-          <h2 className="text-xl font-bold t-primary mb-1">📋 Análisis Operacional — Abril {countryLabel}</h2>
+          <h2 className="text-xl font-bold t-primary mb-1">📋 Análisis Operacional — {mesLabel} {countryLabel}</h2>
           <p className="text-xs t-secondary">
             {(fullAgg?.total_orders || 0).toLocaleString()} guías totales &middot; {aggData.date_range.from} al {aggData.date_range.to}
             {uploadedAt && <span className="ml-2 text-orange-500">Act: {new Date(uploadedAt).toLocaleString("es-PY")}</span>}
@@ -1478,7 +1483,7 @@ export default function OperationalUpload({ country }: { country: "py" | "ar" })
       </div>
 
       {/* ═══ STOCK PROJECTION ═══ */}
-      <StockProjection country={country} aggData={aggData} />
+      <StockProjection country={country} aggData={aggData} mesLabel={mesLabel} />
 
       {/* ═══ LOGISTICS SECTION ═══ */}
       {aggData.logistics && (

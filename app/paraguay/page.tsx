@@ -181,7 +181,7 @@ export default function ParaguayDashboard() {
               resumen={resumen}
               country="py"
             />
-            <OperationalUpload country="py" />
+            <OperationalUpload country="py" mes={isMayo ? "mayo" : "abril"} />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
             <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
