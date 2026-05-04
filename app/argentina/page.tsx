@@ -173,7 +173,7 @@ export default function ArgentinaDashboard() {
 
         {isPlanning ? (
           <>
-            <ArgentinaPlanAbril />
+            {isAbril && <ArgentinaPlanAbril />}
             <DailyTracker
               marzoData={isMayo ? (seguimiento_abril || []) : seguimiento_diario}
               metaInfo={meta_info}
