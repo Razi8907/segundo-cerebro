@@ -158,23 +158,34 @@ const DATA = {
     ],
   },
   aex: {
+    actualizado: "03/05/2026",
     kpis: [
-      { label: "Pendiente AEX (15 abr)", value: "Gs 2.304M", sub: "≈ ingreso de 3 meses", tone: "dn" as const },
-      { label: "Pendiente actualizado (20 abr)", value: "Gs 2.177M", sub: "11.592 guías", tone: "dn" as const },
-      { label: "De marzo (antiguo)", value: "Gs 1.497M", sub: "7.526 guías", tone: "dn" as const },
-      { label: "De abril (reciente)", value: "Gs 777M", sub: "4.066 guías", tone: "neu" as const },
-      { label: "FIXY pendiente", value: "Gs 3,0M", sub: "Paga puntual", tone: "up" as const },
+      { label: "Pendiente total AEX", value: "Gs 2.642,8M", sub: "13.203 guías al 03/05", tone: "dn" as const },
+      { label: "Antigua (+2 semanas)", value: "Gs 1.659,2M", sub: "8.321 guías · 62,8%", tone: "dn" as const },
+      { label: "Reciente (≤2 semanas)", value: "Gs 983,6M", sub: "4.882 guías · 37,2%", tone: "neu" as const },
+      { label: "Concentrado en Mar+Abr", value: "Gs 1.651M", sub: "8.282 guías · 62% del total", tone: "dn" as const },
+      { label: "Crecimiento vs 20/abr", value: "+Gs 466M", sub: "+1.611 guías en 13 días", tone: "dn" as const },
       { label: "Brecha caja real Q1", value: "~5,7pp margen", sub: "Contable vs caja", tone: "dn" as const },
     ],
-    pendiente: [
-      { antiguedad: "+2 semanas (marzo)", guias: "7.526", monto: "Gs 1.497M", pct: "66,3%", equiv: "1,94x ingreso febrero" },
-      { antiguedad: "Reciente (abril)", guias: "4.066", monto: "Gs 777M", pct: "33,7%", equiv: "~1 mes ingreso" },
-      { antiguedad: "TOTAL pendiente AEX", guias: "11.592", monto: "Gs 2.177M", pct: "100%", equiv: "3 meses operativos", total: true },
+    // Breakdown por año / mes desde el Excel actualizado
+    detalle: [
+      { categoria: "Antigua, +2 semanas", subcat: "", guias: 8321, monto: 1659.2, pct: 62.8, header: true },
+      { categoria: "  └ 2025", subcat: "(ene+sep+nov)", guias: 6, monto: 1.5, pct: 0.1 },
+      { categoria: "  └ 2026 ene", subcat: "", guias: 6, monto: 1.3, pct: 0.05 },
+      { categoria: "  └ 2026 feb", subcat: "", guias: 27, monto: 5.5, pct: 0.2 },
+      { categoria: "  └ 2026 mar", subcat: "", guias: 3184, monto: 644.9, pct: 24.4 },
+      { categoria: "  └ 2026 abr", subcat: "", guias: 5098, monto: 1006.1, pct: 38.1 },
+      { categoria: "Reciente, ≤2 semanas", subcat: "", guias: 4882, monto: 983.6, pct: 37.2, header: true },
+      { categoria: "  └ 2026 abr", subcat: "", guias: 4677, monto: 944.3, pct: 35.7 },
+      { categoria: "  └ 2026 may", subcat: "", guias: 205, monto: 39.4, pct: 1.5 },
+      { categoria: "TOTAL pendiente AEX", subcat: "13.203 guías", guias: 13203, monto: 2642.8, pct: 100, total: true },
     ],
-    devCobr: [
-      { mes: "Enero", devengado: 725.2, cobrado: 718.0 },
-      { mes: "Febrero", devengado: 679.2, cobrado: 665.0 },
-      { mes: "Marzo", devengado: 775.7, cobrado: 275.7 },
+    porMes: [
+      { mes: "Ene'26", monto: 1.3, guias: 6 },
+      { mes: "Feb'26", monto: 5.5, guias: 27 },
+      { mes: "Mar'26", monto: 644.9, guias: 3184 },
+      { mes: "Abr'26", monto: 1950.4, guias: 9775 },
+      { mes: "May'26", monto: 39.4, guias: 205 },
     ],
     margenes: [
       { mes: "Enero", contable: 18.67, caja: 18.4 },
@@ -649,31 +660,42 @@ function MargenView() {
 function AexView() {
   return (
     <div className="space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+        <p className="text-[11px] t-muted">Última actualización del archivo AEX: <strong className="t-primary">{DATA.aex.actualizado}</strong></p>
+      </div>
       <KpiGrid kpis={DATA.aex.kpis} />
 
       <div className="glass-card p-4">
-        <SectionTitle>Pendiente AEX por antigüedad</SectionTitle>
+        <SectionTitle>Pendiente AEX — desglose por antigüedad y mes</SectionTitle>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-700">
-                <th className="py-2 px-3 text-left text-[11px] t-muted">Antigüedad</th>
+                <th className="py-2 px-3 text-left text-[11px] t-muted">Categoría</th>
                 <th className="py-2 px-3 text-right text-[11px] t-muted">Guías</th>
                 <th className="py-2 px-3 text-right text-[11px] t-muted">Monto pendiente</th>
                 <th className="py-2 px-3 text-right text-[11px] t-muted">% del total</th>
-                <th className="py-2 px-3 text-right text-[11px] t-muted">Equivalente</th>
               </tr>
             </thead>
             <tbody>
-              {DATA.aex.pendiente.map((r: any) => (
-                <tr key={r.antiguedad} className="border-b border-gray-800/50" style={r.total ? { background: "rgba(232,101,10,0.10)", fontWeight: 700 } : {}}>
-                  <td className="py-2 px-3 t-primary">{r.antiguedad}</td>
-                  <td className="py-2 px-3 text-right font-mono text-xs">{r.guias}</td>
-                  <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: C.red }}>{r.monto}</td>
-                  <td className="py-2 px-3 text-right font-mono text-xs">{r.pct}</td>
-                  <td className="py-2 px-3 text-right text-xs t-secondary">{r.equiv}</td>
-                </tr>
-              ))}
+              {DATA.aex.detalle.map((r: any) => {
+                const styles = r.total
+                  ? { background: "rgba(232,101,10,0.10)", fontWeight: 700 }
+                  : r.header
+                  ? { background: "rgba(255,255,255,0.04)", fontWeight: 600 }
+                  : {};
+                return (
+                  <tr key={r.categoria} className="border-b border-gray-800/50" style={styles}>
+                    <td className="py-2 px-3 t-primary text-xs">
+                      {r.categoria}
+                      {r.subcat && <span className="ml-2 t-muted text-[10px]">{r.subcat}</span>}
+                    </td>
+                    <td className="py-2 px-3 text-right font-mono text-xs">{r.guias.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: C.red }}>Gs {r.monto.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}M</td>
+                    <td className="py-2 px-3 text-right font-mono text-xs">{r.pct}%</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -681,18 +703,19 @@ function AexView() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="glass-card p-4">
-          <SectionTitle>Ingresos devengados vs cobrados estimados (Gs M)</SectionTitle>
+          <SectionTitle>Pendiente por mes de servicio (Gs M)</SectionTitle>
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={DATA.aex.devCobr}>
+            <BarChart data={DATA.aex.porMes}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
               <XAxis dataKey="mes" stroke="#888" fontSize={11} />
               <YAxis stroke="#888" fontSize={10} tickFormatter={(v) => `Gs ${v}M`} />
               <Tooltip contentStyle={{ background: "#1a1a1a", border: `1px solid ${C.orange}`, fontSize: 12 }} formatter={(v) => `Gs ${v}M`} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="devengado" name="Devengado (contable)" fill={C.orange} />
-              <Bar dataKey="cobrado" name="Cobrado est." fill={C.lime} />
+              <Bar dataKey="monto" name="monto">
+                {DATA.aex.porMes.map((d, i) => <Cell key={i} fill={d.monto > 500 ? C.red : d.monto > 100 ? C.amber : C.lime} />)}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
+          <p className="text-[11px] t-muted mt-2">Abril concentra <strong className="t-primary">Gs 1.950M</strong> (74% del total) entre antigua + reciente. Marzo aún tiene Gs 645M sin cobrar a más de 60 días.</p>
         </div>
         <div className="glass-card p-4">
           <SectionTitle>Margen contable vs margen de caja real</SectionTitle>
@@ -719,12 +742,16 @@ function AexView() {
               </tr>
             </tbody>
           </table>
-          <p className="text-[11px] t-muted mt-2">Marzo: Gs 1.497M de AEX sin cobrar al 15/abr. El negocio es rentable contablemente pero la caja real está bajo presión.</p>
+          <p className="text-[11px] t-muted mt-2">Al 03/05: AEX adeuda <strong className="t-primary">Gs 2.642,8M</strong> — prácticamente <strong>3,4× el ingreso mensual promedio</strong> de Q1 (~Gs 770M).</p>
         </div>
       </div>
 
       <Alert tone="dn">
-        <strong>Riesgo de flujo de caja:</strong> AEX concentra Gs 1.497M de pendiente de marzo (1,94x ingreso mensual). Si AEX demora más de 2 semanas, DROPI cubre OPEX, salarios y materiales con fondos propios. FIXY y FIXY-NEXTDAY pagan puntualmente — diversificar reduce la exposición.
+        <strong>Riesgo de flujo de caja crítico:</strong> AEX adeuda <strong>Gs 2.642,8M</strong> repartidos en 13.203 guías al 03/05/2026. Solo abril representa Gs 1.950M (5.098 guías de marzo + 4.677 de abril en categoría antigua + 4.677 reciente). El pendiente creció <strong>+Gs 466M en 13 días</strong> (vs Gs 2.177M reportado el 20/abr) — el ciclo de cobro se está alargando, no acortando. La operación está financiando 3,4 meses de servicios con fondos propios.
+      </Alert>
+
+      <Alert tone="warn">
+        <strong>Acción urgente sugerida:</strong> 1) Escalada gerencial con AEX por las 8.321 guías antiguas (62,8% del pendiente). 2) Acelerar implementación de la cuarta transportadora (ver tab Transportadora) — cada mes de demora suma ~Gs 200M+ al pendiente. 3) Revisar política de cortes: si una guía supera 30 días sin cobro, suspender envíos a AEX hasta regularización.
       </Alert>
     </div>
   );
