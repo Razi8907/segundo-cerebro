@@ -388,6 +388,9 @@ function DataTable({ rows, columns, highlightHours }: {
 }
 
 /* ───────── MAIN COMPONENT ───────── */
+type MesOps = "abril" | "mayo";
+const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 2026" };
+
 export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -398,11 +401,17 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
   const [fTransportadora, setFTransportadora] = useState("");
   const [fDropshipper, setFDropshipper] = useState("");
   const [fProveedor, setFProveedor] = useState("");
+  // Mes activo (default según fecha actual: si estamos en mayo o después → mayo)
+  const [mes, setMes] = useState<MesOps>(() => {
+    const now = new Date();
+    return now.getFullYear() === 2026 && now.getMonth() >= 4 ? "mayo" : "abril";
+  });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    setRows([]);
     try {
-      const res = await fetch(`/api/data/operations?country=${country}`);
+      const res = await fetch(`/api/data/operations?country=${country}&mes=${mes}`);
       if (res.ok) {
         const data = await res.json();
         const rawRows = Array.isArray(data) ? data : data.rows || [];
@@ -441,7 +450,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     } finally {
       setLoading(false);
     }
-  }, [country]);
+  }, [country, mes]);
 
   useEffect(() => {
     fetchData();
@@ -496,7 +505,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         const res = await fetch("/api/data/operations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ country, fecha_carga: fc, rows: batch }),
+          body: JSON.stringify({ country, mes, fecha_carga: fc, rows: batch }),
         });
         if (!res.ok) {
           const contentType = res.headers.get("content-type") || "";
@@ -527,7 +536,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       setUploading(false);
       e.target.value = "";
     }
-  }, [country, fetchData]);
+  }, [country, mes, fetchData]);
 
   /* ───── global filters ───── */
   const filterOptions = useMemo(() => {
@@ -865,10 +874,15 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
   if (rows.length === 0) {
     return (
       <div className="glass-card p-6 border-cyan-500/30">
-        <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"}</h2>
-        <p className="text-xs t-secondary mb-4">Subi el archivo Excel de Dropi (hoja CARGA DIARIA) para comenzar</p>
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"}</h2>
+            <p className="text-xs t-secondary">Mes activo: <strong className="t-primary">{MES_LABEL[mes]}</strong> · Subi el archivo Excel de Dropi (hoja CARGA DIARIA) para comenzar</p>
+          </div>
+          <MesSwitcher mes={mes} setMes={setMes} />
+        </div>
         <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg dropi-gradient text-white text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity">
-          {uploading ? "Procesando..." : "📥 Subir archivo Excel"}
+          {uploading ? "Procesando..." : `📥 Subir archivo Excel (${MES_LABEL[mes]})`}
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
@@ -882,14 +896,15 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"}</h2>
+          <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"} · {MES_LABEL[mes]}</h2>
           <p className="text-xs t-secondary">
-            {rows.length.toLocaleString()} guias cargadas | Ultima carga: {latestFechaCarga} | {fechasCarga.length} dia(s) acumulados
+            {rows.length.toLocaleString()} guias cargadas en {MES_LABEL[mes]} | Ultima carga: {latestFechaCarga} | {fechasCarga.length} dia(s) acumulados
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <MesSwitcher mes={mes} setMes={setMes} />
           <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg dropi-gradient text-white text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity">
-            {uploading ? "Procesando..." : "📥 Actualizar archivo"}
+            {uploading ? "Procesando..." : `📥 Actualizar ${MES_LABEL[mes]}`}
             <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={uploading} />
           </label>
         </div>
@@ -1147,6 +1162,31 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
 
       {/* ── PARADAS +72hs TAB ── */}
       {tab === "paradas" && <ParadasTab rows={paradasRows} />}
+    </div>
+  );
+}
+
+/* ───────── MES SWITCHER ───────── */
+function MesSwitcher({ mes, setMes }: { mes: MesOps; setMes: (m: MesOps) => void }) {
+  const opts: { key: MesOps; label: string }[] = [
+    { key: "abril", label: "Abril 2026" },
+    { key: "mayo", label: "Mayo 2026" },
+  ];
+  return (
+    <div className="inline-flex rounded-lg border border-cyan-500/30 overflow-hidden">
+      {opts.map((o) => (
+        <button
+          key={o.key}
+          onClick={() => setMes(o.key)}
+          className={`px-3 py-2 text-xs font-medium transition-colors ${
+            mes === o.key
+              ? "bg-orange-500 text-white"
+              : "bg-transparent t-secondary hover:bg-orange-500/10"
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

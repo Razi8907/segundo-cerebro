@@ -2,25 +2,44 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "../../../lib/supabase";
 import { verifyToken, COOKIE_NAME } from "../../../lib/auth";
 
-// GET /api/data/operations?country=py
+const isColumnMissing = (err: any) => {
+  const msg = String(err?.message || "").toLowerCase();
+  return msg.includes("column") && msg.includes("mes");
+};
+
+// GET /api/data/operations?country=py&mes=abril
+// Resiliente: si la columna `mes` no existe (migración pendiente),
+// para abril cae al SELECT sin filtro (data legacy es implícitamente abril).
 export async function GET(req: NextRequest) {
   const country = req.nextUrl.searchParams.get("country") || "py";
+  const mes = req.nextUrl.searchParams.get("mes") || "abril";
 
-  // Paginate to get all rows (Supabase default limit is 1000)
   const PAGE_SIZE = 1000;
   const allRows: any[] = [];
   let from = 0;
   let hasMore = true;
+  let columnMissing = false;
 
   while (hasMore) {
-    const { data, error } = await getSupabase()
+    let q = getSupabase()
       .from("operations_data")
       .select("*")
-      .eq("country", country)
+      .eq("country", country);
+    if (!columnMissing) q = q.eq("mes", mes);
+    const { data, error } = await q
       .order("fecha_carga", { ascending: false })
       .range(from, from + PAGE_SIZE - 1);
 
     if (error) {
+      // Si la columna mes no existe, retry sin filtro de mes (solo si pidió abril)
+      if (isColumnMissing(error) && mes === "abril" && !columnMissing) {
+        columnMissing = true;
+        continue; // mismo `from`, ahora sin .eq("mes", ...)
+      }
+      if (isColumnMissing(error) && mes !== "abril") {
+        // Pre-migración no hay forma de tener data de mayo
+        return NextResponse.json({ rows: [], count: 0 });
+      }
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -43,14 +62,15 @@ export async function POST(req: NextRequest) {
     if (!token) return NextResponse.json({ error: "No autorizado" }, { status: 401 });
     await verifyToken(token);
 
-    const { country, rows, fecha_carga } = await req.json();
+    const body = await req.json();
+    const { country, rows, fecha_carga } = body;
+    const mes = body.mes || "abril";
 
     if (!country || !rows || !fecha_carga) {
       return NextResponse.json({ error: "country, rows, fecha_carga required" }, { status: 400 });
     }
 
-    // Upsert rows — if same guia+fecha_carga exists, update it
-    const toInsert = rows.map((r: any) => ({
+    const baseRow = (r: any) => ({
       country,
       guia: String(r.guia || ""),
       fecha_reporte: r.fecha_reporte || "",
@@ -80,16 +100,47 @@ export async function POST(req: NextRequest) {
       fecha_carga,
       dias_sin_cambio: r.dias_sin_cambio || 0,
       primera_vez_parada: r.primera_vez_parada || "",
-    }));
+    });
 
-    // Insert in batches of 500
+    const supabase = getSupabase();
     let inserted = 0;
-    for (let i = 0; i < toInsert.length; i += 500) {
-      const batch = toInsert.slice(i, i + 500);
-      const { error } = await getSupabase()
+    let columnMissing = false;
+
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500).map((r: any) => {
+        const b: any = baseRow(r);
+        if (!columnMissing) b.mes = mes;
+        return b;
+      });
+      const onConflict = columnMissing ? "country,guia,fecha_carga" : "country,mes,guia,fecha_carga";
+      const { error } = await supabase
         .from("operations_data")
-        .upsert(batch, { onConflict: "country,guia,fecha_carga" });
+        .upsert(batch, { onConflict });
+
       if (error) {
+        if (isColumnMissing(error)) {
+          if (mes !== "abril") {
+            return NextResponse.json(
+              { error: "Migración pendiente: agregá la columna 'mes' a operations_data antes de cargar mayo." },
+              { status: 503 },
+            );
+          }
+          // Pre-migración: retry sin mes y con onConflict legacy
+          columnMissing = true;
+          const legacyBatch = batch.map((r: any) => {
+            const { mes: _omit, ...rest } = r;
+            return rest;
+          });
+          const r2 = await supabase
+            .from("operations_data")
+            .upsert(legacyBatch, { onConflict: "country,guia,fecha_carga" });
+          if (r2.error) {
+            console.error("Legacy batch insert error:", r2.error);
+            return NextResponse.json({ error: r2.error.message }, { status: 500 });
+          }
+          inserted += batch.length;
+          continue;
+        }
         console.error("Batch insert error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });
       }
