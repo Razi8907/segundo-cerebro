@@ -989,7 +989,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           <DownloadBtn onClick={() => downloadCSV("Resumen_Completo", filteredRows, EXPORT_COLUMNS)} label={`Descargar todo (${filteredRows.length} guías)`} />
           {/* KPI cards */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-            <KpiCard label="Total guias" value={kpis.total.toLocaleString()} color="orange" />
+            <KpiCard label="Guías únicas" value={kpis.total.toLocaleString()} color="orange" />
             <KpiCard label="AEX en transito" value={kpis.aexTransito} color="blue" />
             <KpiCard label="FIXY en transito" value={kpis.fixyTransito} color="blue" />
             <KpiCard label="FIXY-ND en transito" value={kpis.fixyNdTransito} color="blue" />
