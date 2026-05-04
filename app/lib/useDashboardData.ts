@@ -20,7 +20,14 @@ export function useDashboardData(country: "py" | "ar") {
         if (apiData && apiData.resumen) {
           setUpdatedAt(apiData._updated_at || null);
           delete apiData._updated_at;
-          setData(apiData);
+          // Merge fallback for fields that may not exist in older snapshots (mayo, etc.)
+          const fb = fallbacks[country];
+          const merged = {
+            ...apiData,
+            meta_info: { ...(fb.meta_info || {}), ...(apiData.meta_info || {}) },
+            seguimiento_mayo: apiData.seguimiento_mayo || fb.seguimiento_mayo || [],
+          };
+          setData(merged);
         }
       })
       .catch(() => {

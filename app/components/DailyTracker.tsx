@@ -32,6 +32,12 @@ interface MetaInfo {
   promedio_diario_necesario: number;
   marzo_total_ordenes: number;
   marzo_promedio_diario: number;
+  meta_movilizadas_mayo?: number;
+  meta_ingresadas_mayo?: number;
+  dias_mayo?: number;
+  promedio_diario_necesario_mayo?: number;
+  abril_total_ordenes?: number;
+  abril_promedio_diario?: number;
 }
 
 const DIAS_SEMANA_ABRIL = [
@@ -40,6 +46,15 @@ const DIAS_SEMANA_ABRIL = [
   "MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES",
   "MARTES","MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES",
   "MARTES","MIÉRCOLES",
+];
+
+// Mayo 2026 — día 1 es viernes
+const DIAS_SEMANA_MAYO = [
+  "VIERNES","SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES",
+  "VIERNES","SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES",
+  "VIERNES","SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES",
+  "VIERNES","SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES",
+  "VIERNES","SÁBADO","DOMINGO",
 ];
 
 interface ResumenMes {
@@ -57,7 +72,7 @@ interface Resumen {
 }
 
 const DIAS_MES: Record<string, number> = { enero: 31, febrero: 28, marzo: 31 };
-const MES_LABELS: Record<string, string> = { enero: "Enero 2026", febrero: "Febrero 2026", marzo: "Marzo 2026" };
+const MES_LABELS: Record<string, string> = { enero: "Enero 2026", febrero: "Febrero 2026", marzo: "Marzo 2026", abril: "Abril 2026", mayo: "Mayo 2026" };
 
 export default function DailyTracker({
   marzoData,
@@ -74,11 +89,36 @@ export default function DailyTracker({
   resumen?: Resumen;
   country?: "py" | "ar";
 }) {
-  const META_DIARIA = metaInfo.promedio_diario_necesario;
-  const META_TOTAL = metaInfo.meta_ingresadas_abril;
   const isAbril = mesFilter === "abril";
+  const isMayo = mesFilter === "mayo";
+  const isPlanning = isAbril || isMayo;
 
-  const STORAGE_KEY = `segundo-cerebro-abril-${country}`;
+  // Configuración del mes activo (Abril o Mayo) — todo lo "actual" se resuelve dinámicamente
+  const META_DIARIA = isMayo
+    ? (metaInfo.promedio_diario_necesario_mayo ?? metaInfo.promedio_diario_necesario)
+    : metaInfo.promedio_diario_necesario;
+  const META_TOTAL = isMayo
+    ? (metaInfo.meta_ingresadas_mayo ?? metaInfo.meta_ingresadas_abril)
+    : metaInfo.meta_ingresadas_abril;
+  const META_MOV_ACTIVE = isMayo
+    ? (metaInfo.meta_movilizadas_mayo ?? metaInfo.meta_movilizadas_abril)
+    : metaInfo.meta_movilizadas_abril;
+  const TOTAL_DAYS = isMayo ? (metaInfo.dias_mayo ?? 31) : (metaInfo.dias_abril ?? 30);
+  const DIAS_SEMANA_ACTIVE = isMayo ? DIAS_SEMANA_MAYO : DIAS_SEMANA_ABRIL;
+  const ACTIVE_LABEL = isMayo ? "Mayo" : "Abril";
+  const ACTIVE_LABEL_FULL = isMayo ? "Mayo 2026" : "Abril 2026";
+  const COMP_LABEL = isMayo ? "Abril" : "Marzo";
+  const COMP_LABEL_FULL = isMayo ? "Abril 2026" : "Marzo 2026";
+  const COMP_TOTAL_REF = isMayo
+    ? (metaInfo.abril_total_ordenes ?? 0)
+    : metaInfo.marzo_total_ordenes;
+  const COMP_PROMEDIO_REF = isMayo
+    ? (metaInfo.abril_promedio_diario ?? 0)
+    : metaInfo.marzo_promedio_diario;
+  const ACTIVE_MES_KEY = isMayo ? "mayo" : "abril";
+  const COMP_DAYS = isMayo ? (metaInfo.dias_abril ?? 30) : 31;
+
+  const STORAGE_KEY = `segundo-cerebro-${ACTIVE_MES_KEY}-${country}`;
 
   // Abril tracking state — hydrated from DB (with localStorage fallback + JSON fallback)
   const [abrilData, setAbrilData] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>(
@@ -106,18 +146,21 @@ export default function DailyTracker({
   // Load from DB only (manual entries) — no auto-sync from operational data
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/data/daily-tracking?country=${country}`, { credentials: "include" })
+    fetch(`/api/data/daily-tracking?country=${country}&mes=${ACTIVE_MES_KEY}`, { credentials: "include" })
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
         if (Array.isArray(res.days) && res.days.length > 0) {
           setAbrilData(res.days);
+        } else {
+          // Reset si cambiamos a un mes sin data
+          setAbrilData([]);
         }
         setDbLoaded(true);
       })
       .catch(() => { if (!cancelled) setDbLoaded(true); });
     return () => { cancelled = true; };
-  }, [country]);
+  }, [country, ACTIVE_MES_KEY]);
 
   // Persist to localStorage (backup)
   useEffect(() => {
@@ -134,9 +177,9 @@ export default function DailyTracker({
   const addDay = useCallback(async () => {
     const day = parseInt(inputDay);
     const ordenes = parseInt(inputOrdenes);
-    if (isNaN(day) || isNaN(ordenes) || day < 1 || day > 30) return;
+    if (isNaN(day) || isNaN(ordenes) || day < 1 || day > TOTAL_DAYS) return;
 
-    const dia_semana = DIAS_SEMANA_ABRIL[day - 1];
+    const dia_semana = DIAS_SEMANA_ACTIVE[day - 1];
     setTrackingError(null);
 
     // Persist to DB FIRST so the user gets immediate error feedback
@@ -145,7 +188,7 @@ export default function DailyTracker({
         method: "PUT",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ country, fecha: day, ordenes, dia_semana }),
+        body: JSON.stringify({ country, mes: ACTIVE_MES_KEY, fecha: day, ordenes, dia_semana }),
       });
       if (!res.ok) {
         const msg = await res.text().catch(() => "");
@@ -163,12 +206,12 @@ export default function DailyTracker({
     } catch (e: any) {
       setTrackingError(`Error de red guardando dia ${day}: ${e?.message || e}`);
     }
-  }, [inputDay, inputOrdenes, country]);
+  }, [inputDay, inputOrdenes, country, TOTAL_DAYS, DIAS_SEMANA_ACTIVE, ACTIVE_MES_KEY]);
 
   const deleteDay = useCallback(async (day: number) => {
     setTrackingError(null);
     try {
-      const res = await fetch(`/api/data/daily-tracking?country=${country}&fecha=${day}`, {
+      const res = await fetch(`/api/data/daily-tracking?country=${country}&mes=${ACTIVE_MES_KEY}&fecha=${day}`, {
         method: "DELETE",
         credentials: "include",
       });
@@ -182,7 +225,7 @@ export default function DailyTracker({
     } catch (e: any) {
       setTrackingError(`Error de red eliminando dia ${day}: ${e?.message || e}`);
     }
-  }, [country]);
+  }, [country, ACTIVE_MES_KEY]);
 
   const analysis = useMemo(() => {
     // Marzo analysis
@@ -196,12 +239,12 @@ export default function DailyTracker({
       dowAvg[dow] = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
     });
 
-    // Abril progress
+    // Abril/Mayo progress (active month)
     const abrilTotal = abrilData.reduce((s, d) => s + d.ordenes, 0);
     const diasCargados = abrilData.length;
-    const diasRestantes = 30 - diasCargados;
+    const diasRestantes = TOTAL_DAYS - diasCargados;
     const promedioAbril = diasCargados > 0 ? abrilTotal / diasCargados : 0;
-    const proyeccionFinal = diasCargados > 0 ? Math.round(promedioAbril * 30) : 0;
+    const proyeccionFinal = diasCargados > 0 ? Math.round(promedioAbril * TOTAL_DAYS) : 0;
     const pctMeta = diasCargados > 0 ? (proyeccionFinal / META_TOTAL) * 100 : 0;
     const necesarioPorDiaRestante = diasRestantes > 0 ? Math.round((META_TOTAL - abrilTotal) / diasRestantes) : 0;
 
@@ -213,13 +256,13 @@ export default function DailyTracker({
       return { ...d, color };
     });
 
-    // Projection using actual April average for remaining days
+    // Projection using actual active-month average for remaining days
     const abrilProjected: { fecha: number; ordenes: number | null; proyectado: number; dia_semana: string }[] = [];
-    // Use April's own average if we have data, otherwise fall back to March pattern
-    const proyBase = diasCargados > 0 ? Math.round(promedioAbril) : metaInfo.marzo_promedio_diario;
-    for (let i = 1; i <= 30; i++) {
+    // Use current month's own average if we have data, otherwise fall back to comparison-month pattern
+    const proyBase = diasCargados > 0 ? Math.round(promedioAbril) : COMP_PROMEDIO_REF;
+    for (let i = 1; i <= TOTAL_DAYS; i++) {
       const existing = abrilData.find((d) => d.fecha === i);
-      const dow = DIAS_SEMANA_ABRIL[i - 1];
+      const dow = DIAS_SEMANA_ACTIVE[i - 1];
       abrilProjected.push({
         fecha: i,
         ordenes: existing ? existing.ordenes : null,
@@ -228,18 +271,24 @@ export default function DailyTracker({
       });
     }
 
-    // Projected movilizadas based on actual April data
-    const proyMovilizadas = diasCargados > 0 ? Math.round(proyeccionFinal * (metaInfo.meta_movilizadas_abril / META_TOTAL)) : 0;
+    // Projected movilizadas based on actual active-month data
+    const proyMovilizadas = diasCargados > 0 ? Math.round(proyeccionFinal * (META_MOV_ACTIVE / META_TOTAL)) : 0;
 
-    // Weekly breakdown for April
-    const META_MOV = metaInfo.meta_movilizadas_abril;
-    const weeks = [
-      { label: "S1 (1-6)", start: 1, end: 6, dias: 6 },
-      { label: "S2 (7-13)", start: 7, end: 13, dias: 7 },
-      { label: "S3 (14-20)", start: 14, end: 20, dias: 7 },
-      { label: "S4 (21-27)", start: 21, end: 27, dias: 7 },
-      { label: "S5 (28-30)", start: 28, end: 30, dias: 3 },
-    ];
+    // Weekly breakdown — generated dinámicamente para soportar 30 o 31 días
+    const META_MOV = META_MOV_ACTIVE;
+    const weeks = (() => {
+      const out: { label: string; start: number; end: number; dias: number }[] = [];
+      let start = 1;
+      let weekNum = 1;
+      while (start <= TOTAL_DAYS) {
+        const targetDias = weekNum === 1 ? 6 : 7;
+        const end = Math.min(start + targetDias - 1, TOTAL_DAYS);
+        out.push({ label: `S${weekNum} (${start}-${end})`, start, end, dias: end - start + 1 });
+        start = end + 1;
+        weekNum++;
+      }
+      return out;
+    })();
 
     let acumReal = 0;
     const weeklyData = weeks.map((w) => {
@@ -250,9 +299,9 @@ export default function DailyTracker({
       acumReal += realTotal;
 
       // Meta semanal proporcional (ingresadas)
-      const metaSemanalIng = Math.round(META_TOTAL * (w.dias / 30));
+      const metaSemanalIng = Math.round(META_TOTAL * (w.dias / TOTAL_DAYS));
       // Meta semanal movilizadas
-      const metaSemanalMov = Math.round(META_MOV * (w.dias / 30));
+      const metaSemanalMov = Math.round(META_MOV * (w.dias / TOTAL_DAYS));
 
       // What's still needed from remaining days in this week
       const diasFaltantesWeek = w.dias - diasCargadosWeek;
@@ -267,8 +316,8 @@ export default function DailyTracker({
       const proyectadoSemanal = realTotal + Math.round(estimadoFaltante);
 
       // Acumulado meta
-      const acumMetaIng = Math.round(META_TOTAL * (w.end / 30));
-      const acumMetaMov = Math.round(META_MOV * (w.end / 30));
+      const acumMetaIng = Math.round(META_TOTAL * (w.end / TOTAL_DAYS));
+      const acumMetaMov = Math.round(META_MOV * (w.end / TOTAL_DAYS));
 
       return {
         semana: w.label,
@@ -285,26 +334,26 @@ export default function DailyTracker({
       };
     });
 
-    // Marzo vs Abril comparison (day by day) + projection
+    // Comp month vs Active month comparison (day by day) + projection
     const marzoTotal = marzoData.reduce((s, d) => s + d.ordenes, 0);
     const marzoByDay = new Map<number, number>();
     marzoData.forEach((d) => marzoByDay.set(d.fecha, d.ordenes));
-    const maxDays = Math.max(31, 30); // marzo 31, abril 30
+    const maxDays = Math.max(COMP_DAYS, TOTAL_DAYS);
 
     const comparisonData: { dia: number; marzo: number | null; abril: number | null; proyAbril: number | null; necesarioParaSuperarMarzo: number | null }[] = [];
     let acumMarzo = 0;
     let acumAbril = 0;
     const marzoFinalTotal = marzoTotal;
-    for (let i = 1; i <= 31; i++) {
+    for (let i = 1; i <= maxDays; i++) {
       const mVal = marzoByDay.get(i) || 0;
-      acumMarzo += mVal;
+      if (i <= COMP_DAYS) acumMarzo += mVal;
       const aDay = abrilData.find((d) => d.fecha === i);
       const aVal = aDay ? aDay.ordenes : null;
       if (aVal !== null) acumAbril += aVal;
 
-      // Projected April (for days not yet loaded)
+      // Projected active month (for days not yet loaded)
       let proyAbril: number | null = null;
-      if (i <= 30) {
+      if (i <= TOTAL_DAYS) {
         if (aVal !== null) {
           proyAbril = aVal;
         } else if (diasCargados > 0) {
@@ -314,9 +363,9 @@ export default function DailyTracker({
 
       comparisonData.push({
         dia: i,
-        marzo: i <= 31 ? mVal : null,
-        abril: i <= 30 ? aVal : null,
-        proyAbril: i <= 30 ? proyAbril : null,
+        marzo: i <= COMP_DAYS ? mVal : null,
+        abril: i <= TOTAL_DAYS ? aVal : null,
+        proyAbril: i <= TOTAL_DAYS ? proyAbril : null,
         necesarioParaSuperarMarzo: null,
       });
     }
@@ -331,16 +380,16 @@ export default function DailyTracker({
     // Acumulado comparison for chart
     const acumComparisonData: { dia: number; acumMarzo: number; acumAbril: number | null; acumProy: number | null }[] = [];
     let cMarzo = 0, cAbril = 0;
-    for (let i = 1; i <= 31; i++) {
-      cMarzo += marzoByDay.get(i) || 0;
+    for (let i = 1; i <= maxDays; i++) {
+      if (i <= COMP_DAYS) cMarzo += marzoByDay.get(i) || 0;
       const aDay = abrilData.find((d) => d.fecha === i);
       if (aDay) cAbril += aDay.ordenes;
 
       acumComparisonData.push({
         dia: i,
-        acumMarzo: i <= 31 ? cMarzo : cMarzo,
-        acumAbril: i <= 30 && abrilData.some((d) => d.fecha <= i) ? cAbril : null,
-        acumProy: i <= 30 && i > diasCargados && diasCargados > 0
+        acumMarzo: cMarzo,
+        acumAbril: i <= TOTAL_DAYS && abrilData.some((d) => d.fecha <= i) ? cAbril : null,
+        acumProy: i <= TOTAL_DAYS && i > diasCargados && diasCargados > 0
           ? cAbril + Math.round(promedioAbril * (i - diasCargados))
           : null,
       });
@@ -447,7 +496,7 @@ export default function DailyTracker({
   }
 
   // ─── Q1 / Marzo view: histórico con data diaria de marzo ───
-  if (!isAbril) {
+  if (!isPlanning) {
     const isQ1 = mesFilter === "q1";
     const title = isQ1 ? "Histórico Q1 (Ene-Mar)" : "Marzo 2026";
 
@@ -558,16 +607,16 @@ export default function DailyTracker({
     <ChartDownloadBtn filename="Seguimiento_Diario">
     <div className="glass-card p-6 border-green-500/30">
       <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
-        🎯 Seguimiento Diario &mdash; Meta Abril: {META_TOTAL.toLocaleString()} ingresadas
+        🎯 Seguimiento Diario &mdash; Meta {ACTIVE_LABEL}: {META_TOTAL.toLocaleString()} ingresadas
       </h2>
       <p className="text-xs text-gray-400 mb-6">
-        Carga diaria de Abril &middot; Meta diaria: {META_DIARIA.toLocaleString()} órdenes &middot; Objetivo: {metaInfo.meta_movilizadas_abril.toLocaleString()} movilizadas
+        Carga diaria de {ACTIVE_LABEL} &middot; Meta diaria: {META_DIARIA.toLocaleString()} órdenes &middot; Objetivo: {META_MOV_ACTIVE.toLocaleString()} movilizadas
       </p>
 
-      {/* KPIs row - solo Abril */}
+      {/* KPIs row - mes activo */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-3">
         <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "rgba(59,130,246,0.05)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Acumulado Abril</p>
+          <p className="text-[10px] text-gray-400 uppercase">Acumulado {ACTIVE_LABEL}</p>
           <p className="text-lg font-bold text-blue-400">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</p>
           <p className="text-[10px] text-gray-500">{analysis.diasCargados} días cargados</p>
         </div>
@@ -580,10 +629,10 @@ export default function DailyTracker({
         </div>
         <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "rgba(249,115,22,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Proy. Movilizadas</p>
-          <p className={`text-lg font-bold ${analysis.proyMovilizadas >= metaInfo.meta_movilizadas_abril * 0.9 ? "text-green-400" : analysis.proyMovilizadas >= metaInfo.meta_movilizadas_abril * 0.7 ? "text-yellow-400" : "text-orange-400"}`}>
+          <p className={`text-lg font-bold ${analysis.proyMovilizadas >= META_MOV_ACTIVE * 0.9 ? "text-green-400" : analysis.proyMovilizadas >= META_MOV_ACTIVE * 0.7 ? "text-yellow-400" : "text-orange-400"}`}>
             {analysis.proyMovilizadas > 0 ? analysis.proyMovilizadas.toLocaleString() : "—"}
           </p>
-          <p className="text-[10px] text-gray-500">Meta: {metaInfo.meta_movilizadas_abril.toLocaleString()} mov.</p>
+          <p className="text-[10px] text-gray-500">Meta: {META_MOV_ACTIVE.toLocaleString()} mov.</p>
         </div>
         <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "rgba(139,92,246,0.05)" }}>
           <p className="text-[10px] text-gray-400 uppercase">Promedio diario actual</p>
@@ -719,7 +768,7 @@ export default function DailyTracker({
       {abrilData.length > 0 && (
         <div className="mb-6">
           <h3 className="text-sm font-medium text-gray-300 mb-3">
-            Abril 2026 &mdash; Real vs Meta Necesaria
+            {ACTIVE_LABEL_FULL} &mdash; Real vs Meta Necesaria
             <span className="text-[10px] text-gray-500 ml-2">
               🟢 &ge;{META_DIARIA.toLocaleString()} &middot; 🟡 &ge;{Math.round(META_DIARIA * 0.8).toLocaleString()} &middot; 🔴 &lt;{Math.round(META_DIARIA * 0.8).toLocaleString()}
             </span>
@@ -793,7 +842,7 @@ export default function DailyTracker({
       {/* Weekly projection chart */}
       <div className="mb-6 p-4 rounded-xl border border-cyan-500/20" style={{ background: "rgba(6,182,212,0.03)" }}>
         <h3 className="text-sm font-bold mb-1 text-black dark:text-white">
-          📅 Proyección Semanal — Camino a {META_TOTAL.toLocaleString()} ingresadas → {metaInfo.meta_movilizadas_abril.toLocaleString()} movilizadas
+          📅 Proyección Semanal — Camino a {META_TOTAL.toLocaleString()} ingresadas → {META_MOV_ACTIVE.toLocaleString()} movilizadas
         </h3>
         <p className="text-[10px] mb-4 text-gray-700 dark:text-gray-400">
           Meta semanal proporcional &middot; Acumulado real vs necesario para llegar al objetivo
@@ -892,7 +941,7 @@ export default function DailyTracker({
                 <td className="py-2 px-2 font-bold text-black dark:text-white">TOTAL</td>
                 <td className="py-2 px-2 text-right text-gray-700 dark:text-gray-400">30</td>
                 <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{META_TOTAL.toLocaleString()}</td>
-                <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{metaInfo.meta_movilizadas_abril.toLocaleString()}</td>
+                <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{META_MOV_ACTIVE.toLocaleString()}</td>
                 <td className="py-2 px-2 text-right font-bold text-black dark:text-white">{analysis.abrilTotal > 0 ? analysis.abrilTotal.toLocaleString() : "—"}</td>
                 <td colSpan={2} className="py-2 px-2 text-right text-gray-700 dark:text-gray-400">
                   {analysis.abrilTotal > 0 ? `${analysis.pctMeta.toFixed(1)}% de meta (proy.)` : ""}
@@ -914,13 +963,13 @@ export default function DailyTracker({
             📊 Marzo vs Abril — Comparación y Proyección de Crecimiento
           </h3>
           <p className="text-[10px] mb-4" style={{ color: "var(--text-secondary)" }}>
-            Acumulado diario: Marzo (real) vs Abril (real + proyección). El país siempre tiene que crecer vs mes anterior.
+            Acumulado diario: {COMP_LABEL} (real) vs {ACTIVE_LABEL} (real + proyección). El país siempre tiene que crecer vs mes anterior.
           </p>
 
           {/* KPIs de comparación */}
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
             <div className="rounded-xl p-3 border border-orange-500/20" style={{ background: "var(--bg-card)" }}>
-              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Total Marzo</p>
+              <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>Total {COMP_LABEL}</p>
               <p className="text-lg font-bold text-orange-400">{analysis.marzoTotal.toLocaleString()}</p>
             </div>
             <div className="rounded-xl p-3 border border-blue-500/20" style={{ background: "var(--bg-card)" }}>
@@ -934,7 +983,7 @@ export default function DailyTracker({
                 {analysis.proyeccionFinal.toLocaleString()}
               </p>
               <p className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-                {analysis.crecimientoVsMarzo > 0 ? "📈" : "📉"} {analysis.crecimientoVsMarzo > 0 ? "+" : ""}{analysis.crecimientoVsMarzo.toFixed(1)}% vs Marzo
+                {analysis.crecimientoVsMarzo > 0 ? "📈" : "📉"} {analysis.crecimientoVsMarzo > 0 ? "+" : ""}{analysis.crecimientoVsMarzo.toFixed(1)}% vs {COMP_LABEL}
               </p>
             </div>
             <div className="rounded-xl p-3 border border-purple-500/20" style={{ background: "var(--bg-card)" }}>
@@ -952,7 +1001,7 @@ export default function DailyTracker({
           {/* ═══ 1. GAUGE VELOCÍMETROS ═══ */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-5">
             {[
-              { label: "vs Marzo", pct: analysis.marzoTotal > 0 ? Math.min((analysis.proyeccionFinal / analysis.marzoTotal) * 100, 150) : 0, target: 100, color: analysis.proyeccionFinal > analysis.marzoTotal ? "#10B981" : "#EF4444", sub: `Proy: ${analysis.proyeccionFinal.toLocaleString()} / Marzo: ${analysis.marzoTotal.toLocaleString()}` },
+              { label: `vs ${COMP_LABEL}`, pct: analysis.marzoTotal > 0 ? Math.min((analysis.proyeccionFinal / analysis.marzoTotal) * 100, 150) : 0, target: 100, color: analysis.proyeccionFinal > analysis.marzoTotal ? "#10B981" : "#EF4444", sub: `Proy: ${analysis.proyeccionFinal.toLocaleString()} / ${COMP_LABEL}: ${analysis.marzoTotal.toLocaleString()}` },
               { label: "vs Meta", pct: Math.min(analysis.pctMeta, 150), target: 100, color: analysis.pctMeta >= 100 ? "#10B981" : analysis.pctMeta >= 80 ? "#F59E0B" : "#EF4444", sub: `Proy: ${analysis.proyeccionFinal.toLocaleString()} / Meta: ${META_TOTAL.toLocaleString()}` },
               { label: "Ritmo diario", pct: META_DIARIA > 0 ? Math.min((Math.round(analysis.promedioAbril) / META_DIARIA) * 100, 150) : 0, target: 100, color: analysis.promedioAbril >= META_DIARIA ? "#10B981" : analysis.promedioAbril >= META_DIARIA * 0.8 ? "#F59E0B" : "#EF4444", sub: `Actual: ${Math.round(analysis.promedioAbril).toLocaleString()} / Necesario: ${META_DIARIA.toLocaleString()}` },
             ].map((g) => {
@@ -989,7 +1038,7 @@ export default function DailyTracker({
 
           {/* ═══ 2. DONUT RINGS ═══ */}
           <div className="flex flex-col items-center mb-5">
-            <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Progreso: Meta vs Marzo vs Abril</p>
+            <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Progreso: Meta vs {COMP_LABEL} vs {ACTIVE_LABEL}</p>
             <svg width="200" height="200" viewBox="0 0 200 200">
               {/* Meta ring (outer) */}
               <circle cx="100" cy="100" r="85" fill="none" stroke="#374151" strokeWidth="12" />
@@ -1010,17 +1059,17 @@ export default function DailyTracker({
               <text x="100" y="95" textAnchor="middle" fontSize="22" fontWeight="bold" fill={analysis.proyeccionFinal > analysis.marzoTotal ? "#10B981" : "#EF4444"}>
                 {analysis.diasCargados > 0 ? `${Math.round(analysis.abrilTotal / analysis.marzoTotal * 100)}%` : "—"}
               </text>
-              <text x="100" y="112" textAnchor="middle" fontSize="10" fill="#6b7280">vs Marzo</text>
+              <text x="100" y="112" textAnchor="middle" fontSize="10" fill="#6b7280">vs {COMP_LABEL}</text>
             </svg>
             <div className="flex gap-4 mt-2 text-[10px]">
               <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "#EF4444" }} />Meta ({Math.round(analysis.abrilTotal / META_TOTAL * 100)}%)</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "#F97316" }} />vs Marzo ({Math.round(analysis.abrilTotal / analysis.marzoTotal * 100)}%)</span>
+              <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "#F97316" }} />vs {COMP_LABEL} ({Math.round(analysis.abrilTotal / analysis.marzoTotal * 100)}%)</span>
               <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full inline-block" style={{ background: "#10B981" }} />Días cargados ({analysis.diasCargados}/30)</span>
             </div>
           </div>
 
           {/* ═══ 3. HEATMAP CALENDAR ═══ */}
-          <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Calendario Abril — Rendimiento diario vs Marzo</p>
+          <p className="text-[10px] font-medium mb-2" style={{ color: "var(--text-primary)" }}>Calendario {ACTIVE_LABEL} — Rendimiento diario vs {COMP_LABEL}</p>
           <div className="grid grid-cols-7 gap-1 mb-2">
             {["Lun", "Mar", "Mie", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
               <div key={d} className="text-center text-[9px] font-medium py-1" style={{ color: "var(--text-muted)" }}>{d}</div>
@@ -1067,9 +1116,9 @@ export default function DailyTracker({
             })}
           </div>
           <div className="flex gap-3 justify-center flex-wrap text-[9px]" style={{ color: "var(--text-muted)" }}>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#065f46" }} />+20% vs Marzo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#065f46" }} />+20% vs {COMP_LABEL}</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#047857" }} />Superó Marzo</span>
-            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#92400e" }} />80-100% de Marzo</span>
+            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#92400e" }} />80-100% de {COMP_LABEL}</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#7f1d1d" }} />Bajo Marzo</span>
             <span className="flex items-center gap-1"><span className="w-3 h-3 rounded" style={{ background: "#1e3a5f" }} />Proyección</span>
           </div>
@@ -1085,22 +1134,22 @@ export default function DailyTracker({
           }}>
             <p className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>
               {analysis.proyeccionFinal > analysis.marzoTotal && analysis.pctMeta >= 100
-                ? `✅ Excelente: La proyeccion de Abril (${analysis.proyeccionFinal.toLocaleString()}) supera a Marzo (${analysis.marzoTotal.toLocaleString()}) y alcanza la meta (${META_TOTAL.toLocaleString()}). Mantener el ritmo de ${Math.round(analysis.promedioAbril).toLocaleString()}/día.`
+                ? `✅ Excelente: La proyeccion de ${ACTIVE_LABEL} (${analysis.proyeccionFinal.toLocaleString()}) supera a ${COMP_LABEL} (${analysis.marzoTotal.toLocaleString()}) y alcanza la meta (${META_TOTAL.toLocaleString()}). Mantener el ritmo de ${Math.round(analysis.promedioAbril).toLocaleString()}/día.`
                 : analysis.proyeccionFinal > analysis.marzoTotal
-                ? `⚠ Abril (${analysis.proyeccionFinal.toLocaleString()}) supera a Marzo (${analysis.marzoTotal.toLocaleString()}) pero no alcanza la meta (${META_TOTAL.toLocaleString()}). Necesitas ${analysis.necesarioPorDiaRestante.toLocaleString()}/día los próximos ${analysis.diasRestantes} días.`
-                : `🚨 Alerta: Al ritmo actual, Abril (${analysis.proyeccionFinal.toLocaleString()}) NO supera a Marzo (${analysis.marzoTotal.toLocaleString()}). Necesitas al menos ${analysis.necesarioParaSuperarMarzo.toLocaleString()}/día para superar Marzo, y ${analysis.necesarioPorDiaRestante.toLocaleString()}/día para la meta.`
+                ? `⚠ ${ACTIVE_LABEL} (${analysis.proyeccionFinal.toLocaleString()}) supera a ${COMP_LABEL} (${analysis.marzoTotal.toLocaleString()}) pero no alcanza la meta (${META_TOTAL.toLocaleString()}). Necesitas ${analysis.necesarioPorDiaRestante.toLocaleString()}/día los próximos ${analysis.diasRestantes} días.`
+                : `🚨 Alerta: Al ritmo actual, ${ACTIVE_LABEL} (${analysis.proyeccionFinal.toLocaleString()}) NO supera a ${COMP_LABEL} (${analysis.marzoTotal.toLocaleString()}). Necesitas al menos ${analysis.necesarioParaSuperarMarzo.toLocaleString()}/día para superar ${COMP_LABEL}, y ${analysis.necesarioPorDiaRestante.toLocaleString()}/día para la meta.`
               }
             </p>
           </div>
         </div>
       )}
 
-      {/* Marzo reference chart */}
+      {/* Comparison reference chart */}
       <div className="mb-6">
         <h3 className="text-sm font-medium text-gray-300 mb-3">
-          Referencia Marzo 2026
+          Referencia {COMP_LABEL_FULL}
           <span className="text-[10px] text-gray-500 ml-2">
-            Total: {metaInfo.marzo_total_ordenes.toLocaleString()} &middot; Prom: {metaInfo.marzo_promedio_diario.toLocaleString()}/día
+            Total: {COMP_TOTAL_REF.toLocaleString()} &middot; Prom: {COMP_PROMEDIO_REF.toLocaleString()}/día
           </span>
         </h3>
         <ResponsiveContainer width="100%" height={200}>
@@ -1114,7 +1163,7 @@ export default function DailyTracker({
               labelStyle={{ color: "#e5e7eb" }}
               formatter={(value) => `${Number(value).toLocaleString()} órdenes`}
             />
-            <ReferenceLine y={metaInfo.marzo_promedio_diario} stroke="#6B7280" strokeDasharray="4 4" label={{ value: `Prom: ${metaInfo.marzo_promedio_diario.toLocaleString()}`, fill: "#6B7280", fontSize: 10, position: "right" }} />
+            <ReferenceLine y={COMP_PROMEDIO_REF} stroke="#6B7280" strokeDasharray="4 4" label={{ value: `Prom: ${COMP_PROMEDIO_REF.toLocaleString()}`, fill: "#6B7280", fontSize: 10, position: "right" }} />
             <Bar dataKey="Órdenes" radius={[4, 4, 0, 0]} fill="#F97316" />
           </BarChart>
         </ResponsiveContainer>
@@ -1122,7 +1171,7 @@ export default function DailyTracker({
 
       {/* Day-of-week pattern */}
       <div>
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Patrón por Día de Semana (Marzo)</h3>
+        <h3 className="text-sm font-medium text-gray-300 mb-3">Patrón por Día de Semana ({COMP_LABEL})</h3>
         <div className="grid grid-cols-7 gap-2">
           {["LUNES", "MARTES", "MIÉRCOLES", "JUEVES", "VIERNES", "SÁBADO", "DOMINGO"].map((dow) => {
             const avg = analysis.dowAvg[dow] || 0;

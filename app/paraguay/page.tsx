@@ -44,6 +44,14 @@ function getResumenByMes(mes: MesFilter, allData: any) {
       devoluciones: Math.round(allData.meta_info.meta_movilizadas_abril * 0.20),
     };
   }
+  if (mes === "mayo") {
+    return {
+      ingresadas: allData.meta_info.meta_ingresadas_mayo,
+      movilizadas: allData.meta_info.meta_movilizadas_mayo,
+      entregados: Math.round(allData.meta_info.meta_movilizadas_mayo * 0.67),
+      devoluciones: Math.round(allData.meta_info.meta_movilizadas_mayo * 0.20),
+    };
+  }
   return r[mes];
 }
 
@@ -54,7 +62,7 @@ export default function ParaguayDashboard() {
   const [sector, setSector] = useState<Sector>("comercial");
   const { canComercial, canOperaciones, canFinanzas } = useUser();
   const { data: allData, updatedAt } = useDashboardData("py");
-  const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers, seguimiento_abril } = allData;
+  const { resumen, proveedores, sellers_top, seguimiento_diario, productos, productos_total, meta_info, dropshippers, seguimiento_abril, seguimiento_mayo } = allData;
   const kpis = getResumenByMes(mesFilter, allData);
 
   const mesLabels: Record<MesFilter, string> = {
@@ -62,10 +70,13 @@ export default function ParaguayDashboard() {
     enero: "Enero 2026",
     febrero: "Febrero 2026",
     marzo: "Marzo 2026",
-    abril: "Abril 2026 (Meta)",
+    abril: "Abril 2026",
+    mayo: "Mayo 2026 (Meta)",
   };
 
   const isAbril = mesFilter === "abril";
+  const isMayo = mesFilter === "mayo";
+  const isPlanning = isAbril || isMayo;
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
@@ -88,19 +99,19 @@ export default function ParaguayDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {(["q1", "enero", "febrero", "marzo", "abril"] as MesFilter[]).map((m) => (
+            {(["q1", "enero", "febrero", "marzo", "abril", "mayo"] as MesFilter[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setMesFilter(m)}
                 className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
                   mesFilter === m
-                    ? m === "abril"
+                    ? m === "mayo"
                       ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20"
                       : "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
                     : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
                 }`}
               >
-                {m === "q1" ? "Q1 Completo" : m === "abril" ? "🎯 Abril (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
+                {m === "q1" ? "Q1 Completo" : m === "mayo" ? "🎯 Mayo (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
               </button>
             ))}
             <span className="text-xs px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 ml-2">
@@ -143,9 +154,10 @@ export default function ParaguayDashboard() {
         {sector === "comercial" && <>
         {/* Period indicator */}
         <div className="text-center">
-          <span className={`text-sm font-medium ${isAbril ? "text-green-400" : "text-orange-400"}`}>
+          <span className={`text-sm font-medium ${isMayo ? "text-green-400" : "text-orange-400"}`}>
             {mesLabels[mesFilter]}
             {isAbril && ` — ${meta_info.meta_movilizadas_abril.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_abril.toLocaleString()} ingresadas`}
+            {isMayo && ` — ${meta_info.meta_movilizadas_mayo.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_mayo.toLocaleString()} ingresadas`}
           </span>
         </div>
 
@@ -158,10 +170,17 @@ export default function ParaguayDashboard() {
           periodo={mesLabels[mesFilter]}
         />
 
-        {/* Show Abril-specific content when Abril is selected */}
-        {isAbril ? (
+        {/* Show planning content when Abril o Mayo está seleccionado */}
+        {isPlanning ? (
           <>
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="py" />
+            <DailyTracker
+              marzoData={isMayo ? (seguimiento_abril || []) : seguimiento_diario}
+              metaInfo={meta_info}
+              abrilRealData={isMayo ? (seguimiento_mayo || []) : seguimiento_abril}
+              mesFilter={mesFilter}
+              resumen={resumen}
+              country="py"
+            />
             <OperationalUpload country="py" />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
@@ -170,7 +189,14 @@ export default function ParaguayDashboard() {
           </>
         ) : (
           <>
-            <DailyTracker marzoData={seguimiento_diario} metaInfo={meta_info} abrilRealData={seguimiento_abril} mesFilter={mesFilter} resumen={resumen} country="py" />
+            <DailyTracker
+              marzoData={seguimiento_diario}
+              metaInfo={meta_info}
+              abrilRealData={seguimiento_abril}
+              mesFilter={mesFilter}
+              resumen={resumen}
+              country="py"
+            />
             <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
             <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
 

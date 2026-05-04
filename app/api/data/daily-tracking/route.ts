@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "../../../lib/supabase";
 import { verifyToken, COOKIE_NAME } from "../../../lib/auth";
 
-// GET /api/data/daily-tracking?country=py
+// GET /api/data/daily-tracking?country=py&mes=abril
 export async function GET(req: NextRequest) {
   const country = req.nextUrl.searchParams.get("country") || "py";
+  const mes = req.nextUrl.searchParams.get("mes") || "abril";
   const { data, error } = await getSupabase()
     .from("daily_tracking")
     .select("fecha, ordenes, dia_semana")
     .eq("country", country)
+    .eq("mes", mes)
     .order("fecha");
 
   if (error) {
@@ -30,7 +32,8 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: `Token invalido o expirado: ${e?.message || e}. Hace logout y login de nuevo.` }, { status: 401 });
     }
 
-    const { country, fecha, ordenes, dia_semana } = await req.json();
+    const { country, mes, fecha, ordenes, dia_semana } = await req.json();
+    const mesValue = mes || "abril";
     if (!country || fecha === undefined || ordenes === undefined || !dia_semana) {
       return NextResponse.json({ error: "country, fecha, ordenes, dia_semana required" }, { status: 400 });
     }
@@ -38,7 +41,6 @@ export async function PUT(req: NextRequest) {
     const svcKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
     const activeKey = svcKey || anonKey;
-    // Decode JWT payload to check actual role
     let jwtRole = "unknown";
     try {
       const parts = activeKey.split(".");
@@ -51,12 +53,12 @@ export async function PUT(req: NextRequest) {
 
     const supabase = getSupabase();
 
-    // Delete existing row first, then insert
-    await supabase.from("daily_tracking").delete().eq("country", country).eq("fecha", fecha);
+    // Delete existing row first (matched by country+mes+fecha), then insert
+    await supabase.from("daily_tracking").delete().eq("country", country).eq("mes", mesValue).eq("fecha", fecha);
 
     const { error } = await supabase
       .from("daily_tracking")
-      .insert({ country, fecha, ordenes, dia_semana, updated_at: new Date().toISOString() });
+      .insert({ country, mes: mesValue, fecha, ordenes, dia_semana, updated_at: new Date().toISOString() });
 
     if (error) {
       console.error("[daily-tracking PUT]", error, "role:", jwtRole, "sameAsAnon:", sameKey);
@@ -71,8 +73,8 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// DELETE /api/data/daily-tracking?country=py&fecha=5 — delete a day
-// DELETE /api/data/daily-tracking?country=py — delete all days for country
+// DELETE /api/data/daily-tracking?country=py&mes=abril&fecha=5 — delete a specific day
+// DELETE /api/data/daily-tracking?country=py&mes=abril — delete all days of a month for country
 export async function DELETE(req: NextRequest) {
   try {
     const token = req.cookies.get(COOKIE_NAME)?.value;
@@ -84,10 +86,11 @@ export async function DELETE(req: NextRequest) {
     }
 
     const country = req.nextUrl.searchParams.get("country");
+    const mes = req.nextUrl.searchParams.get("mes") || "abril";
     const fechaStr = req.nextUrl.searchParams.get("fecha");
     if (!country) return NextResponse.json({ error: "country required" }, { status: 400 });
 
-    let q = getSupabase().from("daily_tracking").delete().eq("country", country);
+    let q = getSupabase().from("daily_tracking").delete().eq("country", country).eq("mes", mes);
     if (fechaStr) q = q.eq("fecha", parseInt(fechaStr));
 
     const { error } = await q;

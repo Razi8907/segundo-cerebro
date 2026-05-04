@@ -26,7 +26,7 @@ interface ProveedorData {
 }
 
 function getMesData(p: ProveedorData, mes: MesFilter) {
-  if (mes === "q1" || mes === "abril") {
+  if (mes === "q1" || mes === "abril" || mes === "mayo") {
     return { mov: p.total.mov, ent: p.total.ent, dev: p.total.dev, ing: p.total.ing };
   }
   const d = p[mes];
