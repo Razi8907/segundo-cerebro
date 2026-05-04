@@ -558,14 +558,27 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     };
   }, [rows]);
 
+  // Dedupe por guia: cada guía aparece varias veces (1 fila por upload diario).
+  // Nos quedamos solo con la versión más reciente (fecha_carga máxima).
+  const dedupedRows = useMemo(() => {
+    const guiaMap = new Map<string, typeof rows[0]>();
+    for (const r of rows) {
+      const existing = guiaMap.get(r.guia);
+      if (!existing || r.fecha_carga > existing.fecha_carga) {
+        guiaMap.set(r.guia, r);
+      }
+    }
+    return Array.from(guiaMap.values());
+  }, [rows]);
+
   const filteredRows = useMemo(() => {
-    let result = rows;
+    let result = dedupedRows;
     if (fComercial) result = result.filter((r) => r.comercial_asignado === fComercial);
     if (fTransportadora) result = result.filter((r) => r.transportadora === fTransportadora);
     if (fDropshipper) result = result.filter((r) => r.dropshipper === fDropshipper);
     if (fProveedor) result = result.filter((r) => r.proveedor_nombre === fProveedor);
     return result;
-  }, [rows, fComercial, fTransportadora, fDropshipper, fProveedor]);
+  }, [dedupedRows, fComercial, fTransportadora, fDropshipper, fProveedor]);
 
   const hasAnyFilter = fComercial || fTransportadora || fDropshipper || fProveedor;
   const clearFilters = () => { setFComercial(""); setFTransportadora(""); setFDropshipper(""); setFProveedor(""); };
@@ -898,7 +911,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         <div>
           <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"} · {MES_LABEL[mes]}</h2>
           <p className="text-xs t-secondary">
-            {rows.length.toLocaleString()} guias cargadas en {MES_LABEL[mes]} | Ultima carga: {latestFechaCarga} | {fechasCarga.length} dia(s) acumulados
+            {dedupedRows.length.toLocaleString()} guias únicas en {MES_LABEL[mes]} ({rows.length.toLocaleString()} filas históricas) | Ultima carga: {latestFechaCarga} | {fechasCarga.length} dia(s) acumulados
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
