@@ -142,6 +142,8 @@ export default function DailyTracker({
   const [trackingSuccess, setTrackingSuccess] = useState<string | null>(null);
   const [manualDays, setManualDays] = useState<Set<number>>(new Set());
   const [opsData, setOpsData] = useState<any>(null);
+  // Para Mayo: data real de Abril (mes de comparación) traída de daily_tracking
+  const [compMonthLive, setCompMonthLive] = useState<DailyData[] | null>(null);
 
   // Load from DB only (manual entries) — no auto-sync from operational data
   useEffect(() => {
@@ -161,6 +163,31 @@ export default function DailyTracker({
       .catch(() => { if (!cancelled) setDbLoaded(true); });
     return () => { cancelled = true; };
   }, [country, ACTIVE_MES_KEY]);
+
+  // En Mayo, traer la data real de Abril desde daily_tracking para que las
+  // referencias "Abril 2026" y "Patrón por Día de Semana (Abril)" tengan
+  // los 30 días reales en lugar del fallback estático del JSON.
+  useEffect(() => {
+    if (!isMayo) {
+      setCompMonthLive(null);
+      return;
+    }
+    let cancelled = false;
+    fetch(`/api/data/daily-tracking?country=${country}&mes=abril`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled) return;
+        if (Array.isArray(res.days) && res.days.length > 0) setCompMonthLive(res.days);
+        else setCompMonthLive([]);
+      })
+      .catch(() => { if (!cancelled) setCompMonthLive([]); });
+    return () => { cancelled = true; };
+  }, [isMayo, country]);
+
+  // Data efectiva para la comparación (Marzo en Abril, Abril en Mayo)
+  const effectiveCompData: DailyData[] = isMayo && compMonthLive && compMonthLive.length > 0
+    ? compMonthLive
+    : marzoData;
 
   // Persist to localStorage (backup)
   useEffect(() => {
@@ -228,9 +255,9 @@ export default function DailyTracker({
   }, [country, ACTIVE_MES_KEY]);
 
   const analysis = useMemo(() => {
-    // Marzo analysis
+    // Comparison-month analysis (Marzo en Abril, Abril en Mayo)
     const marzoByDow: Record<string, number[]> = {};
-    marzoData.forEach((d) => {
+    effectiveCompData.forEach((d) => {
       if (!marzoByDow[d.dia_semana]) marzoByDow[d.dia_semana] = [];
       marzoByDow[d.dia_semana].push(d.ordenes);
     });
@@ -335,9 +362,9 @@ export default function DailyTracker({
     });
 
     // Comp month vs Active month comparison (day by day) + projection
-    const marzoTotal = marzoData.reduce((s, d) => s + d.ordenes, 0);
+    const marzoTotal = effectiveCompData.reduce((s, d) => s + d.ordenes, 0);
     const marzoByDay = new Map<number, number>();
-    marzoData.forEach((d) => marzoByDay.set(d.fecha, d.ordenes));
+    effectiveCompData.forEach((d) => marzoByDay.set(d.fecha, d.ordenes));
     const maxDays = Math.max(COMP_DAYS, TOTAL_DAYS);
 
     const comparisonData: { dia: number; marzo: number | null; abril: number | null; proyAbril: number | null; necesarioParaSuperarMarzo: number | null }[] = [];
@@ -415,11 +442,11 @@ export default function DailyTracker({
       necesarioParaSuperarMarzo,
       crecimientoVsMarzo: marzoFinalTotal > 0 ? ((proyeccionFinal - marzoFinalTotal) / marzoFinalTotal * 100) : 0,
     };
-  }, [marzoData, abrilData, META_DIARIA, META_TOTAL, metaInfo]);
+  }, [effectiveCompData, abrilData, META_DIARIA, META_TOTAL, metaInfo, TOTAL_DAYS, COMP_DAYS, COMP_PROMEDIO_REF, META_MOV_ACTIVE, DIAS_SEMANA_ACTIVE]);
 
   const colorMap = { verde: "#10B981", amarillo: "#F59E0B", rojo: "#EF4444" };
 
-  const marzoChartData = marzoData.map((d) => ({
+  const marzoChartData = effectiveCompData.map((d) => ({
     name: `${d.fecha}`,
     Órdenes: d.ordenes,
     dia: d.dia_semana,
