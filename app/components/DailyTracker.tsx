@@ -960,7 +960,7 @@ export default function DailyTracker({
       {analysis.diasCargados > 0 && (
         <div className="mb-6 p-4 rounded-xl border border-emerald-500/20" style={{ background: "rgba(16,185,129,0.03)" }}>
           <h3 className="text-sm font-bold mb-1" style={{ color: "var(--text-primary)" }}>
-            📊 Marzo vs Abril — Comparación y Proyección de Crecimiento
+            📊 {COMP_LABEL} vs {ACTIVE_LABEL} — Comparación y Proyección de Crecimiento
           </h3>
           <p className="text-[10px] mb-4" style={{ color: "var(--text-secondary)" }}>
             Acumulado diario: {COMP_LABEL} (real) vs {ACTIVE_LABEL} (real + proyección). El país siempre tiene que crecer vs mes anterior.
