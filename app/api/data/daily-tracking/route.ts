@@ -3,22 +3,44 @@ import { getSupabase } from "../../../lib/supabase";
 import { verifyToken, COOKIE_NAME } from "../../../lib/auth";
 
 // GET /api/data/daily-tracking?country=py&mes=abril
+// Resiliente: si la columna `mes` no existe (migración pendiente),
+// para abril cae al SELECT sin filtro; para mayo devuelve vacío.
 export async function GET(req: NextRequest) {
   const country = req.nextUrl.searchParams.get("country") || "py";
   const mes = req.nextUrl.searchParams.get("mes") || "abril";
-  const { data, error } = await getSupabase()
+  const supabase = getSupabase();
+
+  // Intento con filtro de mes
+  const filtered = await supabase
     .from("daily_tracking")
     .select("fecha, ordenes, dia_semana")
     .eq("country", country)
     .eq("mes", mes)
     .order("fecha");
 
-  if (error) {
-    console.error("[daily-tracking GET] Supabase error:", error);
-    // Table may not exist yet — return empty instead of failing
+  if (!filtered.error) {
+    return NextResponse.json({ days: filtered.data || [] });
+  }
+
+  // Si el error es por columna inexistente (migración pendiente):
+  const msg = String(filtered.error.message || "").toLowerCase();
+  const columnMissing = msg.includes("column") && msg.includes("mes");
+  if (columnMissing && mes === "abril") {
+    // Legacy: toda la data existente es de abril
+    const legacy = await supabase
+      .from("daily_tracking")
+      .select("fecha, ordenes, dia_semana")
+      .eq("country", country)
+      .order("fecha");
+    if (!legacy.error) return NextResponse.json({ days: legacy.data || [] });
+  }
+  if (columnMissing && mes !== "abril") {
+    // Pre-migración no hay forma de tener data de mayo
     return NextResponse.json({ days: [] });
   }
-  return NextResponse.json({ days: data || [] });
+
+  console.error("[daily-tracking GET] Supabase error:", filtered.error);
+  return NextResponse.json({ days: [] });
 }
 
 // PUT /api/data/daily-tracking — upsert a single day
@@ -54,11 +76,24 @@ export async function PUT(req: NextRequest) {
     const supabase = getSupabase();
 
     // Delete existing row first (matched by country+mes+fecha), then insert
-    await supabase.from("daily_tracking").delete().eq("country", country).eq("mes", mesValue).eq("fecha", fecha);
+    let delQ = supabase.from("daily_tracking").delete().eq("country", country).eq("fecha", fecha);
+    // Probar con mes; si falla por columna inexistente, hacer delete sin mes
+    let delErr: any = (await delQ.eq("mes", mesValue)).error;
+    let columnMissing = delErr && String(delErr.message || "").toLowerCase().includes("column") && String(delErr.message || "").toLowerCase().includes("mes");
+    if (columnMissing) {
+      // Solo se puede usar abril en pre-migración
+      if (mesValue !== "abril") {
+        return NextResponse.json({ error: "Migración pendiente: agregá la columna 'mes' antes de cargar mayo." }, { status: 503 });
+      }
+      delErr = (await supabase.from("daily_tracking").delete().eq("country", country).eq("fecha", fecha)).error;
+    }
+
+    let insertObj: any = { country, fecha, ordenes, dia_semana, updated_at: new Date().toISOString() };
+    if (!columnMissing) insertObj.mes = mesValue;
 
     const { error } = await supabase
       .from("daily_tracking")
-      .insert({ country, mes: mesValue, fecha, ordenes, dia_semana, updated_at: new Date().toISOString() });
+      .insert(insertObj);
 
     if (error) {
       console.error("[daily-tracking PUT]", error, "role:", jwtRole, "sameAsAnon:", sameKey);
@@ -90,10 +125,20 @@ export async function DELETE(req: NextRequest) {
     const fechaStr = req.nextUrl.searchParams.get("fecha");
     if (!country) return NextResponse.json({ error: "country required" }, { status: 400 });
 
-    let q = getSupabase().from("daily_tracking").delete().eq("country", country).eq("mes", mes);
-    if (fechaStr) q = q.eq("fecha", parseInt(fechaStr));
-
-    const { error } = await q;
+    const supabase = getSupabase();
+    // Intento con filtro de mes
+    let q = supabase.from("daily_tracking").delete().eq("country", country);
+    let withMes = q.eq("mes", mes);
+    if (fechaStr) withMes = withMes.eq("fecha", parseInt(fechaStr));
+    let { error } = await withMes;
+    const msg = String(error?.message || "").toLowerCase();
+    const columnMissing = error && msg.includes("column") && msg.includes("mes");
+    if (columnMissing && mes === "abril") {
+      let fallback = supabase.from("daily_tracking").delete().eq("country", country);
+      if (fechaStr) fallback = fallback.eq("fecha", parseInt(fechaStr));
+      const r2 = await fallback;
+      error = r2.error;
+    }
     if (error) {
       console.error("[daily-tracking DELETE] Supabase error:", error);
       return NextResponse.json({ error: `DB error: ${error.message}` }, { status: 500 });
