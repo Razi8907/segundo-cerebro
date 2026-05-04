@@ -20,6 +20,7 @@ import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboard from "../components/FinanzasDashboard";
+import FinanzasDashboardPY_Q1 from "../components/FinanzasDashboardPY_Q1";
 import SeguimientoComercial from "../components/SeguimientoComercial";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
@@ -244,7 +245,10 @@ export default function ParaguayDashboard() {
         )}
 
         {sector === "finanzas" && (
-          <FinanzasDashboard country="py" />
+          <div className="space-y-8">
+            <FinanzasDashboardPY_Q1 />
+            <FinanzasDashboard country="py" />
+          </div>
         )}
 
         {sector === "seguimiento" && (
