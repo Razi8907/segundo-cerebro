@@ -162,6 +162,20 @@ export default function ArgentinaDashboard() {
           </span>
         </div>
 
+        {isAbril && (
+          <div className="rounded-xl p-5 text-center border" style={{
+            background: "linear-gradient(135deg, rgba(16,185,129,0.15), rgba(116,172,223,0.15))",
+            borderColor: "rgba(16,185,129,0.4)",
+          }}>
+            <p className="text-base sm:text-lg font-bold" style={{ color: "var(--text-primary)" }}>
+              🎉 Felicidades, llegamos al objetivo equipo!
+            </p>
+            <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
+              A romperla también en Mayo 🚀
+            </p>
+          </div>
+        )}
+
         {/* KPI Cards */}
         <KPICards
           ingresadas={kpis.ingresadas}
