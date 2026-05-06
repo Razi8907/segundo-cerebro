@@ -1101,9 +1101,10 @@ export default function DailyTracker({
             {["Lun", "Mar", "Mie", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
               <div key={d} className="text-center text-[9px] font-medium py-1" style={{ color: "var(--text-muted)" }}>{d}</div>
             ))}
-            {/* April 2026 starts on Wednesday (offset 2) */}
-            {Array.from({ length: 2 }).map((_, i) => <div key={`empty-${i}`} />)}
-            {Array.from({ length: 30 }).map((_, i) => {
+            {/* Offset según día de la semana del día 1 del mes activo
+                Abril 2026 = miércoles (offset 2), Mayo 2026 = viernes (offset 4) */}
+            {Array.from({ length: isMayo ? 4 : 2 }).map((_, i) => <div key={`empty-${i}`} />)}
+            {Array.from({ length: TOTAL_DAYS }).map((_, i) => {
               const dia = i + 1;
               const abrilDay = abrilData.find((d) => d.fecha === dia);
               const marzoDay = analysis.comparisonData.find((d) => d.dia === dia);
@@ -1128,7 +1129,7 @@ export default function DailyTracker({
 
               return (
                 <div key={dia} className="relative rounded-lg p-1 text-center cursor-default" style={{ background: bg, minHeight: "48px" }}
-                  title={isLoaded ? `Día ${dia}: ${abrilVal.toLocaleString()} (Marzo: ${marzoVal.toLocaleString()}) ${abrilVal >= marzoVal ? "✓ Superó" : "✗ Bajo"}` : isProjected ? `Día ${dia}: Proyección ${proyVal.toLocaleString()}` : `Día ${dia}: Sin datos`}>
+                  title={isLoaded ? `Día ${dia}: ${abrilVal.toLocaleString()} (${COMP_LABEL}: ${marzoVal.toLocaleString()}) ${abrilVal >= marzoVal ? "✓ Superó" : "✗ Bajo"}` : isProjected ? `Día ${dia}: Proyección ${proyVal.toLocaleString()}` : `Día ${dia}: Sin datos`}>
                   <p className="text-[9px] font-bold" style={{ color: textCol }}>{dia}</p>
                   <p className="text-[11px] font-bold" style={{ color: textCol }}>
                     {isLoaded ? abrilVal.toLocaleString() : isProjected ? `~${proyVal.toLocaleString()}` : "—"}
