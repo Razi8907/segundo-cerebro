@@ -1147,7 +1147,20 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
       {aggData.by_ds_daily.length > 0 && (() => {
         // Build DS daily data with trend detection
         const dsNames = Array.from(new Set(aggData.by_ds_daily.map((d) => d.ds)));
-        const fechas = Array.from(new Set(aggData.by_ds_daily.map((d) => d.fecha))).sort();
+        // Filtrar fechas solo del mes activo (formato esperado DD-MM-YYYY o YYYY-MM-DD)
+        const mesNum = mes === "mayo" ? "05" : "04";
+        const belongsToMes = (f: string) => {
+          // DD-MM-YYYY → middle is MM
+          const m1 = /^\d{2}-(\d{2})-\d{4}$/.exec(f);
+          if (m1) return m1[1] === mesNum;
+          // YYYY-MM-DD → middle is MM
+          const m2 = /^\d{4}-(\d{2})-\d{2}$/.exec(f);
+          if (m2) return m2[1] === mesNum;
+          return true; // fallback: si formato desconocido, no filtrar
+        };
+        const fechas = Array.from(new Set(aggData.by_ds_daily.map((d) => d.fecha)))
+          .filter(belongsToMes)
+          .sort();
 
         // Per DS: daily orders + trend
         const dsAnalysis = dsNames.map((ds) => {
@@ -1213,7 +1226,7 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
                     <th className="text-right py-2 px-2 text-gray-400">Prom/día</th>
                     <th className="text-right py-2 px-2 text-gray-400">Tendencia</th>
                     {fechas.map((f) => (
-                      <th key={f} className="text-right py-2 px-2 text-gray-400 whitespace-nowrap">{f.replace(/-2026$/, "").replace(/-04-/, "/")}</th>
+                      <th key={f} className="text-right py-2 px-2 text-gray-400 whitespace-nowrap">{f.replace(/-2026$/, "").replace(/-0\d-/, "/")}</th>
                     ))}
                   </tr>
                 </thead>
