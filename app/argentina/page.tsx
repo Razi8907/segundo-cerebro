@@ -222,7 +222,7 @@ export default function ArgentinaDashboard() {
                   country="ar"
                 />
                 <OperationalUpload country="ar" mes={isMayo ? "mayo" : "abril"} />
-                <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
+                <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} mesFilter={mesFilter} country="ar" />
                 <ProductGoalPlanner proveedores={proveedores} />
               </>
             )}

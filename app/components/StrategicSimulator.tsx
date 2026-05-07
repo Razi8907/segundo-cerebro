@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -13,6 +13,21 @@ import {
   ReferenceLine,
 } from "recharts";
 import ChartDownloadBtn from "./ChartDownloadBtn";
+import type { MesFilter } from "../types";
+
+// Estados que NO cuentan como movilizadas (siguen en posesión del dropshipper/proveedor)
+const NO_MOVILIZADO_STATES = new Set([
+  "PENDIENTE", "PENDIENTE CONFIRMACION", "GUIA_GENERADA",
+  "PREPARADO PARA TRANSPORTADORA", "CANCELADO", "RECHAZADO",
+  "GUIA ANULADA", "CANCELADO POR TRANSPORTADORA",
+]);
+
+const normalizeName = (s: string) => (s || "")
+  .toLowerCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "") // strip accents
+  .replace(/\s*\(\d+\)\s*$/, "") // strip "(12345)" id suffix
+  .replace(/[^a-z0-9]/g, ""); // strip non-alphanumerics
+
 
 interface ProveedorData {
   proveedor: string;
@@ -35,6 +50,8 @@ interface Resumen {
 interface MetaInfo {
   meta_movilizadas_abril: number;
   meta_ingresadas_abril: number;
+  meta_movilizadas_mayo?: number;
+  meta_ingresadas_mayo?: number;
   tasa_movilizacion: number;
   [key: string]: any;
 }
@@ -43,38 +60,103 @@ export default function StrategicSimulator({
   proveedores,
   resumen,
   metaInfo,
+  mesFilter = "abril",
+  country = "py",
 }: {
   proveedores: ProveedorData[];
   resumen: Resumen;
   metaInfo?: MetaInfo;
+  mesFilter?: MesFilter;
+  country?: "ar" | "py";
 }) {
   const [showAll, setShowAll] = useState(false);
+  const isMayo = mesFilter === "mayo";
 
-  const GOAL_MOVILIZADAS = metaInfo?.meta_movilizadas_abril ?? 40000;
+  // Etiquetas dinámicas según el mes target
+  const TARGET_LABEL = isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isMayo ? "Abril" : "Marzo";
+
+  const GOAL_MOVILIZADAS = isMayo
+    ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
+    : (metaInfo?.meta_movilizadas_abril ?? 40000);
   const TASA_MOVILIZACION = metaInfo?.tasa_movilizacion ?? 0.78;
-  const GOAL_INGRESADAS = metaInfo?.meta_ingresadas_abril ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION);
+  const GOAL_INGRESADAS = isMayo
+    ? (metaInfo?.meta_ingresadas_mayo ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
+    : (metaInfo?.meta_ingresadas_abril ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION));
+
+  // En Mayo: cargar data real de Abril desde operational_snapshots para usarla
+  // como base de proyección por proveedor.
+  const [abrilByProv, setAbrilByProv] = useState<Map<string, { mov: number; ent: number; dev: number; total: number }>>(new Map());
+  useEffect(() => {
+    if (!isMayo) return;
+    let cancelled = false;
+    fetch(`/api/data/operational?country=${country}&mes=abril`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled) return;
+        const byProv = res.data?.by_proveedor;
+        if (!Array.isArray(byProv)) return;
+        const map = new Map<string, { mov: number; ent: number; dev: number; total: number }>();
+        for (const p of byProv) {
+          const estados = p.estados || {};
+          let noMov = 0;
+          for (const k of Object.keys(estados)) {
+            if (NO_MOVILIZADO_STATES.has(k)) noMov += estados[k] || 0;
+          }
+          const mov = (p.total || 0) - noMov;
+          const ent = estados["ENTREGADO"] || 0;
+          const dev = (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
+          map.set(normalizeName(p.nombre), { mov, ent, dev, total: p.total || 0 });
+        }
+        setAbrilByProv(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isMayo, country]);
 
   const analysis = useMemo(() => {
-    const marzoMov = resumen.marzo.movilizadas;
-    const gap = GOAL_MOVILIZADAS - marzoMov;
-    const gapPct = marzoMov > 0 ? ((gap / marzoMov) * 100).toFixed(1) : "0";
+    // Base "comp" según mes target. Si es Mayo, usamos abril; si es Abril, marzo.
+    const compTotalGlobal = isMayo
+      ? (() => {
+          let sum = 0;
+          abrilByProv.forEach((v) => { sum += v.mov; });
+          return sum;
+        })()
+      : resumen.marzo.movilizadas;
+    const gap = GOAL_MOVILIZADAS - compTotalGlobal;
+    const gapPct = compTotalGlobal > 0 ? ((gap / compTotalGlobal) * 100).toFixed(1) : "0";
 
     // Dynamic volume scale based on country size
     const activeProvs = proveedores.filter((p) => p.total.mov > 0);
     const totalAvgMov = activeProvs.reduce((s, p) => s + p.total.mov / 3, 0);
     const volumeScale = activeProvs.length > 0 ? (totalAvgMov / activeProvs.length) * 3 : 2000;
 
-    // Total March movilizadas across all providers
-    const totalMarzoMov = activeProvs.reduce((s, p) => s + (p.marzo.mov || 0), 0);
+    // Total share base movilizadas across all providers (abril si isMayo, marzo si isAbril)
+    const totalCompMov = isMayo
+      ? compTotalGlobal
+      : activeProvs.reduce((s, p) => s + (p.marzo.mov || 0), 0);
 
     const scored = activeProvs
       .map((p) => {
-        const marMov = p.marzo.mov || 0;
+        // marMov = movilizadas del mes de comparación
+        // En Mayo: traer del abrilByProv mediante normalización del nombre
+        const abrilEntry = isMayo ? abrilByProv.get(normalizeName(p.proveedor)) : null;
+        const marMov = isMayo
+          ? (abrilEntry?.mov ?? p.marzo.mov ?? 0)  // si no encuentra abril, fallback a marzo
+          : (p.marzo.mov || 0);
         const eneMov = p.enero.mov || 0;
         const avgMov = p.total.mov / 3;
-        const trend = marMov > 0 && eneMov > 0 ? (marMov - eneMov) / eneMov : 0;
-        const pctDev = p.total.dev / p.total.mov;
-        const pctEnt = p.total.ent / p.total.mov;
+        // Tendencia: en Abril compara marzo vs enero; en Mayo, abril vs marzo (si tenemos abril real)
+        const trend = isMayo
+          ? (abrilEntry && p.marzo.mov && p.marzo.mov > 0 ? (abrilEntry.mov - p.marzo.mov) / p.marzo.mov : 0)
+          : (marMov > 0 && eneMov > 0 ? (marMov - eneMov) / eneMov : 0);
+        // % entrega/dev: en Mayo usar abril si tenemos data, si no Q1
+        const pctDev = isMayo && abrilEntry && abrilEntry.mov > 0
+          ? abrilEntry.dev / abrilEntry.mov
+          : p.total.dev / p.total.mov;
+        const pctEnt = isMayo && abrilEntry && abrilEntry.mov > 0
+          ? abrilEntry.ent / abrilEntry.mov
+          : p.total.ent / p.total.mov;
 
         // Score: volume (40%) + trend (30%) + low dev (20%) + high delivery (10%)
         const volumeScore = Math.min(avgMov / volumeScale, 1) * 40;
@@ -84,12 +166,11 @@ export default function StrategicSimulator({
         const totalScore = volumeScore + trendScore + devScore + entScore;
 
         // Goal-based projection: distribute GOAL_MOVILIZADAS proportionally
-        // based on each provider's March share
-        const share = totalMarzoMov > 0 ? marMov / totalMarzoMov : 0;
+        // based on each provider's comp month share
+        const share = totalCompMov > 0 ? marMov / totalCompMov : 0;
         const baseTarget = Math.round(GOAL_MOVILIZADAS * share);
 
-        // Providers with strong growth trend (>100%) get up to 50% extra over March
-        // Others get their proportional share of the goal
+        // Providers with strong growth trend (>100%) get up to 50% extra over comp month
         const cappedGrowth = trend > 1 ? 0.50 : Math.min(Math.max(trend * 0.5, 0), 0.30);
         const trendProjection = Math.round(marMov * (1 + cappedGrowth));
 
@@ -127,7 +208,7 @@ export default function StrategicSimulator({
     const additionalNeeded = Math.max(0, GOAL_MOVILIZADAS - projectedTotal);
 
     return {
-      marzoMov,
+      marzoMov: compTotalGlobal,
       gap,
       gapPct,
       scored,
@@ -138,12 +219,12 @@ export default function StrategicSimulator({
       projectedTotal,
       additionalNeeded,
     };
-  }, [proveedores, resumen, GOAL_MOVILIZADAS]);
+  }, [proveedores, resumen, GOAL_MOVILIZADAS, isMayo, abrilByProv]);
 
   const chartData = analysis.scored.slice(0, 20).map((p) => ({
     name: p.proveedor.length > 15 ? p.proveedor.slice(0, 15) + "…" : p.proveedor,
-    "Marzo Real": p.marMov,
-    "Proy. Abril": p.projectedAbril,
+    [`${COMP_LABEL} Real`]: p.marMov,
+    [`Proy. ${TARGET_LABEL}`]: p.projectedAbril,
     score: p.score,
     category: p.category,
   }));
@@ -169,7 +250,7 @@ export default function StrategicSimulator({
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            🎯 Plan Estratégico: {GOAL_MOVILIZADAS.toLocaleString()} Movilizadas en Abril
+            🎯 Plan Estratégico: {GOAL_MOVILIZADAS.toLocaleString()} Movilizadas en {TARGET_LABEL}
           </h2>
           <p className="text-xs text-gray-400 mt-1">
             Se necesitan {GOAL_INGRESADAS.toLocaleString()} órdenes ingresadas ({Math.round(TASA_MOVILIZACION * 100)}% tasa de movilización)
@@ -179,7 +260,7 @@ export default function StrategicSimulator({
         {/* Gap indicator */}
         <div className="flex gap-3">
           <div className="text-center px-4 py-2 rounded-xl bg-orange-500/10 border border-orange-500/20">
-            <p className="text-[10px] text-gray-400 uppercase">Marzo actual</p>
+            <p className="text-[10px] text-gray-400 uppercase">{COMP_LABEL} {isMayo ? "real" : "actual"}</p>
             <p className="text-lg font-bold text-orange-400">{analysis.marzoMov.toLocaleString()}</p>
           </div>
           <div className="text-center px-4 py-2 rounded-xl bg-red-500/10 border border-red-500/20">
@@ -223,7 +304,7 @@ export default function StrategicSimulator({
 
       {/* Chart: Top 20 providers projected */}
       <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">Top 20 Proveedores: Marzo vs Proyección Abril</h3>
+        <h3 className="text-sm font-medium text-gray-300 mb-3">Top 20 Proveedores: {COMP_LABEL} vs Proyección {TARGET_LABEL}</h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartData} layout="vertical" margin={{ left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
@@ -242,8 +323,8 @@ export default function StrategicSimulator({
               formatter={(value) => Number(value).toLocaleString()}
             />
             <ReferenceLine x={analysis.scored.length > 0 ? Math.round(GOAL_MOVILIZADAS / analysis.scored.length) : 0} stroke="#10B981" strokeDasharray="3 3" label={{ value: "Meta promedio", fill: "#10B981", fontSize: 10 }} />
-            <Bar dataKey="Marzo Real" fill="#6B7280" radius={[0, 4, 4, 0]} barSize={10} />
-            <Bar dataKey="Proy. Abril" radius={[0, 4, 4, 0]} barSize={10}>
+            <Bar dataKey={`${COMP_LABEL} Real`} fill="#6B7280" radius={[0, 4, 4, 0]} barSize={10} />
+            <Bar dataKey={`Proy. ${TARGET_LABEL}`} radius={[0, 4, 4, 0]} barSize={10}>
               {chartData.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={categoryColors[entry.category]} />
               ))}
@@ -273,12 +354,12 @@ export default function StrategicSimulator({
                 <th className="text-left py-2 px-2 text-gray-400">Proveedor</th>
                 <th className="text-right py-2 px-2 text-gray-400">Sellers</th>
                 <th className="text-right py-2 px-2 text-gray-400">Prom. Mov/Mes</th>
-                <th className="text-right py-2 px-2 text-gray-400">Marzo Mov</th>
+                <th className="text-right py-2 px-2 text-gray-400">{COMP_LABEL} Mov</th>
                 <th className="text-right py-2 px-2 text-gray-400">Tendencia</th>
                 <th className="text-right py-2 px-2 text-gray-400">% Entrega</th>
                 <th className="text-right py-2 px-2 text-gray-400">% Dev</th>
                 <th className="text-right py-2 px-2 text-gray-400">Score</th>
-                <th className="text-right py-2 px-2 text-gray-400">Proy. Abril</th>
+                <th className="text-right py-2 px-2 text-gray-400">Proy. {TARGET_LABEL}</th>
                 <th className="text-left py-2 px-2 text-gray-400">Acción</th>
               </tr>
             </thead>
@@ -347,14 +428,17 @@ export default function StrategicSimulator({
 
       {/* Bottom insight */}
       <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
-        <h3 className="text-sm font-bold text-orange-400 mb-2">💡 Resumen Estratégico para Abril</h3>
+        <h3 className="text-sm font-bold text-orange-400 mb-2">💡 Resumen Estratégico para {TARGET_LABEL}</h3>
         <ul className="text-xs text-gray-300 space-y-1.5">
           <li>• <strong>Meta:</strong> {GOAL_MOVILIZADAS.toLocaleString()} movilizadas = ~{GOAL_INGRESADAS.toLocaleString()} ingresadas ({Math.round(TASA_MOVILIZACION * 100)}% tasa movilización)</li>
-          <li>• <strong>Gap actual:</strong> Marzo cerró en {analysis.marzoMov.toLocaleString()} → necesitamos +{analysis.gap.toLocaleString()} ({analysis.gapPct}% más)</li>
+          <li>• <strong>Gap actual:</strong> {COMP_LABEL} cerró en {analysis.marzoMov.toLocaleString()} → necesitamos +{analysis.gap.toLocaleString()} ({analysis.gapPct}% más)</li>
           <li>• <strong>Por tendencia:</strong> Se proyectan {analysis.projectedTotal.toLocaleString()} movilizadas {analysis.projectedTotal >= GOAL_MOVILIZADAS ? "(✅ se alcanza la meta)" : `(❌ faltan ${(GOAL_MOVILIZADAS - analysis.projectedTotal).toLocaleString()} adicionales)`}</li>
           <li>• <strong>Top {analysis.estrellas.length} proveedores estrella</strong> aportan {analysis.estrellas.reduce((s, p) => s + p.projectedAbril, 0).toLocaleString()} mov. proyectadas → escalar sellers activos y reclutar nuevos</li>
           <li>• <strong>{analysis.potenciales.length} proveedores de alto potencial</strong> con tendencia positiva → impulsar con campañas y mayor exposición</li>
           <li>• <strong>Reducir devoluciones</strong> en proveedores con &gt;30% dev. liberaría ~{Math.round(analysis.revisar.reduce((s, p) => s + p.marMov * p.pctDev / 100 * 0.5, 0)).toLocaleString()} órdenes efectivas adicionales</li>
+          {isMayo && abrilByProv.size > 0 && (
+            <li>• <strong>Base real Abril:</strong> {abrilByProv.size} proveedores con datos reales del archivo operacional. Para los que no tengan match, se usa marzo como fallback.</li>
+          )}
         </ul>
       </div>
     </div>

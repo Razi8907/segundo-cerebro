@@ -222,7 +222,7 @@ export default function ParaguayDashboard() {
                   country="py"
                 />
                 <OperationalUpload country="py" mes={isMayo ? "mayo" : "abril"} />
-                <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
+                <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} mesFilter={mesFilter} country="py" />
                 <ProductGoalPlanner proveedores={proveedores} />
               </>
             )}
