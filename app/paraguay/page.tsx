@@ -57,6 +57,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
 }
 
 type Sector = "comercial" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
+type ComercialSub = "general" | "dropshippers" | "proveedores";
 
 export default function ParaguayDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
@@ -78,6 +79,7 @@ export default function ParaguayDashboard() {
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
   const isPlanning = isAbril || isMayo;
+  const [comercialSub, setComercialSub] = useState<ComercialSub>("general");
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
@@ -188,19 +190,54 @@ export default function ParaguayDashboard() {
         {/* Show planning content when Abril o Mayo está seleccionado */}
         {isPlanning ? (
           <>
-            <DailyTracker
-              marzoData={isMayo ? (seguimiento_abril || []) : seguimiento_diario}
-              metaInfo={meta_info}
-              abrilRealData={isMayo ? (seguimiento_mayo || []) : seguimiento_abril}
-              mesFilter={mesFilter}
-              resumen={resumen}
-              country="py"
-            />
-            <OperationalUpload country="py" mes={isMayo ? "mayo" : "abril"} />
-            <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
-            <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
-            <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
-            <ProductGoalPlanner proveedores={proveedores} />
+            {/* Sub-nav: General / Dropshippers / Proveedores */}
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: "general" as ComercialSub, label: "📊 General" },
+                { key: "dropshippers" as ComercialSub, label: "👥 Dropshippers" },
+                { key: "proveedores" as ComercialSub, label: "📦 Proveedores" },
+              ]).map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setComercialSub(s.key)}
+                  className={`text-xs px-4 py-2 rounded-full border transition-all ${
+                    comercialSub === s.key
+                      ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
+                      : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {comercialSub === "general" && (
+              <>
+                <DailyTracker
+                  marzoData={isMayo ? (seguimiento_abril || []) : seguimiento_diario}
+                  metaInfo={meta_info}
+                  abrilRealData={isMayo ? (seguimiento_mayo || []) : seguimiento_abril}
+                  mesFilter={mesFilter}
+                  resumen={resumen}
+                  country="py"
+                />
+                <OperationalUpload country="py" mes={isMayo ? "mayo" : "abril"} />
+                <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} />
+                <ProductGoalPlanner proveedores={proveedores} />
+              </>
+            )}
+
+            {comercialSub === "dropshippers" && (
+              <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
+            )}
+
+            {comercialSub === "proveedores" && (
+              <>
+                <ProveedoresRanking proveedores={proveedores} mesFilter={mesFilter} />
+                <ProveedoresTable proveedores={proveedores} mesFilter={mesFilter} />
+                <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
+              </>
+            )}
           </>
         ) : (
           <>
