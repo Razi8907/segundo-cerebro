@@ -271,15 +271,29 @@ function StockProjection({ country, aggData, mesLabel = "abril" }: { country: st
   const projections = useMemo(() => {
     if (!paretoProducts.length) return [];
     return paretoProducts.map((prod) => {
-      const stock = stockData.find((s) => s.product_name === prod.nombre || s.product_id === prod.productoId);
+      // Match: 1) por product_id si existe en ambos; 2) por nombre.
+      // Si hay varias coincidencias por nombre (filas duplicadas históricas),
+      // preferimos la del product_id que coincide con el de la operación,
+      // si no, la de stock_actual mayor.
+      const matchesById = prod.productoId
+        ? stockData.filter((s) => String(s.product_id) === String(prod.productoId))
+        : [];
+      const matchesByName = stockData.filter((s) => s.product_name === prod.nombre);
+      const all = [...matchesById, ...matchesByName.filter((s) => !matchesById.includes(s))];
+      const stock = all[0];
       const stockActual = stock?.stock_actual ?? null;
       const demandaDiaria = diasCargados > 0 ? prod.cantidad / diasCargados : 0;
       const demandaRestante = Math.round(demandaDiaria * diasRestantes);
       const demandaTotal = Math.round(demandaDiaria * 30);
       const diasDeStock = stockActual !== null && demandaDiaria > 0 ? Math.round(stockActual / demandaDiaria) : null;
       const deficit = stockActual !== null ? Math.max(0, demandaRestante - stockActual) : null;
+      // Prioridad de product_id para el guardado:
+      // 1) el del stock guardado (mantiene continuidad si ya existe)
+      // 2) el productoId de la operación (real de Dropi)
+      // 3) un id estable derivado del nombre (evita timestamps que cambian)
+      const stableId = String(stock?.product_id || prod.productoId || `name:${prod.nombre}`);
       return {
-        product_id: prod.productoId || stock?.product_id || "", product_name: prod.nombre,
+        product_id: stableId, product_name: prod.nombre,
         proveedor: prod.proveedor || stock?.proveedor || "",
         stock_actual: stockActual, ordenes: prod.ordenes, unidades: prod.cantidad,
         demandaDiaria: Math.round(demandaDiaria), demandaRestante, demandaTotal,
@@ -377,8 +391,10 @@ function StockProjection({ country, aggData, mesLabel = "abril" }: { country: st
 
   function saveCurrent(p: any) {
     const num = Number(editVal);
-    if (p.hasStock) updateStock(p.product_id, num, p.product_name, p.proveedor || "");
-    else createStock(p.product_name, p.proveedor, num);
+    // PUT es upsert por (country, product_id) — sirve para crear y actualizar.
+    // El product_id es estable (productoId real, o name:<nombre> si Dropi no lo trae)
+    // y no cambia entre rerender y rerender, evitando filas huérfanas.
+    updateStock(p.product_id, num, p.product_name, p.proveedor || "");
   }
 
   if (!projections.length) return null;
