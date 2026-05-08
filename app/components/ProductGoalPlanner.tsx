@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -14,6 +14,7 @@ import {
   Pie,
 } from "recharts";
 import ChartDownloadBtn from "./ChartDownloadBtn";
+import type { MesFilter } from "../types";
 
 interface ProveedorData {
   proveedor: string;
@@ -33,11 +34,85 @@ const COLORS = [
   "#84CC16", "#D946EF", "#FB7185", "#22D3EE", "#A3E635",
 ];
 
-export default function ProductGoalPlanner({ proveedores }: { proveedores: ProveedorData[] }) {
+const NO_MOVILIZADO_STATES = new Set([
+  "PENDIENTE", "PENDIENTE CONFIRMACION", "GUIA_GENERADA",
+  "PREPARADO PARA TRANSPORTADORA", "CANCELADO", "RECHAZADO",
+  "GUIA ANULADA", "CANCELADO POR TRANSPORTADORA",
+]);
+
+const normalizeName = (s: string) => (s || "")
+  .toLowerCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/\s*\(\d+\)\s*$/, "")
+  .replace(/[^a-z0-9]/g, "");
+
+export default function ProductGoalPlanner({
+  proveedores,
+  mesFilter = "abril",
+  country = "py",
+}: {
+  proveedores: ProveedorData[];
+  mesFilter?: MesFilter;
+  country?: "ar" | "py";
+}) {
   const [tab, setTab] = useState<"plan" | "acciones">("plan");
+  const isMayo = mesFilter === "mayo";
+
+  // Etiquetas dinámicas
+  const TARGET = isMayo ? "Mayo" : "Abril";
+  const COMP = isMayo ? "Abril" : "Marzo";
+
+  // En Mayo: traer data real de Abril por proveedor desde operational_snapshots
+  const [abrilByProv, setAbrilByProv] = useState<Map<string, { nombre: string; mov: number; ing: number; ent: number; dev: number; total: number }>>(new Map());
+  useEffect(() => {
+    if (!isMayo) return;
+    let cancelled = false;
+    fetch(`/api/data/operational?country=${country}&mes=abril`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled) return;
+        const byProv = res.data?.by_proveedor;
+        if (!Array.isArray(byProv)) return;
+        const map = new Map<string, { nombre: string; mov: number; ing: number; ent: number; dev: number; total: number }>();
+        for (const p of byProv) {
+          const estados = p.estados || {};
+          let noMov = 0;
+          for (const k of Object.keys(estados)) {
+            if (NO_MOVILIZADO_STATES.has(k)) noMov += estados[k] || 0;
+          }
+          const total = p.total || 0;
+          const mov = total - noMov;
+          const ent = estados["ENTREGADO"] || 0;
+          const dev = (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
+          map.set(normalizeName(p.nombre), { nombre: p.nombre, mov, ing: total, ent, dev, total });
+        }
+        setAbrilByProv(map);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [isMayo, country]);
 
   const analysis = useMemo(() => {
-    const prepared = proveedores
+    // En Mayo: armamos lista combinada (Q1 + nuevos de Abril)
+    const baseProveedores: ProveedorData[] = [...proveedores];
+    if (isMayo && abrilByProv.size > 0) {
+      const q1Keys = new Set(proveedores.map((p) => normalizeName(p.proveedor)));
+      abrilByProv.forEach((entry, key) => {
+        if (q1Keys.has(key)) return;
+        // Provider que aparece en Abril pero no en Q1 → lo agregamos con Q1 vacío
+        baseProveedores.push({
+          proveedor: entry.nombre,
+          sellers: 0,
+          enero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+          febrero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+          marzo: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+          total: { ing: 0, mov: 0, ent: 0, dev: 0 },
+          growth_pct: null,
+        });
+      });
+    }
+
+    const prepared = baseProveedores
       .map((p) => {
         const eneMov = p.enero.mov || 0;
         const febMov = p.febrero.mov || 0;
@@ -45,46 +120,79 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
         const eneIng = p.enero.ing || 0;
         const febIng = p.febrero.ing || 0;
         const marIng = p.marzo.ing || 0;
+
+        // Datos de Abril (si isMayo)
+        const abr = isMayo ? abrilByProv.get(normalizeName(p.proveedor)) : null;
+        const abrMov = abr?.mov ?? 0;
+        const abrIng = abr?.ing ?? 0;
+        const abrEnt = abr?.ent ?? 0;
+        const abrDev = abr?.dev ?? 0;
+
+        // Base = mes de comparación (Marzo en abril-tab, Abril en mayo-tab)
+        const baseMov = isMayo ? abrMov : marMov;
+        const baseIng = isMayo ? abrIng : marIng;
+
         const q1Mov = p.total.mov;
         const q1Ing = p.total.ing;
         const avgMov = q1Mov / 3;
         const avgIng = q1Ing / 3;
 
-        // Monthly trend
-        const movValues = [eneMov, febMov, marMov].filter((v) => v > 0);
+        // Tendencia: en Abril usa Ene→Mar; en Mayo usa Mar→Abr
         let trend = 0;
-        if (movValues.length >= 2) {
-          trend = movValues[0] > 0 ? (movValues[movValues.length - 1] - movValues[0]) / movValues[0] : 0;
+        if (isMayo) {
+          if (marMov > 0 && abrMov > 0) {
+            trend = (abrMov - marMov) / marMov;
+          } else if (avgMov > 0 && abrMov > 0) {
+            trend = (abrMov - avgMov) / avgMov;
+          }
+        } else {
+          const movValues = [eneMov, febMov, marMov].filter((v) => v > 0);
+          if (movValues.length >= 2) {
+            trend = movValues[0] > 0 ? (movValues[movValues.length - 1] - movValues[0]) / movValues[0] : 0;
+          }
         }
 
-        const movRate = q1Ing > 0 ? q1Mov / q1Ing : 0;
-        const devRate = q1Mov > 0 ? p.total.dev / q1Mov : 0;
-        const entRate = q1Mov > 0 ? p.total.ent / q1Mov : 0;
+        // Tasas: en Mayo usa Abril; en Abril usa Q1
+        const movRate = isMayo
+          ? (abrIng > 0 ? abrMov / abrIng : 0)
+          : (q1Ing > 0 ? q1Mov / q1Ing : 0);
+        const devRate = isMayo
+          ? (abrMov > 0 ? abrDev / abrMov : 0)
+          : (q1Mov > 0 ? p.total.dev / q1Mov : 0);
+        const entRate = isMayo
+          ? (abrMov > 0 ? abrEnt / abrMov : 0)
+          : (q1Mov > 0 ? p.total.ent / q1Mov : 0);
 
-        // Realistic April projection: based on March + realistic growth cap
-        // Cap growth at 30% max over March for "realistic" projection
+        // Proyección realista: base + crecimiento orgánico cap +30%
         const realisticGrowth = Math.min(Math.max(trend * 0.4, 0), 0.30);
-        const projAbrilIng = Math.round(marIng * (1 + realisticGrowth));
-        const projAbrilMov = Math.round(marMov * (1 + realisticGrowth));
+        const projAbrilIng = Math.round(baseIng * (1 + realisticGrowth));
+        const projAbrilMov = Math.round(baseMov * (1 + realisticGrowth));
 
-        // Stretch target: what if we push harder (extra sellers, better conversion)
+        // Stretch: cap +50% si se empuja con sellers extra / mejor conversión
         const stretchGrowth = Math.min(Math.max(trend * 0.7, 0.05), 0.50);
-        const stretchAbrilIng = Math.round(marIng * (1 + stretchGrowth));
-        const stretchAbrilMov = Math.round(marMov * (1 + stretchGrowth));
+        const stretchAbrilIng = Math.round(baseIng * (1 + stretchGrowth));
+        const stretchAbrilMov = Math.round(baseMov * (1 + stretchGrowth));
+
+        // marMov / marIng se reusan para mostrar en UI (renombrados via labels)
+        const useMarMov = isMayo ? abrMov : marMov;
+        const useMarIng = isMayo ? abrIng : marIng;
 
         // What can actually help this provider grow
         const actions: string[] = [];
         if (devRate > 0.3) actions.push("Reducir devoluciones (actualmente " + Math.round(devRate * 100) + "%)");
-        if (trend < 0) actions.push("Reactivar: en caida " + Math.round(trend * 100) + "% Q1");
+        if (trend < 0) actions.push("Reactivar: en caida " + Math.round(trend * 100) + "%");
         if (p.sellers <= 3) actions.push("Reclutar mas sellers (solo tiene " + p.sellers + ")");
         if (p.sellers > 3 && trend > 0.1) actions.push("Escalar sellers activos (tendencia +" + Math.round(trend * 100) + "%)");
-        if (movRate < 0.7) actions.push("Mejorar tasa movilizacion (" + Math.round(movRate * 100) + "% actual)");
+        if (movRate < 0.7 && movRate > 0) actions.push("Mejorar tasa movilizacion (" + Math.round(movRate * 100) + "% actual)");
         if (entRate > 0.6 && devRate < 0.2) actions.push("Proveedor eficiente: ampliar catalogo");
         if (actions.length === 0) actions.push("Mantener ritmo actual");
 
         return {
           ...p,
-          eneMov, febMov, marMov, eneIng, febIng, marIng,
+          eneMov, febMov, eneIng, febIng,
+          // marMov/marIng en la UI representan el "mes de comparación" (Marzo en abril-tab, Abril en mayo-tab)
+          marMov: useMarMov, marIng: useMarIng,
+          abrMov, abrIng, abrEnt, abrDev,
           q1Mov, q1Ing, avgMov: Math.round(avgMov), avgIng: Math.round(avgIng),
           trend, movRate, devRate, entRate,
           projAbrilIng, projAbrilMov,
@@ -93,7 +201,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
           actions,
         };
       })
-      .filter((p) => p.q1Mov > 0)
+      .filter((p) => p.marMov > 0)
       .sort((a, b) => b.marIng - a.marIng);
 
     // Totals
@@ -130,11 +238,11 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
       pieData,
       creciendo, estables, cayendo, altoDev,
     };
-  }, [proveedores]);
+  }, [proveedores, isMayo, abrilByProv]);
 
   const barData = analysis.prepared.slice(0, 20).map((p) => ({
     name: p.proveedor.length > 14 ? p.proveedor.slice(0, 14) + "..." : p.proveedor,
-    "Marzo": p.marIng,
+    [COMP]: p.marIng,
     "Proy. Realista": p.projAbrilIng,
     "Proy. Stretch": p.stretchAbrilIng,
     trend: p.trend,
@@ -146,10 +254,12 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
       <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            📦 Proveedores &mdash; Proyeccion Realista Abril
+            📦 Proveedores &mdash; Proyección Realista {TARGET}
           </h2>
           <p className="text-xs text-gray-400 mt-1">
-            Proyeccion basada en tendencia Q1 + acciones concretas por proveedor
+            {isMayo
+              ? "Proyección basada en datos reales de Abril (operacional) + tendencia Q1→Abril por proveedor"
+              : "Proyección basada en tendencia Q1 + acciones concretas por proveedor"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -179,7 +289,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-6">
         <div className="rounded-xl p-3 border border-gray-700" style={{ background: "rgba(15,52,96,0.2)" }}>
-          <p className="text-[10px] text-gray-400 uppercase">Marzo Real</p>
+          <p className="text-[10px] text-gray-400 uppercase">{COMP} Real</p>
           <p className="text-lg font-bold text-gray-300">{analysis.totalMarzoIng.toLocaleString()}</p>
           <p className="text-[10px] text-gray-500">ingresadas</p>
         </div>
@@ -216,7 +326,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Bar chart */}
             <div>
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Top 20: Marzo vs Proyecciones Abril</h3>
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Top 20: {COMP} vs Proyecciones {TARGET}</h3>
               <ResponsiveContainer width="100%" height={380}>
                 <BarChart data={barData} layout="vertical" margin={{ left: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
@@ -228,7 +338,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                     labelStyle={{ color: "#e5e7eb" }}
                     formatter={(value) => Number(value).toLocaleString()}
                   />
-                  <Bar dataKey="Marzo" fill="#6B7280" radius={[0, 4, 4, 0]} barSize={8} />
+                  <Bar dataKey={COMP} fill="#6B7280" radius={[0, 4, 4, 0]} barSize={8} />
                   <Bar dataKey="Proy. Realista" fill="#3B82F6" radius={[0, 4, 4, 0]} barSize={8} />
                   <Bar dataKey="Proy. Stretch" fill="#F97316" radius={[0, 4, 4, 0]} barSize={8} opacity={0.5} />
                 </BarChart>
@@ -237,7 +347,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
 
             {/* Pie chart */}
             <div>
-              <h3 className="text-sm font-medium text-gray-300 mb-3">Distribucion Proyectada Abril (Realista)</h3>
+              <h3 className="text-sm font-medium text-gray-300 mb-3">Distribución Proyectada {TARGET} (Realista)</h3>
               <ResponsiveContainer width="100%" height={380}>
                 <PieChart>
                   <Pie
@@ -267,7 +377,7 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
           </div>
 
           {/* Provider cards */}
-          <h3 className="text-sm font-medium text-gray-300 mb-3">Top 12 Proveedores &mdash; Proyeccion y Palancas</h3>
+          <h3 className="text-sm font-medium text-gray-300 mb-3">Top 12 Proveedores &mdash; Proyección y Palancas</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {analysis.prepared.slice(0, 12).map((p, i) => {
               const crecPct = p.marIng > 0 ? Math.round(((p.projAbrilIng - p.marIng) / p.marIng) * 100) : 0;
@@ -304,11 +414,11 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
 
                   <div className="grid grid-cols-3 gap-2 text-center mb-3">
                     <div>
-                      <p className="text-[10px] text-gray-500">Marzo</p>
+                      <p className="text-[10px] text-gray-500">{COMP}</p>
                       <p className="text-sm font-bold text-gray-300">{p.marIng.toLocaleString()}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] text-gray-500">Proy. Abr</p>
+                      <p className="text-[10px] text-gray-500">Proy. {TARGET.slice(0, 3)}</p>
                       <p className="text-sm font-bold text-blue-400">{p.projAbrilIng.toLocaleString()}</p>
                     </div>
                     <div>
@@ -344,8 +454,9 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                   <th className="text-right py-2 px-2 text-gray-400">Ene</th>
                   <th className="text-right py-2 px-2 text-gray-400">Feb</th>
                   <th className="text-right py-2 px-2 text-gray-400">Mar</th>
+                  {isMayo && <th className="text-right py-2 px-2 text-gray-400">Abr</th>}
                   <th className="text-right py-2 px-2 text-gray-400">Tendencia</th>
-                  <th className="text-right py-2 px-2 text-blue-400 font-bold">Proy. Abr</th>
+                  <th className="text-right py-2 px-2 text-blue-400 font-bold">Proy. {TARGET.slice(0, 3)}</th>
                   <th className="text-right py-2 px-2 text-gray-400">% Ent</th>
                   <th className="text-right py-2 px-2 text-gray-400">% Dev</th>
                   <th className="text-left py-2 px-2 text-gray-400">Acciones</th>
@@ -362,7 +473,8 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
                     <td className="py-2 px-2 text-right text-gray-400">{p.sellers}</td>
                     <td className="py-2 px-2 text-right text-gray-400">{p.eneIng > 0 ? p.eneIng.toLocaleString() : "-"}</td>
                     <td className="py-2 px-2 text-right text-gray-400">{p.febIng > 0 ? p.febIng.toLocaleString() : "-"}</td>
-                    <td className="py-2 px-2 text-right text-gray-300 font-medium">{p.marIng.toLocaleString()}</td>
+                    <td className="py-2 px-2 text-right text-gray-300 font-medium">{(isMayo ? (p.marzo.ing || 0) : p.marIng).toLocaleString()}</td>
+                    {isMayo && <td className="py-2 px-2 text-right text-orange-300 font-medium">{p.abrIng > 0 ? p.abrIng.toLocaleString() : "-"}</td>}
                     <td className="py-2 px-2 text-right">
                       <span className={p.trend > 0.1 ? "text-green-400" : p.trend < -0.1 ? "text-red-400" : "text-gray-400"}>
                         {p.trend > 0 ? "+" : ""}{Math.round(p.trend * 100)}%
@@ -386,19 +498,19 @@ export default function ProductGoalPlanner({ proveedores }: { proveedores: Prove
 
           {/* Legend */}
           <div className="flex gap-4 mt-3 text-[10px] text-gray-500 flex-wrap">
-            <span>Proy. Abr = Marzo + crecimiento orgánico (max +30%)</span>
-            <span>Tendencia = cambio Ene→Mar</span>
+            <span>Proy. {TARGET.slice(0, 3)} = {COMP} + crecimiento orgánico (max +30%)</span>
+            <span>Tendencia = cambio {isMayo ? "Mar→Abr" : "Ene→Mar"}</span>
           </div>
         </>
       )}
 
       {/* Bottom insight */}
       <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
-        <h3 className="text-sm font-bold text-orange-400 mb-2">Resumen de Crecimiento Abril</h3>
+        <h3 className="text-sm font-bold text-orange-400 mb-2">Resumen de Crecimiento {TARGET}</h3>
         <ul className="text-xs text-gray-300 space-y-1.5">
           <li>
-            <strong>Proyeccion realista:</strong> {analysis.totalProjIng.toLocaleString()} ingresadas / {analysis.totalProjMov.toLocaleString()} movilizadas
-            {" "}({analysis.totalMarzoIng > 0 ? "+" + Math.round(((analysis.totalProjIng - analysis.totalMarzoIng) / analysis.totalMarzoIng) * 100) : 0}% vs Marzo)
+            <strong>Proyección realista:</strong> {analysis.totalProjIng.toLocaleString()} ingresadas / {analysis.totalProjMov.toLocaleString()} movilizadas
+            {" "}({analysis.totalMarzoIng > 0 ? "+" + Math.round(((analysis.totalProjIng - analysis.totalMarzoIng) / analysis.totalMarzoIng) * 100) : 0}% vs {COMP})
           </li>
           <li>
             <strong>Proyeccion stretch:</strong> {analysis.totalStretchIng.toLocaleString()} ingresadas / {analysis.totalStretchMov.toLocaleString()} movilizadas
