@@ -193,8 +193,10 @@ export default function ProductGoalPlanner({
         const stretchAbrilMov = Math.round(baseMov * (1 + stretchGrowth));
 
         // marMov / marIng se reusan para mostrar en UI (renombrados via labels)
-        const useMarMov = isMayo ? abrMov : marMov;
-        const useMarIng = isMayo ? abrIng : marIng;
+        // En Mayo: priorizan Abril; si Abril es 0 (provider nuevo solo en Mayo),
+        // muestran Mayo actual. Esto evita que se filtren del .filter(marMov > 0).
+        const useMarMov = isMayo ? baseMov : marMov;
+        const useMarIng = isMayo ? baseIng : marIng;
 
         // What can actually help this provider grow
         const actions: string[] = [];

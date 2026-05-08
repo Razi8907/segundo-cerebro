@@ -160,54 +160,67 @@ export default function StrategicSimulator({
       if (extras.length > 0) workingProveedores = [...proveedores, ...extras];
     }
 
-    // Dynamic volume scale based on country size
-    const activeProvs = workingProveedores.filter((p) => {
-      if (!isMayo) return p.total.mov > 0;
+    // refMonthlyMov: volumen mensual más reciente y confiable por proveedor
+    // En Mayo: Abril si tiene > 0, sino Mayo actual, sino Marzo Q1
+    // En Abril: Marzo Q1
+    const refMonthlyMov = (p: ProveedorData): number => {
+      if (!isMayo) return p.marzo.mov || 0;
       const k = normalizeName(p.proveedor);
-      const abrMov = abrilByProv.get(k)?.mov || 0;
-      const mayMov = mayoByProv.get(k)?.mov || 0;
-      return abrMov > 0 || mayMov > 0 || p.total.mov > 0;
-    });
-    const totalAvgMov = activeProvs.reduce((s, p) => s + p.total.mov / 3, 0);
-    const volumeScale = activeProvs.length > 0 ? (totalAvgMov / activeProvs.length) * 3 : 2000;
+      const abrM = abrilByProv.get(k)?.mov || 0;
+      if (abrM > 0) return abrM;
+      const mayM = mayoByProv.get(k)?.mov || 0;
+      if (mayM > 0) return mayM;
+      return p.marzo.mov || 0;
+    };
 
-    // Total share base movilizadas across all providers (abril si isMayo, marzo si isAbril)
-    const totalCompMov = isMayo
-      ? compTotalGlobal
-      : activeProvs.reduce((s, p) => s + (p.marzo.mov || 0), 0);
+    const activeProvs = workingProveedores.filter((p) => refMonthlyMov(p) > 0);
+    // Volume scale: max ref mensual de todos para normalizar el score
+    const maxRefMov = activeProvs.reduce((m, p) => Math.max(m, refMonthlyMov(p)), 0);
+    const volumeScale = maxRefMov > 0 ? maxRefMov : 2000;
+
+    // Total share base movilizadas
+    const totalCompMov = activeProvs.reduce((s, p) => s + refMonthlyMov(p), 0);
 
     const scored = activeProvs
       .map((p) => {
-        // marMov = movilizadas del mes de comparación
-        // En Mayo: usa Abril; si Abril es 0, usa Mayo actual; si tampoco, marzo Q1
+        // marMov = volumen mensual base = volumen real más reciente (refMonthlyMov)
         const k = normalizeName(p.proveedor);
         const abrilEntry = isMayo ? abrilByProv.get(k) : null;
         const mayoEntry = isMayo ? mayoByProv.get(k) : null;
-        const marMov = isMayo
-          ? ((abrilEntry?.mov ?? 0) > 0
-              ? abrilEntry!.mov
-              : (mayoEntry?.mov ?? 0) > 0
-                ? mayoEntry!.mov
-                : (p.marzo.mov ?? 0))
-          : (p.marzo.mov || 0);
+        const marMov = refMonthlyMov(p);
         const eneMov = p.enero.mov || 0;
         const avgMov = p.total.mov / 3;
-        // Tendencia: en Abril compara marzo vs enero; en Mayo, abril vs marzo (si tenemos abril real)
-        const trend = isMayo
-          ? (abrilEntry && p.marzo.mov && p.marzo.mov > 0 ? (abrilEntry.mov - p.marzo.mov) / p.marzo.mov : 0)
-          : (marMov > 0 && eneMov > 0 ? (marMov - eneMov) / eneMov : 0);
-        // % entrega/dev: en Mayo usar abril si tenemos data, si no Q1
-        const pctDev = isMayo && abrilEntry && abrilEntry.mov > 0
-          ? abrilEntry.dev / abrilEntry.mov
-          : p.total.dev / p.total.mov;
-        const pctEnt = isMayo && abrilEntry && abrilEntry.mov > 0
-          ? abrilEntry.ent / abrilEntry.mov
-          : p.total.ent / p.total.mov;
+        // Tendencia: en Mayo compara Abril vs Marzo (si hay data de ambos),
+        // sino crecimiento Mayo vs Q1 (si solo apareció ahora).
+        // En Abril: Marzo vs Enero.
+        let trend = 0;
+        if (isMayo) {
+          if (abrilEntry && p.marzo.mov && p.marzo.mov > 0) {
+            trend = (abrilEntry.mov - p.marzo.mov) / p.marzo.mov;
+          } else if (mayoEntry && p.marzo.mov && p.marzo.mov > 0) {
+            trend = (mayoEntry.mov - p.marzo.mov) / p.marzo.mov;
+          } else if (mayoEntry && !p.marzo.mov) {
+            // Provider nuevo: tendencia neutral pero positiva por ser nuevo activo
+            trend = 0.2;
+          }
+        } else {
+          trend = (marMov > 0 && eneMov > 0) ? (marMov - eneMov) / eneMov : 0;
+        }
+        // % entrega/dev: en Mayo usa Abril si tiene, sino Mayo, sino Q1
+        const refEntry = isMayo
+          ? (abrilEntry && abrilEntry.mov > 0 ? abrilEntry : mayoEntry && mayoEntry.mov > 0 ? mayoEntry : null)
+          : null;
+        const pctDev = refEntry && refEntry.mov > 0
+          ? refEntry.dev / refEntry.mov
+          : (p.total.mov > 0 ? p.total.dev / p.total.mov : 0);
+        const pctEnt = refEntry && refEntry.mov > 0
+          ? refEntry.ent / refEntry.mov
+          : (p.total.mov > 0 ? p.total.ent / p.total.mov : 0);
 
-        // Score: volume (40%) + trend (30%) + low dev (20%) + high delivery (10%)
-        const volumeScore = Math.min(avgMov / volumeScale, 1) * 40;
-        const trendScore = Math.min(Math.max(trend, -1), 2) / 2 * 30;
-        const devScore = (1 - Math.min(pctDev, 1)) * 20;
+        // Score: volume (50%, ahora basado en marMov real) + trend (25%) + low dev (15%) + high delivery (10%)
+        const volumeScore = Math.min(marMov / volumeScale, 1) * 50;
+        const trendScore = Math.min(Math.max(trend, -1), 2) / 2 * 25;
+        const devScore = (1 - Math.min(pctDev, 1)) * 15;
         const entScore = Math.min(pctEnt, 1) * 10;
         const totalScore = volumeScore + trendScore + devScore + entScore;
 
@@ -243,7 +256,12 @@ export default function StrategicSimulator({
               : "revisar",
         };
       })
-      .sort((a, b) => b.score - a.score);
+      // Sort principal por volumen real reciente (marMov) — esto es el "pareto del mes".
+      // Score como tiebreaker secundario (premia tendencia, baja devolución, etc).
+      .sort((a, b) => {
+        if (b.marMov !== a.marMov) return b.marMov - a.marMov;
+        return b.score - a.score;
+      });
 
     const estrellas = scored.filter((s) => s.category === "estrella");
     const potenciales = scored.filter((s) => s.category === "potencial");
