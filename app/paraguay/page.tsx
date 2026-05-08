@@ -238,9 +238,14 @@ export default function ParaguayDashboard() {
             {comercialSub === "proveedores" && (
               <>
                 <OpsBreakdown country="py" mes={isMayo ? "mayo" : "abril"} category="proveedor" />
-                <ProveedoresRanking proveedores={proveedores} mesFilter={mesFilter} />
-                <ProveedoresTable proveedores={proveedores} mesFilter={mesFilter} />
-                <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
+                {/* Q1-based components only relevant in Abril (Mayo no los usa) */}
+                {isAbril && (
+                  <>
+                    <ProveedoresRanking proveedores={proveedores} mesFilter={mesFilter} />
+                    <ProveedoresTable proveedores={proveedores} mesFilter={mesFilter} />
+                    <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
+                  </>
+                )}
               </>
             )}
           </>
