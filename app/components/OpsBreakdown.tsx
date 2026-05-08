@@ -126,8 +126,9 @@ export default function OpsBreakdown({
     return data.map((d) => {
       const prevEntry = prevByKey.get(normalizeName(d.nombre));
       const prevMov = prevEntry?.mov ?? 0;
+      const prevTotal = prevEntry?.total ?? 0;
       const growthMov = prevMov > 0 ? ((d.mov - prevMov) / prevMov) * 100 : (d.mov > 0 && !prevEntry ? null : 0);
-      return { ...d, prevMov, growthMov };
+      return { ...d, prevMov, prevTotal, growthMov };
     });
   }, [data, prevByKey]);
 
@@ -144,6 +145,7 @@ export default function OpsBreakdown({
 
   const prevTotals = useMemo(() => ({
     mov: prev.reduce((s, r) => s + r.mov, 0),
+    total: prev.reduce((s, r) => s + r.total, 0),
   }), [prev]);
 
   const growthTotalMov = prevTotals.mov > 0 ? ((totals.mov - prevTotals.mov) / prevTotals.mov) * 100 : null;
@@ -262,15 +264,16 @@ export default function OpsBreakdown({
           <thead>
             <tr className="border-b border-gray-700">
               <th className="py-2 px-3 text-left text-[11px] t-muted">{catSing}</th>
+              {prevMes && <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[prevMes].split(" ")[0]} ing.</th>}
               {prevMes && <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[prevMes].split(" ")[0]} mov.</th>}
+              <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[mes].split(" ")[0]} ing.</th>
               <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[mes].split(" ")[0]} mov.</th>
-              <th className="py-2 px-3 text-right text-[11px] t-muted">Crec.</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">Crec. mov</th>
               <th className="py-2 px-3 text-right text-[11px] t-muted">Entregadas</th>
               <th className="py-2 px-3 text-right text-[11px] t-muted">% Ent.</th>
               <th className="py-2 px-3 text-right text-[11px] t-muted">Devoluciones</th>
               <th className="py-2 px-3 text-right text-[11px] t-muted">% Dev.</th>
               <th className="py-2 px-3 text-right text-[11px] t-muted">No entr.</th>
-              <th className="py-2 px-3 text-right text-[11px] t-muted">Total</th>
             </tr>
           </thead>
           <tbody>
@@ -279,7 +282,9 @@ export default function OpsBreakdown({
                 <td className="py-2 px-3 t-primary text-xs">
                   <span className="t-muted mr-2">{i + 1}.</span>{d.cleanNombre}
                 </td>
+                {prevMes && <td className="py-2 px-3 text-right font-mono text-xs t-muted">{d.prevTotal > 0 ? d.prevTotal.toLocaleString("es-AR") : "—"}</td>}
                 {prevMes && <td className="py-2 px-3 text-right font-mono text-xs t-muted">{d.prevMov > 0 ? d.prevMov.toLocaleString("es-AR") : "—"}</td>}
+                <td className="py-2 px-3 text-right font-mono text-xs t-secondary">{d.total.toLocaleString("es-AR")}</td>
                 <td className="py-2 px-3 text-right font-mono text-xs font-bold text-orange-400">{d.mov.toLocaleString("es-AR")}</td>
                 <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: d.growthMov === null ? "#10B981" : (d.growthMov ?? 0) >= 0 ? "#10B981" : "#EF4444" }}>
                   {d.growthMov === null ? "🆕" : (d.growthMov >= 0 ? "+" : "") + d.growthMov.toFixed(0) + "%"}
@@ -293,14 +298,15 @@ export default function OpsBreakdown({
                   {(d.pctDev * 100).toFixed(0)}%
                 </td>
                 <td className="py-2 px-3 text-right font-mono text-xs t-muted">{d.noEnt.toLocaleString("es-AR")}</td>
-                <td className="py-2 px-3 text-right font-mono text-xs t-secondary">{d.total.toLocaleString("es-AR")}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr style={{ background: "rgba(249,115,22,0.08)", fontWeight: 700 }}>
               <td className="py-2 px-3 t-primary text-xs">TOTAL ({data.length})</td>
+              {prevMes && <td className="py-2 px-3 text-right font-mono text-xs">{prevTotals.total.toLocaleString("es-AR")}</td>}
               {prevMes && <td className="py-2 px-3 text-right font-mono text-xs">{prevTotals.mov.toLocaleString("es-AR")}</td>}
+              <td className="py-2 px-3 text-right font-mono text-xs">{totals.total.toLocaleString("es-AR")}</td>
               <td className="py-2 px-3 text-right font-mono text-xs text-orange-400">{totals.mov.toLocaleString("es-AR")}</td>
               <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: (growthTotalMov ?? 0) >= 0 ? "#10B981" : "#EF4444" }}>
                 {growthTotalMov === null ? "—" : (growthTotalMov >= 0 ? "+" : "") + growthTotalMov.toFixed(1) + "%"}
@@ -310,7 +316,6 @@ export default function OpsBreakdown({
               <td className="py-2 px-3 text-right font-mono text-xs">{totals.dev.toLocaleString("es-AR")}</td>
               <td className="py-2 px-3 text-right font-mono text-xs">{totals.mov > 0 ? ((totals.dev / totals.mov) * 100).toFixed(0) : 0}%</td>
               <td className="py-2 px-3 text-right font-mono text-xs">{totals.noEnt.toLocaleString("es-AR")}</td>
-              <td className="py-2 px-3 text-right font-mono text-xs">{totals.total.toLocaleString("es-AR")}</td>
             </tr>
           </tfoot>
         </table>
