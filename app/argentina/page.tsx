@@ -19,6 +19,7 @@ import DropshipperManager from "../components/DropshipperManager";
 import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
+import OpsBreakdown from "../components/OpsBreakdown";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboardAR from "../components/FinanzasDashboardAR";
 import SeguimientoComercial from "../components/SeguimientoComercial";
@@ -228,11 +229,15 @@ export default function ArgentinaDashboard() {
             )}
 
             {comercialSub === "dropshippers" && (
-              <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
+              <>
+                <OpsBreakdown country="ar" mes={isMayo ? "mayo" : "abril"} category="dropshipper" />
+                <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
+              </>
             )}
 
             {comercialSub === "proveedores" && (
               <>
+                <OpsBreakdown country="ar" mes={isMayo ? "mayo" : "abril"} category="proveedor" />
                 <ProveedoresRanking proveedores={proveedores} mesFilter={mesFilter} />
                 <ProveedoresTable proveedores={proveedores} mesFilter={mesFilter} />
                 <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
