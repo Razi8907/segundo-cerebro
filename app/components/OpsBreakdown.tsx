@@ -203,8 +203,9 @@ export default function OpsBreakdown({
       </div>
 
       {/* KPIs principales */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <Kpi label="Movilizadas" value={totals.mov} sub={prevMes ? `${growthTotalMov === null ? "—" : (growthTotalMov >= 0 ? "+" : "") + growthTotalMov.toFixed(1) + "%"} vs ${MES_LABEL[prevMes].split(" ")[0]}` : "Total mes"} color="#10B981" />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Kpi label="Ingresadas" value={totals.total} sub={prevMes ? `vs ${prevTotals.total.toLocaleString("es-AR")} en ${MES_LABEL[prevMes].split(" ")[0]}` : "Total mes"} color="#A855F7" />
+        <Kpi label="Movilizadas" value={totals.mov} sub={`${totals.total > 0 ? ((totals.mov / totals.total) * 100).toFixed(1) : 0}% de ingresadas${prevMes && growthTotalMov !== null ? ` · ${(growthTotalMov >= 0 ? "+" : "") + growthTotalMov.toFixed(1) + "%"} vs ${MES_LABEL[prevMes].split(" ")[0]}` : ""}`} color="#10B981" />
         <Kpi label="Entregadas" value={totals.ent} sub={`${totals.mov > 0 ? ((totals.ent / totals.mov) * 100).toFixed(1) : 0}% de movilizadas`} color="#3B82F6" />
         <Kpi label="Devoluciones" value={totals.dev} sub={`${totals.mov > 0 ? ((totals.dev / totals.mov) * 100).toFixed(1) : 0}% de movilizadas`} color="#EF4444" />
         <Kpi label="No entregadas" value={totals.noEnt} sub={`${totals.mov > 0 ? ((totals.noEnt / totals.mov) * 100).toFixed(1) : 0}% de movilizadas`} color="#F59E0B" />
