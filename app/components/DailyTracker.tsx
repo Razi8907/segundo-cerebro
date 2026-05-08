@@ -711,7 +711,7 @@ export default function DailyTracker({
 
       {/* Input form for Abril */}
       <div className="mb-6 p-4 rounded-xl border border-green-500/20" style={{ background: "rgba(16,185,129,0.03)" }}>
-        <h3 className="text-sm font-medium text-green-400 mb-3">Cargar datos de Abril</h3>
+        <h3 className="text-sm font-medium text-green-400 mb-3">Cargar datos de {ACTIVE_LABEL}</h3>
         <div className="flex gap-3 items-end flex-wrap">
           <div>
             <label className="text-[10px] text-gray-400 block mb-1">Día (1-30)</label>
