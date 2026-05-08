@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie, Legend,
 } from "recharts";
 
@@ -96,6 +96,13 @@ export default function OpsBreakdown({
   const catSing = category === "dropshipper" ? "Dropshipper" : "Proveedor";
   const emoji = category === "dropshipper" ? "👥" : "📦";
 
+  // Daily breakdown (by_ds_daily si dropshipper, by_date si proveedor)
+  type DSDaily = { ds: string; fecha: string; ordenes: number };
+  type DateRow = { fecha: string; total: number };
+  const [dailyCur, setDailyCur] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[] }>({ dsDaily: [], byDate: [] });
+  const [dailyPrev, setDailyPrev] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[] }>({ dsDaily: [], byDate: [] });
+  const [filterDS, setFilterDS] = useState<string>("__all__");
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -111,10 +118,77 @@ export default function OpsBreakdown({
       const prevRows = pr?.data?.[dataKey] || [];
       setData(aggregate(curRows));
       setPrev(aggregate(prevRows));
+      setDailyCur({
+        dsDaily: cur?.data?.by_ds_daily || [],
+        byDate: cur?.data?.by_date || [],
+      });
+      setDailyPrev({
+        dsDaily: pr?.data?.by_ds_daily || [],
+        byDate: pr?.data?.by_date || [],
+      });
       setLoading(false);
     });
     return () => { cancelled = true; };
   }, [country, mes, dataKey, prevMes]);
+
+  // Lista única de DS para el filtro (combina ambos meses)
+  const dsList = useMemo(() => {
+    if (category !== "dropshipper") return [] as string[];
+    const set = new Set<string>();
+    dailyCur.dsDaily.forEach((d) => d.ds && set.add(d.ds));
+    dailyPrev.dsDaily.forEach((d) => d.ds && set.add(d.ds));
+    return Array.from(set).sort();
+  }, [category, dailyCur, dailyPrev]);
+
+  // Construye serie diaria por día del mes (1-31) sumando todos los DS o filtrado
+  const dailySeries = useMemo(() => {
+    const dayOf = (f: string) => {
+      // Soporta DD-MM-YYYY o YYYY-MM-DD
+      const m1 = /^(\d{2})-\d{2}-\d{4}$/.exec(f);
+      if (m1) return parseInt(m1[1], 10);
+      const m2 = /^\d{4}-\d{2}-(\d{2})$/.exec(f);
+      if (m2) return parseInt(m2[1], 10);
+      return 0;
+    };
+    const aggDaily = (rows: DSDaily[] | DateRow[], useDsDaily: boolean): Map<number, number> => {
+      const map = new Map<number, number>();
+      for (const r of rows as any[]) {
+        if (useDsDaily) {
+          if (filterDS !== "__all__" && r.ds !== filterDS) continue;
+        }
+        const d = dayOf(r.fecha);
+        if (!d) continue;
+        const v = useDsDaily ? (r.ordenes || 0) : (r.total || 0);
+        map.set(d, (map.get(d) || 0) + v);
+      }
+      return map;
+    };
+    const useDs = category === "dropshipper" && (dailyCur.dsDaily.length > 0 || dailyPrev.dsDaily.length > 0);
+    const curMap = useDs ? aggDaily(dailyCur.dsDaily, true) : aggDaily(dailyCur.byDate, false);
+    const prevMap = useDs ? aggDaily(dailyPrev.dsDaily, true) : aggDaily(dailyPrev.byDate, false);
+    const totalDays = mes === "mayo" ? 31 : 30;
+    const out: { dia: number; [k: string]: number }[] = [];
+    for (let i = 1; i <= 31; i++) {
+      out.push({
+        dia: i,
+        [MES_LABEL[mes].split(" ")[0]]: curMap.get(i) || 0,
+        ...(prevMes ? { [MES_LABEL[prevMes].split(" ")[0]]: prevMap.get(i) || 0 } : {}),
+      });
+    }
+    return out;
+  }, [dailyCur, dailyPrev, filterDS, category, mes, prevMes]);
+
+  // Totales acumulados de la serie (para mostrar en header del chart)
+  const dailyTotals = useMemo(() => {
+    const curKey = MES_LABEL[mes].split(" ")[0];
+    const prevKey = prevMes ? MES_LABEL[prevMes].split(" ")[0] : "";
+    let cur = 0, pr = 0;
+    for (const d of dailySeries) {
+      cur += (d as any)[curKey] || 0;
+      if (prevKey) pr += (d as any)[prevKey] || 0;
+    }
+    return { cur, prev: pr };
+  }, [dailySeries, mes, prevMes]);
 
   const prevByKey = useMemo(() => {
     const m = new Map<string, Aggregated>();
@@ -245,6 +319,55 @@ export default function OpsBreakdown({
           </div>
         </div>
       </div>
+
+      {/* Comparativo diario Abril vs Mayo */}
+      {prevMes && (
+        <div className="glass-card p-5">
+          <div className="flex items-center justify-between flex-wrap gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-semibold t-primary">📅 Comparativo diario — {MES_LABEL[prevMes].split(" ")[0]} vs {MES_LABEL[mes].split(" ")[0]}</h3>
+              <p className="text-[11px] t-muted mt-0.5">
+                {filterDS === "__all__" ? `Total ingresadas/día (${data.length} ${catLabel.toLowerCase()})` : `Filtrado: ${filterDS.replace(/\s*\(\d+\)\s*$/, "").trim()}`}
+                {" · "}
+                {MES_LABEL[prevMes].split(" ")[0]}: <strong className="t-primary">{dailyTotals.prev.toLocaleString("es-AR")}</strong>
+                {" · "}
+                {MES_LABEL[mes].split(" ")[0]}: <strong className="t-primary">{dailyTotals.cur.toLocaleString("es-AR")}</strong>
+                {dailyTotals.prev > 0 && (
+                  <span className="ml-2" style={{ color: dailyTotals.cur >= dailyTotals.prev ? "#10B981" : "#EF4444" }}>
+                    ({dailyTotals.cur >= dailyTotals.prev ? "+" : ""}{(((dailyTotals.cur - dailyTotals.prev) / dailyTotals.prev) * 100).toFixed(1)}%)
+                  </span>
+                )}
+              </p>
+            </div>
+            {category === "dropshipper" && dsList.length > 0 && (
+              <select
+                value={filterDS}
+                onChange={(e) => setFilterDS(e.target.value)}
+                className="text-xs px-2 py-1.5 rounded-lg bg-[#16213e] border border-orange-500/20 text-white focus:outline-none focus:border-orange-500/50 max-w-[260px]"
+              >
+                <option value="__all__">Todos los dropshippers</option>
+                {dsList.map((ds) => (
+                  <option key={ds} value={ds}>{ds.length > 40 ? ds.slice(0, 40) + "…" : ds}</option>
+                ))}
+              </select>
+            )}
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={dailySeries}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+              <XAxis dataKey="dia" stroke="#888" fontSize={10} tickFormatter={(v) => `${v}`} label={{ value: "Día del mes", fill: "#888", fontSize: 11, position: "insideBottom", offset: -5 }} />
+              <YAxis stroke="#888" fontSize={10} />
+              <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(249,115,22,0.3)", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString("es-AR")} labelFormatter={(d) => `Día ${d}`} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line type="monotone" dataKey={MES_LABEL[prevMes].split(" ")[0]} stroke="#6B7280" strokeWidth={2} dot={{ fill: "#6B7280", r: 3 }} />
+              <Line type="monotone" dataKey={MES_LABEL[mes].split(" ")[0]} stroke="#F97316" strokeWidth={2} dot={{ fill: "#F97316", r: 3 }} />
+            </LineChart>
+          </ResponsiveContainer>
+          <p className="text-[11px] t-muted mt-2">
+            Comparación día por día. {category === "dropshipper" && "Filtrá un dropshipper para ver su evolución diaria individual."}
+          </p>
+        </div>
+      )}
 
       {/* Pareto card */}
       <div className="glass-card p-5 border-l-2 border-orange-500/40">
