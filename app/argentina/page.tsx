@@ -20,6 +20,7 @@ import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OpsBreakdown from "../components/OpsBreakdown";
+import ProveedorManager from "../components/ProveedorManager";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboardAR from "../components/FinanzasDashboardAR";
 import SeguimientoComercial from "../components/SeguimientoComercial";
@@ -238,6 +239,7 @@ export default function ArgentinaDashboard() {
             {comercialSub === "proveedores" && (
               <>
                 <OpsBreakdown country="ar" mes={isMayo ? "mayo" : "abril"} category="proveedor" />
+                <ProveedorManager mesFilter={mesFilter} metaInfo={meta_info} country="ar" />
                 {/* Q1-based components only relevant in Abril (Mayo no los usa) */}
                 {isAbril && (
                   <>

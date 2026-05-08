@@ -19,6 +19,7 @@ import DropshipperManager from "../components/DropshipperManager";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OpsBreakdown from "../components/OpsBreakdown";
+import ProveedorManager from "../components/ProveedorManager";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboard from "../components/FinanzasDashboard";
 import FinanzasDashboardPY_Q1 from "../components/FinanzasDashboardPY_Q1";
@@ -238,6 +239,7 @@ export default function ParaguayDashboard() {
             {comercialSub === "proveedores" && (
               <>
                 <OpsBreakdown country="py" mes={isMayo ? "mayo" : "abril"} category="proveedor" />
+                <ProveedorManager mesFilter={mesFilter} metaInfo={meta_info} country="py" />
                 {/* Q1-based components only relevant in Abril (Mayo no los usa) */}
                 {isAbril && (
                   <>
