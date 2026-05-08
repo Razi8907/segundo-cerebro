@@ -231,7 +231,7 @@ export default function ParaguayDashboard() {
             {comercialSub === "dropshippers" && (
               <>
                 <OpsBreakdown country="py" mes={isMayo ? "mayo" : "abril"} category="dropshipper" />
-                <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
+                <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} country="py" />
               </>
             )}
 

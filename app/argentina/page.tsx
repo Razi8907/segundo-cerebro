@@ -231,7 +231,7 @@ export default function ArgentinaDashboard() {
             {comercialSub === "dropshippers" && (
               <>
                 <OpsBreakdown country="ar" mes={isMayo ? "mayo" : "abril"} category="dropshipper" />
-                <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} />
+                <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} country="ar" />
               </>
             )}
 
