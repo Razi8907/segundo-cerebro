@@ -62,54 +62,66 @@ export default function ProductGoalPlanner({
   const TARGET = isMayo ? "Mayo" : "Abril";
   const COMP = isMayo ? "Abril" : "Marzo";
 
-  // En Mayo: traer data real de Abril por proveedor desde operational_snapshots
-  const [abrilByProv, setAbrilByProv] = useState<Map<string, { nombre: string; mov: number; ing: number; ent: number; dev: number; total: number }>>(new Map());
+  // En Mayo: traer data real de Abril Y Mayo por proveedor desde operational_snapshots.
+  // Mayo se usa para incluir proveedores que aparecieron solo en Mayo (pareto del mes).
+  type ProvOps = { nombre: string; mov: number; ing: number; ent: number; dev: number; total: number };
+  const [abrilByProv, setAbrilByProv] = useState<Map<string, ProvOps>>(new Map());
+  const [mayoByProv, setMayoByProv] = useState<Map<string, ProvOps>>(new Map());
+
   useEffect(() => {
     if (!isMayo) return;
     let cancelled = false;
-    fetch(`/api/data/operational?country=${country}&mes=abril`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (cancelled) return;
-        const byProv = res.data?.by_proveedor;
-        if (!Array.isArray(byProv)) return;
-        const map = new Map<string, { nombre: string; mov: number; ing: number; ent: number; dev: number; total: number }>();
-        for (const p of byProv) {
-          const estados = p.estados || {};
-          let noMov = 0;
-          for (const k of Object.keys(estados)) {
-            if (NO_MOVILIZADO_STATES.has(k)) noMov += estados[k] || 0;
-          }
-          const total = p.total || 0;
-          const mov = total - noMov;
-          const ent = estados["ENTREGADO"] || 0;
-          const dev = (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
-          map.set(normalizeName(p.nombre), { nombre: p.nombre, mov, ing: total, ent, dev, total });
+    const buildMap = (byProv: any[]): Map<string, ProvOps> => {
+      const map = new Map<string, ProvOps>();
+      for (const p of byProv || []) {
+        const estados = p.estados || {};
+        let noMov = 0;
+        for (const k of Object.keys(estados)) {
+          if (NO_MOVILIZADO_STATES.has(k)) noMov += estados[k] || 0;
         }
-        setAbrilByProv(map);
-      })
-      .catch(() => {});
+        const total = p.total || 0;
+        const mov = total - noMov;
+        const ent = estados["ENTREGADO"] || 0;
+        const dev = (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
+        map.set(normalizeName(p.nombre), { nombre: p.nombre, mov, ing: total, ent, dev, total });
+      }
+      return map;
+    };
+    Promise.all([
+      fetch(`/api/data/operational?country=${country}&mes=abril`).then((r) => r.json()).catch(() => null),
+      fetch(`/api/data/operational?country=${country}&mes=mayo`).then((r) => r.json()).catch(() => null),
+    ]).then(([abr, may]) => {
+      if (cancelled) return;
+      if (Array.isArray(abr?.data?.by_proveedor)) setAbrilByProv(buildMap(abr.data.by_proveedor));
+      if (Array.isArray(may?.data?.by_proveedor)) setMayoByProv(buildMap(may.data.by_proveedor));
+    });
     return () => { cancelled = true; };
   }, [isMayo, country]);
 
   const analysis = useMemo(() => {
-    // En Mayo: armamos lista combinada (Q1 + nuevos de Abril)
+    // En Mayo: armamos lista combinada (Q1 + nuevos de Abril + nuevos de Mayo)
     const baseProveedores: ProveedorData[] = [...proveedores];
-    if (isMayo && abrilByProv.size > 0) {
+    if (isMayo) {
       const q1Keys = new Set(proveedores.map((p) => normalizeName(p.proveedor)));
-      abrilByProv.forEach((entry, key) => {
-        if (q1Keys.has(key)) return;
-        // Provider que aparece en Abril pero no en Q1 → lo agregamos con Q1 vacío
-        baseProveedores.push({
-          proveedor: entry.nombre,
-          sellers: 0,
-          enero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
-          febrero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
-          marzo: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
-          total: { ing: 0, mov: 0, ent: 0, dev: 0 },
-          growth_pct: null,
+      const seen = new Set<string>();
+      const merge = (src: Map<string, ProvOps>) => {
+        src.forEach((entry, key) => {
+          if (q1Keys.has(key) || seen.has(key)) return;
+          seen.add(key);
+          const cleanName = entry.nombre.replace(/\s*\(\d+\)\s*$/, "").trim();
+          baseProveedores.push({
+            proveedor: cleanName || entry.nombre,
+            sellers: 0,
+            enero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+            febrero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+            marzo: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+            total: { ing: 0, mov: 0, ent: 0, dev: 0 },
+            growth_pct: null,
+          });
         });
-      });
+      };
+      merge(abrilByProv);
+      merge(mayoByProv);
     }
 
     const prepared = baseProveedores
@@ -121,16 +133,23 @@ export default function ProductGoalPlanner({
         const febIng = p.febrero.ing || 0;
         const marIng = p.marzo.ing || 0;
 
-        // Datos de Abril (si isMayo)
-        const abr = isMayo ? abrilByProv.get(normalizeName(p.proveedor)) : null;
+        // Datos de Abril y Mayo (si isMayo)
+        const k = normalizeName(p.proveedor);
+        const abr = isMayo ? abrilByProv.get(k) : null;
+        const may = isMayo ? mayoByProv.get(k) : null;
         const abrMov = abr?.mov ?? 0;
         const abrIng = abr?.ing ?? 0;
         const abrEnt = abr?.ent ?? 0;
         const abrDev = abr?.dev ?? 0;
 
-        // Base = mes de comparación (Marzo en abril-tab, Abril en mayo-tab)
-        const baseMov = isMayo ? abrMov : marMov;
-        const baseIng = isMayo ? abrIng : marIng;
+        // Base = mes de comparación. En Mayo usa Abril; si Abril es 0 pero Mayo tiene
+        // data (proveedor nuevo del mes), usa Mayo como referencia.
+        const baseMov = isMayo
+          ? (abrMov > 0 ? abrMov : (may?.mov ?? marMov))
+          : marMov;
+        const baseIng = isMayo
+          ? (abrIng > 0 ? abrIng : (may?.ing ?? marIng))
+          : marIng;
 
         const q1Mov = p.total.mov;
         const q1Ing = p.total.ing;
@@ -238,7 +257,7 @@ export default function ProductGoalPlanner({
       pieData,
       creciendo, estables, cayendo, altoDev,
     };
-  }, [proveedores, isMayo, abrilByProv]);
+  }, [proveedores, isMayo, abrilByProv, mayoByProv]);
 
   const barData = analysis.prepared.slice(0, 20).map((p) => ({
     name: p.proveedor.length > 14 ? p.proveedor.slice(0, 14) + "..." : p.proveedor,

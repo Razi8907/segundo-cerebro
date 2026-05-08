@@ -84,33 +84,38 @@ export default function StrategicSimulator({
     ? (metaInfo?.meta_ingresadas_mayo ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
     : (metaInfo?.meta_ingresadas_abril ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION));
 
-  // En Mayo: cargar data real de Abril desde operational_snapshots para usarla
-  // como base de proyección por proveedor.
+  // En Mayo: cargar data real de Abril Y Mayo desde operational_snapshots.
+  // Abril sirve como base de proyección; Mayo agrega proveedores nuevos del
+  // pareto del mes que aún no aparecieron en Abril o Q1.
   const [abrilByProv, setAbrilByProv] = useState<Map<string, { nombre: string; mov: number; ent: number; dev: number; total: number }>>(new Map());
+  const [mayoByProv, setMayoByProv] = useState<Map<string, { nombre: string; mov: number; ent: number; dev: number; total: number }>>(new Map());
+
   useEffect(() => {
     if (!isMayo) return;
     let cancelled = false;
-    fetch(`/api/data/operational?country=${country}&mes=abril`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (cancelled) return;
-        const byProv = res.data?.by_proveedor;
-        if (!Array.isArray(byProv)) return;
-        const map = new Map<string, { nombre: string; mov: number; ent: number; dev: number; total: number }>();
-        for (const p of byProv) {
-          const estados = p.estados || {};
-          let noMov = 0;
-          for (const k of Object.keys(estados)) {
-            if (NO_MOVILIZADO_STATES.has(k)) noMov += estados[k] || 0;
-          }
-          const mov = (p.total || 0) - noMov;
-          const ent = estados["ENTREGADO"] || 0;
-          const dev = (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
-          map.set(normalizeName(p.nombre), { nombre: p.nombre, mov, ent, dev, total: p.total || 0 });
+    const buildMap = (byProv: any[]) => {
+      const map = new Map<string, { nombre: string; mov: number; ent: number; dev: number; total: number }>();
+      for (const p of byProv || []) {
+        const estados = p.estados || {};
+        let noMov = 0;
+        for (const k of Object.keys(estados)) {
+          if (NO_MOVILIZADO_STATES.has(k)) noMov += estados[k] || 0;
         }
-        setAbrilByProv(map);
-      })
-      .catch(() => {});
+        const mov = (p.total || 0) - noMov;
+        const ent = estados["ENTREGADO"] || 0;
+        const dev = (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
+        map.set(normalizeName(p.nombre), { nombre: p.nombre, mov, ent, dev, total: p.total || 0 });
+      }
+      return map;
+    };
+    Promise.all([
+      fetch(`/api/data/operational?country=${country}&mes=abril`).then((r) => r.json()).catch(() => null),
+      fetch(`/api/data/operational?country=${country}&mes=mayo`).then((r) => r.json()).catch(() => null),
+    ]).then(([abrRes, mayRes]) => {
+      if (cancelled) return;
+      if (Array.isArray(abrRes?.data?.by_proveedor)) setAbrilByProv(buildMap(abrRes.data.by_proveedor));
+      if (Array.isArray(mayRes?.data?.by_proveedor)) setMayoByProv(buildMap(mayRes.data.by_proveedor));
+    });
     return () => { cancelled = true; };
   }, [isMayo, country]);
 
@@ -126,33 +131,43 @@ export default function StrategicSimulator({
     const gap = GOAL_MOVILIZADAS - compTotalGlobal;
     const gapPct = compTotalGlobal > 0 ? ((gap / compTotalGlobal) * 100).toFixed(1) : "0";
 
-    // En Mayo: combinamos Q1 con proveedores nuevos que aparecieron solo en Abril
-    // (los del pareto del mes que no estaban en Q1 deben aparecer en el plan).
+    // En Mayo: combinamos Q1 + proveedores nuevos de Abril + nuevos de Mayo.
+    // Así el pareto del mes (Abril o Mayo) que aún no estaba en Q1 aparece.
     let workingProveedores = proveedores;
-    if (isMayo && abrilByProv.size > 0) {
+    if (isMayo) {
       const q1Keys = new Set(proveedores.map((p) => normalizeName(p.proveedor)));
       const extras: ProveedorData[] = [];
-      abrilByProv.forEach((entry, key) => {
-        if (q1Keys.has(key)) return;
-        // Reconstruimos un nombre limpio sin "(id)"
-        const cleanName = entry.nombre.replace(/\s*\(\d+\)\s*$/, "").trim();
-        extras.push({
-          proveedor: cleanName || entry.nombre,
-          sellers: 0,
-          enero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
-          febrero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
-          marzo: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
-          total: { ing: entry.mov, mov: entry.mov, ent: entry.ent, dev: entry.dev },
-          growth_pct: null,
+      const seen = new Set<string>();
+      // Primero Abril, luego Mayo (para no duplicar entre los dos)
+      const merge = (src: typeof abrilByProv) => {
+        src.forEach((entry, key) => {
+          if (q1Keys.has(key) || seen.has(key)) return;
+          seen.add(key);
+          const cleanName = entry.nombre.replace(/\s*\(\d+\)\s*$/, "").trim();
+          extras.push({
+            proveedor: cleanName || entry.nombre,
+            sellers: 0,
+            enero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+            febrero: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+            marzo: { ing: null, mov: null, ent: null, dev: null, pct_entrega: null, pct_dev: null },
+            total: { ing: entry.mov, mov: entry.mov, ent: entry.ent, dev: entry.dev },
+            growth_pct: null,
+          });
         });
-      });
+      };
+      merge(abrilByProv);
+      merge(mayoByProv);
       if (extras.length > 0) workingProveedores = [...proveedores, ...extras];
     }
 
     // Dynamic volume scale based on country size
-    const activeProvs = workingProveedores.filter((p) => isMayo
-      ? (abrilByProv.get(normalizeName(p.proveedor))?.mov || 0) > 0 || p.total.mov > 0
-      : p.total.mov > 0);
+    const activeProvs = workingProveedores.filter((p) => {
+      if (!isMayo) return p.total.mov > 0;
+      const k = normalizeName(p.proveedor);
+      const abrMov = abrilByProv.get(k)?.mov || 0;
+      const mayMov = mayoByProv.get(k)?.mov || 0;
+      return abrMov > 0 || mayMov > 0 || p.total.mov > 0;
+    });
     const totalAvgMov = activeProvs.reduce((s, p) => s + p.total.mov / 3, 0);
     const volumeScale = activeProvs.length > 0 ? (totalAvgMov / activeProvs.length) * 3 : 2000;
 
@@ -164,10 +179,16 @@ export default function StrategicSimulator({
     const scored = activeProvs
       .map((p) => {
         // marMov = movilizadas del mes de comparación
-        // En Mayo: traer del abrilByProv mediante normalización del nombre
-        const abrilEntry = isMayo ? abrilByProv.get(normalizeName(p.proveedor)) : null;
+        // En Mayo: usa Abril; si Abril es 0, usa Mayo actual; si tampoco, marzo Q1
+        const k = normalizeName(p.proveedor);
+        const abrilEntry = isMayo ? abrilByProv.get(k) : null;
+        const mayoEntry = isMayo ? mayoByProv.get(k) : null;
         const marMov = isMayo
-          ? (abrilEntry?.mov ?? p.marzo.mov ?? 0)  // si no encuentra abril, fallback a marzo
+          ? ((abrilEntry?.mov ?? 0) > 0
+              ? abrilEntry!.mov
+              : (mayoEntry?.mov ?? 0) > 0
+                ? mayoEntry!.mov
+                : (p.marzo.mov ?? 0))
           : (p.marzo.mov || 0);
         const eneMov = p.enero.mov || 0;
         const avgMov = p.total.mov / 3;
@@ -244,7 +265,7 @@ export default function StrategicSimulator({
       projectedTotal,
       additionalNeeded,
     };
-  }, [proveedores, resumen, GOAL_MOVILIZADAS, isMayo, abrilByProv]);
+  }, [proveedores, resumen, GOAL_MOVILIZADAS, isMayo, abrilByProv, mayoByProv]);
 
   const chartData = analysis.scored.slice(0, 20).map((p) => ({
     name: p.proveedor.length > 15 ? p.proveedor.slice(0, 15) + "…" : p.proveedor,
