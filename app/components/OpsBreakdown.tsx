@@ -90,6 +90,13 @@ export default function OpsBreakdown({
   const [prev, setPrev] = useState<Aggregated[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Filtro de rango de días — aplica al chart diario y reemplaza la tabla
+  // de detalle con vista comparativa por rango cuando está activo.
+  type RangeMode = "all" | "single" | "range";
+  const [rangeMode, setRangeMode] = useState<RangeMode>("all");
+  const [rangeFrom, setRangeFrom] = useState<number>(1);
+  const [rangeTo, setRangeTo] = useState<number>(7);
+
   const prevMes: Mes | null = mes === "mayo" ? "abril" : null;
   const dataKey = category === "dropshipper" ? "by_dropshipper" : "by_proveedor";
   const catLabel = category === "dropshipper" ? "Dropshippers" : "Proveedores";
@@ -140,16 +147,26 @@ export default function OpsBreakdown({
     return Array.from(set).sort();
   }, [category, dailyCur, dailyPrev]);
 
+  // Helper: extrae el día del mes de un string fecha (DD-MM-YYYY o YYYY-MM-DD)
+  const dayOf = (f: string) => {
+    const m1 = /^(\d{2})-\d{2}-\d{4}$/.exec(f);
+    if (m1) return parseInt(m1[1], 10);
+    const m2 = /^\d{4}-\d{2}-(\d{2})$/.exec(f);
+    if (m2) return parseInt(m2[1], 10);
+    return 0;
+  };
+
+  // Rango efectivo según el modo de filtro
+  const effectiveRange = useMemo(() => {
+    if (rangeMode === "all") return { from: 1, to: 31 };
+    if (rangeMode === "single") return { from: rangeFrom, to: rangeFrom };
+    return { from: Math.min(rangeFrom, rangeTo), to: Math.max(rangeFrom, rangeTo) };
+  }, [rangeMode, rangeFrom, rangeTo]);
+
+  const isRangeFiltered = rangeMode !== "all";
+
   // Construye serie diaria por día del mes (1-31) sumando todos los DS o filtrado
   const dailySeries = useMemo(() => {
-    const dayOf = (f: string) => {
-      // Soporta DD-MM-YYYY o YYYY-MM-DD
-      const m1 = /^(\d{2})-\d{2}-\d{4}$/.exec(f);
-      if (m1) return parseInt(m1[1], 10);
-      const m2 = /^\d{4}-\d{2}-(\d{2})$/.exec(f);
-      if (m2) return parseInt(m2[1], 10);
-      return 0;
-    };
     const aggDaily = (rows: DSDaily[] | DateRow[], useDsDaily: boolean): Map<number, number> => {
       const map = new Map<number, number>();
       for (const r of rows as any[]) {
@@ -166,9 +183,8 @@ export default function OpsBreakdown({
     const useDs = category === "dropshipper" && (dailyCur.dsDaily.length > 0 || dailyPrev.dsDaily.length > 0);
     const curMap = useDs ? aggDaily(dailyCur.dsDaily, true) : aggDaily(dailyCur.byDate, false);
     const prevMap = useDs ? aggDaily(dailyPrev.dsDaily, true) : aggDaily(dailyPrev.byDate, false);
-    const totalDays = mes === "mayo" ? 31 : 30;
     const out: { dia: number; [k: string]: number }[] = [];
-    for (let i = 1; i <= 31; i++) {
+    for (let i = effectiveRange.from; i <= effectiveRange.to; i++) {
       out.push({
         dia: i,
         [MES_LABEL[mes].split(" ")[0]]: curMap.get(i) || 0,
@@ -176,7 +192,56 @@ export default function OpsBreakdown({
       });
     }
     return out;
-  }, [dailyCur, dailyPrev, filterDS, category, mes, prevMes]);
+  }, [dailyCur, dailyPrev, filterDS, category, mes, prevMes, effectiveRange]);
+
+  // Tabla por DS dentro del rango filtrado (solo cuando rangeMode !== "all")
+  // Usa by_ds_daily para sumar ordenes en el rango por cada DS.
+  const rangeByDS = useMemo(() => {
+    if (!isRangeFiltered || category !== "dropshipper") return [] as Array<{
+      ds: string; cleanDs: string; abrIng: number; mayIng: number; growth: number | null;
+      promAbr: number; promMay: number; diasActivosAbr: number; diasActivosMay: number;
+    }>;
+    const sumInRange = (rows: DSDaily[]) => {
+      const map = new Map<string, { ing: number; days: Set<number> }>();
+      for (const r of rows) {
+        const d = dayOf(r.fecha);
+        if (!d) continue;
+        if (d < effectiveRange.from || d > effectiveRange.to) continue;
+        if (!r.ds) continue;
+        const cur = map.get(r.ds) || { ing: 0, days: new Set<number>() };
+        cur.ing += r.ordenes || 0;
+        cur.days.add(d);
+        map.set(r.ds, cur);
+      }
+      return map;
+    };
+    const aMap = sumInRange(dailyPrev.dsDaily);
+    const mMap = sumInRange(dailyCur.dsDaily);
+    const allKeys = new Set<string>([...aMap.keys(), ...mMap.keys()]);
+    const out: any[] = [];
+    allKeys.forEach((ds) => {
+      const a = aMap.get(ds);
+      const m = mMap.get(ds);
+      const abrIng = a?.ing || 0;
+      const mayIng = m?.ing || 0;
+      const growth = abrIng > 0 ? ((mayIng - abrIng) / abrIng) * 100 : (mayIng > 0 ? null : 0);
+      const diasAbr = a?.days.size || 0;
+      const diasMay = m?.days.size || 0;
+      out.push({
+        ds,
+        cleanDs: ds.replace(/\s*\(\d+\)\s*$/, "").trim(),
+        abrIng, mayIng,
+        growth,
+        promAbr: diasAbr > 0 ? abrIng / diasAbr : 0,
+        promMay: diasMay > 0 ? mayIng / diasMay : 0,
+        diasActivosAbr: diasAbr,
+        diasActivosMay: diasMay,
+      });
+    });
+    return out
+      .filter((r) => r.abrIng > 0 || r.mayIng > 0)
+      .sort((a, b) => b.mayIng - a.mayIng);
+  }, [dailyCur, dailyPrev, effectiveRange, isRangeFiltered, category]);
 
   // Totales acumulados de la serie (para mostrar en header del chart)
   const dailyTotals = useMemo(() => {
@@ -328,6 +393,9 @@ export default function OpsBreakdown({
               <h3 className="text-sm font-semibold t-primary">📅 Comparativo diario — {MES_LABEL[prevMes].split(" ")[0]} vs {MES_LABEL[mes].split(" ")[0]}</h3>
               <p className="text-[11px] t-muted mt-0.5">
                 {filterDS === "__all__" ? `Total ingresadas/día (${data.length} ${catLabel.toLowerCase()})` : `Filtrado: ${filterDS.replace(/\s*\(\d+\)\s*$/, "").trim()}`}
+                {isRangeFiltered && (
+                  <> · <strong className="text-orange-300">{rangeMode === "single" ? `Día ${effectiveRange.from}` : `Días ${effectiveRange.from}–${effectiveRange.to}`}</strong></>
+                )}
                 {" · "}
                 {MES_LABEL[prevMes].split(" ")[0]}: <strong className="t-primary">{dailyTotals.prev.toLocaleString("es-AR")}</strong>
                 {" · "}
@@ -352,19 +420,152 @@ export default function OpsBreakdown({
               </select>
             )}
           </div>
+
+          {/* Filtro de fechas */}
+          <div className="flex items-center flex-wrap gap-2 mb-3 p-3 rounded-lg" style={{ background: "rgba(15,23,42,0.5)" }}>
+            <span className="text-[11px] t-muted uppercase tracking-wider">Filtro:</span>
+            {(["all", "single", "range"] as RangeMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setRangeMode(m)}
+                className={`text-[11px] px-3 py-1 rounded-full transition-all ${
+                  rangeMode === m
+                    ? "bg-orange-500 text-white"
+                    : "bg-transparent t-secondary border border-gray-700 hover:border-orange-500/40"
+                }`}
+              >
+                {m === "all" ? "Todos los días" : m === "single" ? "Día único" : "Rango"}
+              </button>
+            ))}
+            {rangeMode === "single" && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] t-muted">Día:</span>
+                <select
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(parseInt(e.target.value))}
+                  className="text-xs px-2 py-1 rounded bg-[#16213e] border border-orange-500/20 text-white focus:outline-none"
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <span className="text-[11px] t-muted">→ compara {MES_LABEL[prevMes].split(" ")[0]} {rangeFrom} con {MES_LABEL[mes].split(" ")[0]} {rangeFrom}</span>
+              </div>
+            )}
+            {rangeMode === "range" && (
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] t-muted">Desde:</span>
+                <select
+                  value={rangeFrom}
+                  onChange={(e) => setRangeFrom(parseInt(e.target.value))}
+                  className="text-xs px-2 py-1 rounded bg-[#16213e] border border-orange-500/20 text-white focus:outline-none"
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <span className="text-[11px] t-muted">Hasta:</span>
+                <select
+                  value={rangeTo}
+                  onChange={(e) => setRangeTo(parseInt(e.target.value))}
+                  className="text-xs px-2 py-1 rounded bg-[#16213e] border border-orange-500/20 text-white focus:outline-none"
+                >
+                  {Array.from({ length: 31 }, (_, i) => i + 1).map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+                <span className="text-[11px] t-muted">→ compara {MES_LABEL[prevMes].split(" ")[0]} {Math.min(rangeFrom, rangeTo)}–{Math.max(rangeFrom, rangeTo)} con {MES_LABEL[mes].split(" ")[0]} {Math.min(rangeFrom, rangeTo)}–{Math.max(rangeFrom, rangeTo)}</span>
+              </div>
+            )}
+          </div>
           <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={dailySeries}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-              <XAxis dataKey="dia" stroke="#888" fontSize={10} tickFormatter={(v) => `${v}`} label={{ value: "Día del mes", fill: "#888", fontSize: 11, position: "insideBottom", offset: -5 }} />
-              <YAxis stroke="#888" fontSize={10} />
-              <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(249,115,22,0.3)", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString("es-AR")} labelFormatter={(d) => `Día ${d}`} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Line type="monotone" dataKey={MES_LABEL[prevMes].split(" ")[0]} stroke="#6B7280" strokeWidth={2} dot={{ fill: "#6B7280", r: 3 }} />
-              <Line type="monotone" dataKey={MES_LABEL[mes].split(" ")[0]} stroke="#F97316" strokeWidth={2} dot={{ fill: "#F97316", r: 3 }} />
-            </LineChart>
+            {rangeMode === "single" ? (
+              <BarChart data={dailySeries}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                <XAxis dataKey="dia" stroke="#888" fontSize={10} tickFormatter={(v) => `Día ${v}`} />
+                <YAxis stroke="#888" fontSize={10} />
+                <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(249,115,22,0.3)", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString("es-AR")} labelFormatter={(d) => `Día ${d}`} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey={MES_LABEL[prevMes].split(" ")[0]} fill="#6B7280" />
+                <Bar dataKey={MES_LABEL[mes].split(" ")[0]} fill="#F97316" />
+              </BarChart>
+            ) : (
+              <LineChart data={dailySeries}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+                <XAxis dataKey="dia" stroke="#888" fontSize={10} tickFormatter={(v) => `${v}`} label={{ value: "Día del mes", fill: "#888", fontSize: 11, position: "insideBottom", offset: -5 }} />
+                <YAxis stroke="#888" fontSize={10} />
+                <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(249,115,22,0.3)", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString("es-AR")} labelFormatter={(d) => `Día ${d}`} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey={MES_LABEL[prevMes].split(" ")[0]} stroke="#6B7280" strokeWidth={2} dot={{ fill: "#6B7280", r: 3 }} />
+                <Line type="monotone" dataKey={MES_LABEL[mes].split(" ")[0]} stroke="#F97316" strokeWidth={2} dot={{ fill: "#F97316", r: 3 }} />
+              </LineChart>
+            )}
           </ResponsiveContainer>
           <p className="text-[11px] t-muted mt-2">
-            Comparación día por día. {category === "dropshipper" && "Filtrá un dropshipper para ver su evolución diaria individual."}
+            {isRangeFiltered ? `Comparando ${rangeMode === "single" ? `el día ${effectiveRange.from}` : `los días ${effectiveRange.from}–${effectiveRange.to}`} de ambos meses.` : "Comparación día por día."} {category === "dropshipper" && "Filtrá un dropshipper para ver su evolución diaria individual."}
+          </p>
+        </div>
+      )}
+
+      {/* Tabla comparativa por rango (solo cuando hay filtro de fechas activo) */}
+      {prevMes && isRangeFiltered && category === "dropshipper" && rangeByDS.length > 0 && (
+        <div className="glass-card overflow-x-auto">
+          <h3 className="text-sm font-semibold t-primary mb-3 px-5 pt-5">
+            Comparativo por dropshipper — {rangeMode === "single" ? `Día ${effectiveRange.from}` : `Días ${effectiveRange.from}–${effectiveRange.to}`} ({MES_LABEL[prevMes].split(" ")[0]} vs {MES_LABEL[mes].split(" ")[0]})
+          </h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <th className="py-2 px-3 text-left text-[11px] t-muted">Dropshipper</th>
+                <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[prevMes].split(" ")[0]} ing</th>
+                <th className="py-2 px-3 text-right text-[11px] t-muted">Días activos {MES_LABEL[prevMes].split(" ")[0]}</th>
+                <th className="py-2 px-3 text-right text-[11px] t-muted">Prom/día {MES_LABEL[prevMes].split(" ")[0]}</th>
+                <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[mes].split(" ")[0]} ing</th>
+                <th className="py-2 px-3 text-right text-[11px] t-muted">Días activos {MES_LABEL[mes].split(" ")[0]}</th>
+                <th className="py-2 px-3 text-right text-[11px] t-muted">Prom/día {MES_LABEL[mes].split(" ")[0]}</th>
+                <th className="py-2 px-3 text-right text-[11px] t-muted">Crec. %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rangeByDS.map((r, i) => (
+                <tr key={r.ds} className="border-b border-gray-800/50 hover:bg-orange-500/5">
+                  <td className="py-2 px-3 t-primary text-xs">
+                    <span className="t-muted mr-2">{i + 1}.</span>{r.cleanDs}
+                  </td>
+                  <td className="py-2 px-3 text-right font-mono text-xs t-muted">{r.abrIng > 0 ? r.abrIng.toLocaleString("es-AR") : "—"}</td>
+                  <td className="py-2 px-3 text-right font-mono text-xs t-muted">{r.diasActivosAbr || "—"}</td>
+                  <td className="py-2 px-3 text-right font-mono text-xs t-muted">{r.promAbr > 0 ? Math.round(r.promAbr).toLocaleString("es-AR") : "—"}</td>
+                  <td className="py-2 px-3 text-right font-mono text-xs font-bold text-orange-400">{r.mayIng > 0 ? r.mayIng.toLocaleString("es-AR") : "—"}</td>
+                  <td className="py-2 px-3 text-right font-mono text-xs">{r.diasActivosMay || "—"}</td>
+                  <td className="py-2 px-3 text-right font-mono text-xs">{r.promMay > 0 ? Math.round(r.promMay).toLocaleString("es-AR") : "—"}</td>
+                  <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: r.growth === null ? "#10B981" : (r.growth ?? 0) >= 0 ? "#10B981" : "#EF4444" }}>
+                    {r.growth === null ? "🆕" : (r.growth >= 0 ? "+" : "") + r.growth.toFixed(0) + "%"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              {(() => {
+                const tAbr = rangeByDS.reduce((s, r) => s + r.abrIng, 0);
+                const tMay = rangeByDS.reduce((s, r) => s + r.mayIng, 0);
+                const grTot = tAbr > 0 ? ((tMay - tAbr) / tAbr) * 100 : null;
+                return (
+                  <tr style={{ background: "rgba(249,115,22,0.08)", fontWeight: 700 }}>
+                    <td className="py-2 px-3 t-primary text-xs">TOTAL ({rangeByDS.length})</td>
+                    <td className="py-2 px-3 text-right font-mono text-xs">{tAbr.toLocaleString("es-AR")}</td>
+                    <td colSpan={2}></td>
+                    <td className="py-2 px-3 text-right font-mono text-xs text-orange-400">{tMay.toLocaleString("es-AR")}</td>
+                    <td colSpan={2}></td>
+                    <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: (grTot ?? 0) >= 0 ? "#10B981" : "#EF4444" }}>
+                      {grTot === null ? "—" : (grTot >= 0 ? "+" : "") + grTot.toFixed(1) + "%"}
+                    </td>
+                  </tr>
+                );
+              })()}
+            </tfoot>
+          </table>
+          <p className="text-[11px] t-muted px-5 pb-4 mt-2">
+            Esta tabla compara solo el rango filtrado. La tabla "Detalle por dropshipper" más abajo sigue mostrando totales del mes completo.
           </p>
         </div>
       )}
