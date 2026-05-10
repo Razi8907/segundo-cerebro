@@ -106,8 +106,9 @@ export default function OpsBreakdown({
   // Daily breakdown (by_ds_daily si dropshipper, by_date si proveedor)
   type DSDaily = { ds: string; fecha: string; ordenes: number };
   type DateRow = { fecha: string; total: number };
-  const [dailyCur, setDailyCur] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[] }>({ dsDaily: [], byDate: [] });
-  const [dailyPrev, setDailyPrev] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[] }>({ dsDaily: [], byDate: [] });
+  type DSProducto = { ds: string; producto: string; ordenes: number };
+  const [dailyCur, setDailyCur] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[] }>({ dsDaily: [], byDate: [], dsProducto: [] });
+  const [dailyPrev, setDailyPrev] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[] }>({ dsDaily: [], byDate: [], dsProducto: [] });
   const [filterDS, setFilterDS] = useState<string>("__all__");
 
   useEffect(() => {
@@ -128,10 +129,12 @@ export default function OpsBreakdown({
       setDailyCur({
         dsDaily: cur?.data?.by_ds_daily || [],
         byDate: cur?.data?.by_date || [],
+        dsProducto: cur?.data?.by_ds_producto || [],
       });
       setDailyPrev({
         dsDaily: pr?.data?.by_ds_daily || [],
         byDate: pr?.data?.by_date || [],
+        dsProducto: pr?.data?.by_ds_producto || [],
       });
       setLoading(false);
     });
@@ -242,6 +245,49 @@ export default function OpsBreakdown({
       .filter((r) => r.abrIng > 0 || r.mayIng > 0)
       .sort((a, b) => b.mayIng - a.mayIng);
   }, [dailyCur, dailyPrev, effectiveRange, isRangeFiltered, category]);
+
+  // Top productos en el rango (estimación proporcional cuando hay filtro):
+  // Para cada DS, computamos su share del mes (días del rango / días del mes).
+  // Aplicamos ese factor a sus productos para estimar volumen en el rango.
+  // Sin filtro: muestra el total real del mes desde by_ds_producto.
+  const topProductos = useMemo(() => {
+    const computeMonth = (daily: { dsDaily: DSDaily[]; dsProducto: DSProducto[] }) => {
+      // Total por DS en el rango
+      const dsRangeTotal = new Map<string, number>();
+      const dsMonthTotal = new Map<string, number>();
+      for (const d of daily.dsDaily) {
+        const day = dayOf(d.fecha);
+        if (!day || !d.ds) continue;
+        dsMonthTotal.set(d.ds, (dsMonthTotal.get(d.ds) || 0) + (d.ordenes || 0));
+        if (day < effectiveRange.from || day > effectiveRange.to) continue;
+        dsRangeTotal.set(d.ds, (dsRangeTotal.get(d.ds) || 0) + (d.ordenes || 0));
+      }
+      const productMap = new Map<string, number>();
+      for (const p of daily.dsProducto) {
+        if (!p.producto || !p.ds) continue;
+        const monthTotal = dsMonthTotal.get(p.ds) || 0;
+        const rangeTotal = dsRangeTotal.get(p.ds) || 0;
+        if (monthTotal <= 0) continue;
+        const factor = isRangeFiltered ? rangeTotal / monthTotal : 1;
+        const estimated = (p.ordenes || 0) * factor;
+        if (estimated > 0) {
+          productMap.set(p.producto, (productMap.get(p.producto) || 0) + estimated);
+        }
+      }
+      return productMap;
+    };
+    const curMap = computeMonth(dailyCur);
+    const prevMap = computeMonth(dailyPrev);
+    const all = new Set([...curMap.keys(), ...prevMap.keys()]);
+    const rows: { producto: string; cur: number; prev: number; growth: number | null }[] = [];
+    all.forEach((producto) => {
+      const cur = Math.round(curMap.get(producto) || 0);
+      const prev = Math.round(prevMap.get(producto) || 0);
+      const growth = prev > 0 ? ((cur - prev) / prev) * 100 : (cur > 0 ? null : 0);
+      rows.push({ producto, cur, prev, growth });
+    });
+    return rows.sort((a, b) => b.cur - a.cur).slice(0, 15);
+  }, [dailyCur, dailyPrev, effectiveRange, isRangeFiltered]);
 
   // Totales acumulados de la serie (para mostrar en header del chart)
   const dailyTotals = useMemo(() => {
@@ -504,6 +550,66 @@ export default function OpsBreakdown({
           <p className="text-[11px] t-muted mt-2">
             {isRangeFiltered ? `Comparando ${rangeMode === "single" ? `el día ${effectiveRange.from}` : `los días ${effectiveRange.from}–${effectiveRange.to}`} de ambos meses.` : "Comparación día por día."} {category === "dropshipper" && "Filtrá un dropshipper para ver su evolución diaria individual."}
           </p>
+        </div>
+      )}
+
+      {/* Top productos movidos (Abril vs Mayo, con filtro de rango aplicado) */}
+      {prevMes && topProductos.length > 0 && (
+        <div className="glass-card p-5">
+          <div className="flex items-baseline justify-between flex-wrap gap-2 mb-3">
+            <h3 className="text-sm font-semibold t-primary">🏷️ Top Productos Movidos — {MES_LABEL[prevMes].split(" ")[0]} vs {MES_LABEL[mes].split(" ")[0]}</h3>
+            <span className="text-[11px] t-muted">
+              {isRangeFiltered ? (
+                <>Rango: <strong className="text-orange-300">{rangeMode === "single" ? `Día ${effectiveRange.from}` : `Días ${effectiveRange.from}–${effectiveRange.to}`}</strong> · estimado proporcional</>
+              ) : (
+                "Volumen total del mes"
+              )}
+            </span>
+          </div>
+          <ResponsiveContainer width="100%" height={420}>
+            <BarChart data={topProductos.map((p) => ({
+              name: p.producto.length > 30 ? p.producto.slice(0, 30) + "…" : p.producto,
+              [MES_LABEL[prevMes].split(" ")[0]]: p.prev,
+              [MES_LABEL[mes].split(" ")[0]]: p.cur,
+            }))} layout="vertical" margin={{ left: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
+              <XAxis type="number" stroke="#888" fontSize={10} />
+              <YAxis dataKey="name" type="category" stroke="#888" fontSize={10} width={200} />
+              <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(249,115,22,0.3)", fontSize: 11 }} formatter={(v) => Number(v).toLocaleString("es-AR")} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey={MES_LABEL[prevMes].split(" ")[0]} fill="#6B7280" radius={[0, 4, 4, 0]} barSize={10} />
+              <Bar dataKey={MES_LABEL[mes].split(" ")[0]} fill="#F97316" radius={[0, 4, 4, 0]} barSize={10} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="overflow-x-auto mt-3">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="py-2 px-3 text-left text-[11px] t-muted">Producto</th>
+                  <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[prevMes].split(" ")[0]}</th>
+                  <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[mes].split(" ")[0]}</th>
+                  <th className="py-2 px-3 text-right text-[11px] t-muted">Crec. %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topProductos.map((p, i) => (
+                  <tr key={p.producto} className="border-b border-gray-800/50 hover:bg-orange-500/5">
+                    <td className="py-2 px-3 t-primary text-xs"><span className="t-muted mr-2">{i + 1}.</span>{p.producto}</td>
+                    <td className="py-2 px-3 text-right font-mono text-xs t-muted">{p.prev > 0 ? p.prev.toLocaleString("es-AR") : "—"}</td>
+                    <td className="py-2 px-3 text-right font-mono text-xs font-bold text-orange-400">{p.cur > 0 ? p.cur.toLocaleString("es-AR") : "—"}</td>
+                    <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: p.growth === null ? "#10B981" : (p.growth ?? 0) >= 0 ? "#10B981" : "#EF4444" }}>
+                      {p.growth === null ? "🆕" : (p.growth >= 0 ? "+" : "") + p.growth.toFixed(0) + "%"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {isRangeFiltered && (
+            <p className="text-[11px] t-muted mt-3">
+              ⓘ Los volúmenes por rango son estimados proporcionalmente: por cada dropshipper, su share del rango (días del rango / días totales) se aplica a su mix de productos del mes.
+            </p>
+          )}
         </div>
       )}
 
