@@ -6,7 +6,8 @@ import {
 } from "recharts";
 
 /* ───────── constants ───────── */
-const STATUS_GROUPS = {
+// ─── PARAGUAY: estados (sin unificación, archivo Dropi original) ───
+const STATUS_GROUPS_PY = {
   mov_dropshipper: ["PENDIENTE CONFIRMACION"],
   mov_proveedor: ["PENDIENTE", "GUIA_GENERADA", "PREPARADO PARA TRANSPORTADORA"],
   mov_aex: [
@@ -25,7 +26,83 @@ const STATUS_GROUPS = {
   terminales: ["ENTREGADO", "DEVOLUCION"],
 };
 
-const TABS = [
+// ─── ARGENTINA: mapeo de 29 estados crudos → 21 unificados ───
+const AR_STATE_MAP: Record<string, string> = {
+  // Mantienen (Ambas)
+  "PENDIENTE CONFIRMACION": "PENDIENTE CONFIRMACION",
+  "PENDIENTE": "PENDIENTE",
+  "GUIA_GENERADA": "GUIA_GENERADA",
+  "NOVEDAD": "NOVEDAD",
+  "NOVEDAD SOLUCIONADA": "NOVEDAD SOLUCIONADA",
+  "EN PROCESO DE DEVOLUCION": "EN PROCESO DE DEVOLUCION",
+  "DEVOLUCION": "DEVOLUCION",
+  "ENTREGADO": "ENTREGADO",
+  "CANCELADO": "CANCELADO",
+  "RECHAZADO": "RECHAZADO",
+  // Solo Urbano (mantienen)
+  "PREPARADO PARA TRANSPORTADORA": "PREPARADO PARA TRANSPORTADORA",
+  "RECOGIDO POR TRANSPORTADORA": "RECOGIDO POR TRANSPORTADORA",
+  "EN BODEGA DESTINO": "EN BODEGA DESTINO",
+  "RETIRO POR SUCURSAL": "RETIRO POR SUCURSAL",
+  "MAL RUTEO": "MAL RUTEO",
+  "ANULACIÓN DE MANIFIESTO": "ANULACIÓN DE MANIFIESTO",
+  "ANULACION DE MANIFIESTO": "ANULACIÓN DE MANIFIESTO", // por si viene sin tilde
+  "RENDICIÓN DE ACUSE": "RENDICIÓN DE ACUSE",
+  "RENDICION DE ACUSE": "RENDICIÓN DE ACUSE",
+  // Solo Fixy (mantiene)
+  "GESTIONADO OPERATIVA": "GESTIONADO OPERATIVA",
+  // Unifica
+  "BODEGA ORIGEN": "EN BODEGA ORIGEN",
+  "EN BODEGA ORIGEN": "EN BODEGA ORIGEN",
+  "RUTEADO PARA SU ENTREGA": "LISTO PARA DESPACHO",
+  "MANIFIESTO": "LISTO PARA DESPACHO",
+  "EN REPARTO": "EN RUTA A ENTREGA",
+  "SALIDA A RUTA": "EN RUTA A ENTREGA",
+  "REPACTADO LISTO PARA DESPACHO": "REPACTADO",
+  "PACTADO": "REPACTADO",
+  "REINGRESO A BODEGA": "REINTENTO PROGRAMADO",
+  "REDESPACHO": "REINTENTO PROGRAMADO",
+  "GUIA_ANULADA": "RECHAZADO",
+};
+
+// ─── ARGENTINA: agrupamiento de estados unificados ───
+const STATUS_GROUPS_AR = {
+  mov_dropshipper: ["PENDIENTE CONFIRMACION"],
+  mov_proveedor: ["PENDIENTE", "GUIA_GENERADA", "PREPARADO PARA TRANSPORTADORA"],
+  // Todos los estados en poder de la transportadora (FIXY o URBANO)
+  mov_transportadora: [
+    "RECOGIDO POR TRANSPORTADORA", "EN BODEGA ORIGEN", "EN BODEGA DESTINO",
+    "LISTO PARA DESPACHO", "EN RUTA A ENTREGA", "REPACTADO", "GESTIONADO OPERATIVA",
+    "RETIRO POR SUCURSAL", "NOVEDAD", "NOVEDAD SOLUCIONADA", "MAL RUTEO",
+    "ANULACIÓN DE MANIFIESTO", "REINTENTO PROGRAMADO", "RENDICIÓN DE ACUSE",
+  ],
+  problemas: ["NOVEDAD", "MAL RUTEO", "ANULACIÓN DE MANIFIESTO"],
+  devolucion: ["EN PROCESO DE DEVOLUCION", "DEVOLUCION"],
+  cancelacion: ["CANCELADO", "RECHAZADO"],
+  terminales: ["ENTREGADO", "DEVOLUCION"],
+};
+
+// Helper: devuelve el group object según country
+const getStatusGroups = (country: string) => country === "ar"
+  ? {
+      mov_dropshipper: STATUS_GROUPS_AR.mov_dropshipper,
+      mov_proveedor: STATUS_GROUPS_AR.mov_proveedor,
+      mov_aex: [] as string[], // no aplica
+      mov_fixy: STATUS_GROUPS_AR.mov_transportadora, // se reusa el bucket
+      cancelacion: STATUS_GROUPS_AR.cancelacion,
+      terminales: STATUS_GROUPS_AR.terminales,
+    }
+  : STATUS_GROUPS_PY;
+
+// Helper: para AR aplica el mapeo de unificación al estatus crudo
+const unifyEstatus = (raw: string, country: string): string => {
+  if (country !== "ar") return raw;
+  const trimmed = (raw || "").trim();
+  return AR_STATE_MAP[trimmed] || trimmed;
+};
+
+// Tabs por país
+const TABS_PY = [
   { key: "resumen", label: "📊 Resumen" },
   { key: "aex", label: "✈️ AEX" },
   { key: "fixy", label: "🚚 FIXY" },
@@ -38,7 +115,21 @@ const TABS = [
   { key: "paradas", label: "⏰ Paradas +72hs" },
 ] as const;
 
-type TabKey = (typeof TABS)[number]["key"];
+const TABS_AR = [
+  { key: "resumen", label: "📊 Resumen" },
+  { key: "fixy", label: "🚚 FIXY" },
+  { key: "urbano", label: "🚛 URBANO" },
+  { key: "no_entregadas", label: "🚨 Devoluciones" },
+  { key: "novedades", label: "⚠️ Novedades" },
+  { key: "mov_prov", label: "📦 Mov. Proveedor" },
+  { key: "mov_ds", label: "👤 Mov. Dropshipper" },
+  { key: "canceladas", label: "❌ Canceladas" },
+  { key: "paradas", label: "⏰ Paradas +72hs" },
+] as const;
+
+type TabKey = "resumen" | "aex" | "fixy" | "fixy_nd" | "urbano" | "no_entregadas" | "novedades" | "mov_prov" | "mov_ds" | "canceladas" | "paradas";
+
+const getTabs = (country: string) => (country === "ar" ? TABS_AR : TABS_PY) as readonly { key: TabKey; label: string }[];
 
 const STATUS_COLORS: Record<string, string> = {
   PENDIENTE: "#d97706", "PENDIENTE CONFIRMACION": "#b45309", GUIA_GENERADA: "#2563eb",
@@ -426,7 +517,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           nombre_tienda: r.tienda || "",
           proveedor_nombre: r.proveedor || "",
           transportadora: r.transportadora || "",
-          estatus: r.estatus || "",
+          estatus: unifyEstatus(r.estatus || "", country),
           fecha_procesamiento: r.fecha_procesamiento || "",
           fecha_ultimo_movimiento: r.fecha_ultimo_movimiento || "",
           hora_ultimo_movimiento: r.hora_ultimo_movimiento || "",
@@ -481,6 +572,8 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         proveedor: r.proveedor_nombre,
         proveedor_id: 0,
         transportadora: r.transportadora,
+        // Mantener el estatus CRUDO en el upload (para preservar el archivo original).
+        // La unificación se aplica al renderizar (fetchData).
         estatus: r.estatus,
         fecha_procesamiento: r.fecha_procesamiento,
         fecha_ultimo_movimiento: r.fecha_ultimo_movimiento,
@@ -603,14 +696,16 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
   }, [filteredRows]);
 
   // Transport-specific filters
-  const aexRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "AEX" && STATUS_GROUPS.mov_aex.includes(r.estatus)), [filteredRows]);
-  const fixyRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "FIXY" && STATUS_GROUPS.mov_fixy.includes(r.estatus)), [filteredRows]);
-  const fixyNdRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "FIXY-NEXTDAY" && STATUS_GROUPS.mov_fixy.includes(r.estatus)), [filteredRows]);
+  const SG = useMemo(() => getStatusGroups(country), [country]);
+  const aexRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "AEX" && SG.mov_aex.includes(r.estatus)), [filteredRows, SG]);
+  const fixyRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "FIXY" && SG.mov_fixy.includes(r.estatus)), [filteredRows, SG]);
+  const fixyNdRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "FIXY-NEXTDAY" && SG.mov_fixy.includes(r.estatus)), [filteredRows, SG]);
+  const urbanoRows = useMemo(() => filteredRows.filter((r) => r.transportadora === "URBANO" && SG.mov_fixy.includes(r.estatus)), [filteredRows, SG]);
   const noEntregadas = useMemo(() => filteredRows.filter((r) => r.estatus === "NO ENTREGADA"), [filteredRows]);
   const novedades = useMemo(() => filteredRows.filter((r) => r.estatus === "NOVEDAD"), [filteredRows]);
-  const movProv = useMemo(() => filteredRows.filter((r) => STATUS_GROUPS.mov_proveedor.includes(r.estatus)), [filteredRows]);
-  const movDs = useMemo(() => filteredRows.filter((r) => STATUS_GROUPS.mov_dropshipper.includes(r.estatus)), [filteredRows]);
-  const canceladas = useMemo(() => filteredRows.filter((r) => STATUS_GROUPS.cancelacion.includes(r.estatus)), [filteredRows]);
+  const movProv = useMemo(() => filteredRows.filter((r) => SG.mov_proveedor.includes(r.estatus)), [filteredRows, SG]);
+  const movDs = useMemo(() => filteredRows.filter((r) => SG.mov_dropshipper.includes(r.estatus)), [filteredRows, SG]);
+  const canceladas = useMemo(() => filteredRows.filter((r) => SG.cancelacion.includes(r.estatus)), [filteredRows, SG]);
 
   // Paradas +72hs: guides in transport states where FECHA EN PROCESAMIENTO > 72hs ago
   const paradasRows = useMemo(() => {
@@ -624,7 +719,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     }
     const latest = Array.from(guiaMap.values());
     const inTransit = latest.filter(
-      (r) => STATUS_GROUPS.mov_aex.includes(r.estatus) || STATUS_GROUPS.mov_fixy.includes(r.estatus)
+      (r) => SG.mov_aex.includes(r.estatus) || SG.mov_fixy.includes(r.estatus)
     );
     return inTransit
       .filter((r) => hoursFromProcessing(r.fecha_procesamiento) > 72)
@@ -638,10 +733,11 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
 
   // Alert counts
   const alertCounts = useMemo(() => {
-    const aexAll = filteredRows.filter((r) => r.transportadora === "AEX" && STATUS_GROUPS.mov_aex.includes(r.estatus));
+    const aexAll = filteredRows.filter((r) => r.transportadora === "AEX" && SG.mov_aex.includes(r.estatus));
     const fixyAll = filteredRows.filter((r) =>
-      (r.transportadora === "FIXY" || r.transportadora === "FIXY-NEXTDAY") && STATUS_GROUPS.mov_fixy.includes(r.estatus)
+      (r.transportadora === "FIXY" || r.transportadora === "FIXY-NEXTDAY") && SG.mov_fixy.includes(r.estatus)
     );
+    const urbanoAll = filteredRows.filter((r) => r.transportadora === "URBANO" && SG.mov_fixy.includes(r.estatus));
     const h = (arr: GuideRow[], min: number, max?: number) =>
       arr.filter((r) => {
         const hrs = hoursFromProcessing(r.fecha_procesamiento);
@@ -652,8 +748,10 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       aex120: h(aexAll, 120),
       fixy72: h(fixyAll, 72, 120),
       fixy120: h(fixyAll, 120),
+      urbano72: h(urbanoAll, 72, 120),
+      urbano120: h(urbanoAll, 120),
     };
-  }, [filteredRows]);
+  }, [filteredRows, SG]);
 
   // KPI summary counts
   const kpis = useMemo(() => {
@@ -968,7 +1066,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
 
       {/* Tab bar */}
       <div className="flex flex-wrap gap-0 border-b border-cyan-500/20 -mx-6 px-6 overflow-x-auto">
-        {TABS.map((t) => (
+        {getTabs(country).map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
@@ -987,12 +1085,21 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {tab === "resumen" && (
         <div className="space-y-4">
           <DownloadBtn onClick={() => downloadCSV("Resumen_Completo", filteredRows, EXPORT_COLUMNS)} label={`Descargar todo (${filteredRows.length} guías)`} />
-          {/* KPI cards */}
+          {/* KPI cards — distintas por país */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
             <KpiCard label="Guías únicas" value={kpis.total.toLocaleString()} color="orange" />
-            <KpiCard label="AEX en transito" value={kpis.aexTransito} color="blue" />
-            <KpiCard label="FIXY en transito" value={kpis.fixyTransito} color="blue" />
-            <KpiCard label="FIXY-ND en transito" value={kpis.fixyNdTransito} color="blue" />
+            {country === "ar" ? (
+              <>
+                <KpiCard label="FIXY en transito" value={kpis.fixyTransito} color="blue" />
+                <KpiCard label="URBANO en transito" value={urbanoRows.length} color="blue" />
+              </>
+            ) : (
+              <>
+                <KpiCard label="AEX en transito" value={kpis.aexTransito} color="blue" />
+                <KpiCard label="FIXY en transito" value={kpis.fixyTransito} color="blue" />
+                <KpiCard label="FIXY-ND en transito" value={kpis.fixyNdTransito} color="blue" />
+              </>
+            )}
             <KpiCard label="No entregadas" value={kpis.noEntregadas} color="red" />
             <KpiCard label="Novedades" value={kpis.novedades} color="orange" />
             <KpiCard label="Devolucion" value={kpis.devolucion} color="red" />
@@ -1000,12 +1107,23 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             <KpiCard label="Entregadas" value={kpis.entregadas} color="green" />
           </div>
 
-          {/* Alert cards */}
+          {/* Alert cards — distintas por país */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <AlertCard label="AEX +72hs" value={alertCounts.aex72} level="warn" />
-            <AlertCard label="AEX +120hs (critico)" value={alertCounts.aex120} level="crit" />
-            <AlertCard label="FIXY +72hs" value={alertCounts.fixy72} level="warn" />
-            <AlertCard label="FIXY +120hs (critico)" value={alertCounts.fixy120} level="crit" />
+            {country === "ar" ? (
+              <>
+                <AlertCard label="FIXY +72hs" value={alertCounts.fixy72} level="warn" />
+                <AlertCard label="FIXY +120hs (critico)" value={alertCounts.fixy120} level="crit" />
+                <AlertCard label="URBANO +72hs" value={alertCounts.urbano72} level="warn" />
+                <AlertCard label="URBANO +120hs (critico)" value={alertCounts.urbano120} level="crit" />
+              </>
+            ) : (
+              <>
+                <AlertCard label="AEX +72hs" value={alertCounts.aex72} level="warn" />
+                <AlertCard label="AEX +120hs (critico)" value={alertCounts.aex120} level="crit" />
+                <AlertCard label="FIXY +72hs" value={alertCounts.fixy72} level="warn" />
+                <AlertCard label="FIXY +120hs (critico)" value={alertCounts.fixy120} level="crit" />
+              </>
+            )}
           </div>
 
           {/* Status distribution */}
@@ -1088,6 +1206,15 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           {renderStatusBreakdown(fixyNdRows, "FIXY-NEXTDAY")}
           <DownloadBtn onClick={() => downloadCSV("FIXY_NextDay", fixyNdRows, EXPORT_COLUMNS)} label={`Descargar FIXY-ND (${fixyNdRows.length})`} />
           <DataTable rows={fixyNdRows} columns={transportColumns} highlightHours />
+        </div>
+      )}
+
+      {/* ── URBANO TAB (Argentina) ── */}
+      {tab === "urbano" && (
+        <div className="space-y-4">
+          {renderStatusBreakdown(urbanoRows, "URBANO")}
+          <DownloadBtn onClick={() => downloadCSV("URBANO", urbanoRows, EXPORT_COLUMNS)} label={`Descargar URBANO (${urbanoRows.length})`} />
+          <DataTable rows={urbanoRows} columns={transportColumns} highlightHours />
         </div>
       )}
 
