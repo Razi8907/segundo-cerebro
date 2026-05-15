@@ -753,6 +753,88 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     };
   }, [filteredRows, SG]);
 
+  // ─── Métricas operacionales (según DOCUMENTO_MAESTRO_Sistema_Dashboards_Argentina)
+  // Mide performance de transportadoras: tasa entrega, devoluciones, tiempos, etc.
+  const opMetrics = useMemo(() => {
+    // Parsea fecha en formato DD/MM/YYYY o YYYY-MM-DD con hora opcional
+    const parseFecha = (s: string): number | null => {
+      if (!s) return null;
+      const str = s.trim();
+      // DD/MM/YYYY HH:MM
+      const m1 = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2}))?/.exec(str);
+      if (m1) {
+        const [, d, mo, y, h = "0", min = "0"] = m1;
+        return new Date(+y, +mo - 1, +d, +h, +min).getTime();
+      }
+      // YYYY-MM-DD HH:MM
+      const m2 = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{1,2}):(\d{2}))?/.exec(str);
+      if (m2) {
+        const [, y, mo, d, h = "0", min = "0"] = m2;
+        return new Date(+y, +mo - 1, +d, +h, +min).getTime();
+      }
+      return null;
+    };
+
+    const compute = (rows: GuideRow[]) => {
+      // "Recibidos": ya pasaron por la transportadora (no pendiente DS/proveedor, no cancelado)
+      const recibidos = rows.filter((r) =>
+        !SG.mov_dropshipper.includes(r.estatus) &&
+        !SG.mov_proveedor.includes(r.estatus) &&
+        !SG.cancelacion.includes(r.estatus)
+      );
+      const entregadas = rows.filter((r) => r.estatus === "ENTREGADO");
+      const devoluciones = rows.filter((r) =>
+        r.estatus === "DEVOLUCION" || r.estatus === "EN PROCESO DE DEVOLUCION"
+      );
+      const novedades = rows.filter((r) => r.estatus === "NOVEDAD");
+      const enTransito = rows.filter((r) => SG.mov_fixy.includes(r.estatus));
+
+      // Tiempo de entrega = fecha_ultimo_movimiento − fecha_procesamiento (en horas)
+      const tiempos = entregadas
+        .map((r) => {
+          const proc = parseFecha(r.fecha_procesamiento);
+          const ult = parseFecha(r.fecha_ultimo_movimiento);
+          if (!proc || !ult) return null;
+          const h = (ult - proc) / (1000 * 60 * 60);
+          return h > 0 && h < 24 * 60 ? h : null; // cap a 60 días
+        })
+        .filter((t): t is number => t !== null);
+
+      const tiempoProm = tiempos.length > 0 ? tiempos.reduce((s, t) => s + t, 0) / tiempos.length : 0;
+      const entregadasEn72 = tiempos.filter((t) => t <= 72).length;
+      const pctEn72 = tiempos.length > 0 ? (entregadasEn72 / tiempos.length) * 100 : 0;
+
+      // Críticos +72hs: en tránsito con +72hs desde procesamiento sin moverse
+      const criticos72 = enTransito.filter((r) => hoursFromProcessing(r.fecha_procesamiento) > 72).length;
+      const criticos120 = enTransito.filter((r) => hoursFromProcessing(r.fecha_procesamiento) > 120).length;
+
+      return {
+        recibidos: recibidos.length,
+        entregadas: entregadas.length,
+        devoluciones: devoluciones.length,
+        novedades: novedades.length,
+        enTransito: enTransito.length,
+        tasaEntrega: recibidos.length > 0 ? (entregadas.length / recibidos.length) * 100 : 0,
+        tasaDevolucion: recibidos.length > 0 ? (devoluciones.length / recibidos.length) * 100 : 0,
+        tasaNovedades: recibidos.length > 0 ? (novedades.length / recibidos.length) * 100 : 0,
+        tiempoProm,
+        pctEn72,
+        criticos72,
+        criticos120,
+        tiemposCount: tiempos.length,
+      };
+    };
+
+    const total = compute(filteredRows);
+    const trans1Rows = filteredRows.filter((r) => r.transportadora === (country === "ar" ? "FIXY" : "AEX"));
+    const trans2Rows = filteredRows.filter((r) => country === "ar"
+      ? r.transportadora === "URBANO"
+      : (r.transportadora === "FIXY" || r.transportadora === "FIXY-NEXTDAY"));
+    const trans1 = compute(trans1Rows);
+    const trans2 = compute(trans2Rows);
+    return { total, trans1, trans2 };
+  }, [filteredRows, SG, country]);
+
   // KPI summary counts
   const kpis = useMemo(() => {
     const entregadas = filteredRows.filter((r) => r.estatus === "ENTREGADO").length;
@@ -1126,6 +1208,12 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             )}
           </div>
 
+          {/* Métricas Operacionales (DOCUMENTO_MAESTRO) */}
+          <OpMetricsSection
+            country={country}
+            metrics={opMetrics}
+          />
+
           {/* Status distribution */}
           <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
             <h3 className="text-sm font-bold t-primary mb-3">Distribucion por Estado</h3>
@@ -1327,6 +1415,122 @@ function MesSwitcher({ mes, setMes }: { mes: MesOps; setMes: (m: MesOps) => void
           {o.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+/* ───────── OP METRICS SECTION ───────── */
+type MetricBlock = {
+  recibidos: number;
+  entregadas: number;
+  devoluciones: number;
+  novedades: number;
+  enTransito: number;
+  tasaEntrega: number;
+  tasaDevolucion: number;
+  tasaNovedades: number;
+  tiempoProm: number;
+  pctEn72: number;
+  criticos72: number;
+  criticos120: number;
+  tiemposCount: number;
+};
+
+function OpMetricsSection({ country, metrics }: { country: "py" | "ar"; metrics: { total: MetricBlock; trans1: MetricBlock; trans2: MetricBlock } }) {
+  const trans1Label = country === "ar" ? "FIXY" : "AEX";
+  const trans2Label = country === "ar" ? "URBANO" : "FIXY / FIXY-ND";
+
+  // Semáforo basado en umbrales del documento maestro
+  const colorFor = (metric: "entrega" | "devol" | "tiempo" | "en72" | "novedades" | "criticos", value: number): string => {
+    switch (metric) {
+      case "entrega":
+        if (value >= 95) return "#10B981"; if (value >= 85) return "#F59E0B"; return "#EF4444";
+      case "devol":
+        if (value < 5) return "#10B981"; if (value < 10) return "#F59E0B"; return "#EF4444";
+      case "tiempo":
+        if (value < 48) return "#10B981"; if (value < 72) return "#F59E0B"; return "#EF4444";
+      case "en72":
+        if (value >= 90) return "#10B981"; if (value >= 70) return "#F59E0B"; return "#EF4444";
+      case "novedades":
+        if (value < 10) return "#10B981"; if (value < 15) return "#F59E0B"; return "#EF4444";
+      case "criticos":
+        if (value === 0) return "#10B981"; if (value <= 10) return "#F59E0B"; return "#EF4444";
+    }
+  };
+
+  const metricRow = (label: string, key: keyof MetricBlock, type: "entrega" | "devol" | "tiempo" | "en72" | "novedades" | "criticos", suffix: string, meta: string) => {
+    const valTotal = metrics.total[key] as number;
+    const val1 = metrics.trans1[key] as number;
+    const val2 = metrics.trans2[key] as number;
+    const fmt = (v: number) => {
+      if (type === "tiempo") return v > 0 ? `${v.toFixed(1)}h` : "—";
+      if (type === "criticos") return v.toLocaleString("es-AR");
+      return `${v.toFixed(1)}${suffix}`;
+    };
+    return (
+      <tr className="border-b border-gray-800/50">
+        <td className="py-2 px-3 t-primary text-xs font-medium">{label}</td>
+        <td className="py-2 px-3 text-right font-mono text-xs t-muted">{meta}</td>
+        <td className="py-2 px-3 text-right font-mono text-xs font-bold" style={{ color: colorFor(type, valTotal) }}>{fmt(valTotal)}</td>
+        <td className="py-2 px-3 text-right font-mono text-xs font-bold" style={{ color: colorFor(type, val1) }}>{fmt(val1)}</td>
+        <td className="py-2 px-3 text-right font-mono text-xs font-bold" style={{ color: colorFor(type, val2) }}>{fmt(val2)}</td>
+      </tr>
+    );
+  };
+
+  return (
+    <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+      <h3 className="text-sm font-bold t-primary mb-1">📈 Métricas Operacionales — Performance de transportadoras</h3>
+      <p className="text-[11px] t-muted mb-3">
+        Mide desde el momento en que la transportadora recibe el paquete hasta el resultado final.
+        Excluye PENDIENTE / GUIA_GENERADA / CANCELADO (nunca llegan a transportadora).
+      </p>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-700">
+              <th className="py-2 px-3 text-left text-[11px] t-muted">Métrica</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">Meta</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">TOTAL</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">{trans1Label}</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">{trans2Label}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {metricRow("% Tasa de Entrega", "tasaEntrega", "entrega", "%", "> 95% 🔴")}
+            {metricRow("% Tasa de Devolución", "tasaDevolucion", "devol", "%", "< 5% 🔴")}
+            {metricRow("Tiempo Promedio Entrega", "tiempoProm", "tiempo", "h", "< 48h 🟠")}
+            {metricRow("% Entregas en 72hs", "pctEn72", "en72", "%", "> 90% 🟠")}
+            {metricRow("Críticos +72hs (en tránsito)", "criticos72", "criticos", "", "= 0 🔴")}
+            {metricRow("% Tasa de Novedades", "tasaNovedades", "novedades", "%", "< 10% 🟡")}
+            <tr className="border-b border-gray-800/50" style={{ background: "rgba(15,23,42,0.4)" }}>
+              <td className="py-2 px-3 t-primary text-xs font-medium">Paquetes en Tránsito</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-muted">monitoreo</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">{metrics.total.enTransito.toLocaleString("es-AR")}</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">{metrics.trans1.enTransito.toLocaleString("es-AR")}</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">{metrics.trans2.enTransito.toLocaleString("es-AR")}</td>
+            </tr>
+            <tr className="border-b border-gray-800/50">
+              <td className="py-2 px-3 t-primary text-xs font-medium">Recibidos por transportadora</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-muted">base</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">{metrics.total.recibidos.toLocaleString("es-AR")}</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">{metrics.trans1.recibidos.toLocaleString("es-AR")}</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">{metrics.trans2.recibidos.toLocaleString("es-AR")}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div className="flex flex-wrap gap-3 mt-3 text-[10px] t-muted">
+        <span><span style={{ color: "#10B981" }}>●</span> Meta cumplida</span>
+        <span><span style={{ color: "#F59E0B" }}>●</span> En riesgo</span>
+        <span><span style={{ color: "#EF4444" }}>●</span> Crítico</span>
+        <span className="ml-auto">Criticidad: 🔴 Alta · 🟠 Media · 🟡 Baja</span>
+      </div>
+      {metrics.total.tiemposCount === 0 && (
+        <p className="text-[11px] mt-2 text-amber-400">
+          ⓘ "Tiempo Promedio" y "% Entregas en 72hs" requieren fecha_procesamiento y fecha_ultimo_movimiento válidas. Verificá que el Excel tenga esas columnas con fechas parseables.
+        </p>
+      )}
     </div>
   );
 }
