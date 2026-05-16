@@ -111,6 +111,23 @@ function toIsoDate(s: string): string {
   return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
 }
 
+// Mes numérico de cada MesOps. Hardcoded a 2026 (los meses cubiertos por el dashboard).
+const MES_MONTH_NUM: Record<"abril" | "mayo", number> = { abril: 4, mayo: 5 };
+
+// Convierte una fecha ISO a la misma fecha pero en el mes objetivo (mismo día).
+// Si el día no existe (31 de un mes con 30), lo recorta al último día válido.
+function shiftDateToMes(iso: string, targetMes: "abril" | "mayo"): string {
+  if (!iso) return "";
+  const m = iso.match(/^(\d{4})-\d{2}-(\d{2})$/);
+  if (!m) return iso;
+  const year = m[1];
+  const targetMonth = MES_MONTH_NUM[targetMes];
+  const day = parseInt(m[2], 10);
+  const lastDay = new Date(parseInt(year, 10), targetMonth, 0).getDate();
+  const clampedDay = Math.min(day, lastDay);
+  return `${year}-${String(targetMonth).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
+}
+
 // Métricas de movilización. `rows` son las guías de operations_data (ya movilizadas).
 // `ingresadasOverride` viene de Comercial (operational_snapshots) — total real de
 // órdenes recibidas. Si no se pasa, se asume que rows representa ingresadas.
@@ -838,23 +855,29 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     return result;
   }, [prevDedupedRows, fComercial, fTransportadora, fDropshipper, fProveedor]);
 
-  // Aplica filtro de rango sobre fecha_orden (campo `fecha`)
-  const applyDateRange = useCallback((arr: GuideRow[]) => {
+  const prevMes: MesOps = mes === "mayo" ? "abril" : "mayo";
+
+  // Rango "espejo" para mes anterior: mismos días pero en el mes anterior
+  // (ej. dateFrom=2026-05-01 → prevDateFrom=2026-04-01).
+  const prevDateFrom = useMemo(() => shiftDateToMes(dateFrom, prevMes), [dateFrom, prevMes]);
+  const prevDateTo = useMemo(() => shiftDateToMes(dateTo, prevMes), [dateTo, prevMes]);
+
+  // Filtra por fecha de orden (en operations_data viene como DD/MM/YYYY,
+  // los inputs HTML date entregan YYYY-MM-DD → normalizamos a ISO ambos).
+  const applyDateRange = useCallback((arr: GuideRow[], from: string, to: string) => {
     if (dateMode !== "range") return arr;
-    if (!dateFrom && !dateTo) return arr;
+    if (!from && !to) return arr;
     return arr.filter((r) => {
-      const f = r.fecha;
-      if (!f) return false;
-      if (dateFrom && f < dateFrom) return false;
-      if (dateTo && f > dateTo) return false;
+      const iso = toIsoDate(r.fecha);
+      if (!iso) return false;
+      if (from && iso < from) return false;
+      if (to && iso > to) return false;
       return true;
     });
-  }, [dateMode, dateFrom, dateTo]);
+  }, [dateMode]);
 
-  const rangedRows = useMemo(() => applyDateRange(filteredRows), [filteredRows, applyDateRange]);
-  const prevRangedRows = useMemo(() => applyDateRange(prevFilteredRows), [prevFilteredRows, applyDateRange]);
-
-  const prevMes: MesOps = mes === "mayo" ? "abril" : "mayo";
+  const rangedRows = useMemo(() => applyDateRange(filteredRows, dateFrom, dateTo), [filteredRows, applyDateRange, dateFrom, dateTo]);
+  const prevRangedRows = useMemo(() => applyDateRange(prevFilteredRows, prevDateFrom, prevDateTo), [prevFilteredRows, applyDateRange, prevDateFrom, prevDateTo]);
 
   const hasAnyFilter = fComercial || fTransportadora || fDropshipper || fProveedor;
   const clearFilters = () => { setFComercial(""); setFTransportadora(""); setFDropshipper(""); setFProveedor(""); };
@@ -870,30 +893,31 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     [uploadHistory],
   );
 
-  // Ingresadas vienen del snapshot Comercial (operational_snapshots)
+  // Ingresadas vienen del snapshot Comercial (operational_snapshots).
+  // El mes anterior usa el "rango espejo" (mismos días pero del mes previo).
   const currIngresadas = useMemo(
     () => ingresadasInRange(opCurr, dateMode, dateFrom, dateTo),
     [opCurr, dateMode, dateFrom, dateTo],
   );
   const prevIngresadas = useMemo(
-    () => ingresadasInRange(opPrev, dateMode, dateFrom, dateTo),
-    [opPrev, dateMode, dateFrom, dateTo],
+    () => ingresadasInRange(opPrev, dateMode, prevDateFrom, prevDateTo),
+    [opPrev, dateMode, prevDateFrom, prevDateTo],
   );
   const ingByDsCurr = useMemo(
     () => ingresadasByEntity(opCurr, "ds", dateMode, dateFrom, dateTo),
     [opCurr, dateMode, dateFrom, dateTo],
   );
   const ingByDsPrev = useMemo(
-    () => ingresadasByEntity(opPrev, "ds", dateMode, dateFrom, dateTo),
-    [opPrev, dateMode, dateFrom, dateTo],
+    () => ingresadasByEntity(opPrev, "ds", dateMode, prevDateFrom, prevDateTo),
+    [opPrev, dateMode, prevDateFrom, prevDateTo],
   );
   const ingByProvCurr = useMemo(
     () => ingresadasByEntity(opCurr, "prov", dateMode, dateFrom, dateTo),
     [opCurr, dateMode, dateFrom, dateTo],
   );
   const ingByProvPrev = useMemo(
-    () => ingresadasByEntity(opPrev, "prov", dateMode, dateFrom, dateTo),
-    [opPrev, dateMode, dateFrom, dateTo],
+    () => ingresadasByEntity(opPrev, "prov", dateMode, prevDateFrom, prevDateTo),
+    [opPrev, dateMode, prevDateFrom, prevDateTo],
   );
 
   // Métricas de movilización del mes activo y del mes anterior
@@ -1390,6 +1414,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             dateTo={dateTo} setDateTo={setDateTo}
             showComparison={showComparison} setShowComparison={setShowComparison}
             prevMesLabel={MES_LABEL[prevMes]}
+            prevDateFrom={prevDateFrom} prevDateTo={prevDateTo}
           />
           {!opCurr && (
             <div className="rounded-lg p-3 border border-amber-500/30 text-xs text-amber-300" style={{ background: "rgba(245,158,11,0.08)" }}>
@@ -1590,6 +1615,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             dateTo={dateTo} setDateTo={setDateTo}
             showComparison={showComparison} setShowComparison={setShowComparison}
             prevMesLabel={MES_LABEL[prevMes]}
+            prevDateFrom={prevDateFrom} prevDateTo={prevDateTo}
           />
           <MovEntityRanking
             rows={rangedRows}
@@ -1633,6 +1659,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             dateTo={dateTo} setDateTo={setDateTo}
             showComparison={showComparison} setShowComparison={setShowComparison}
             prevMesLabel={MES_LABEL[prevMes]}
+            prevDateFrom={prevDateFrom} prevDateTo={prevDateTo}
           />
           <MovEntityRanking
             rows={rangedRows}
@@ -1826,7 +1853,7 @@ function OpMetricsSection({ country, metrics }: { country: "py" | "ar"; metrics:
 /* ───────── DATE RANGE BAR ───────── */
 function DateRangeBar({
   dateMode, setDateMode, dateFrom, setDateFrom, dateTo, setDateTo,
-  showComparison, setShowComparison, prevMesLabel,
+  showComparison, setShowComparison, prevMesLabel, prevDateFrom, prevDateTo,
 }: {
   dateMode: "all" | "range";
   setDateMode: (m: "all" | "range") => void;
@@ -1837,6 +1864,8 @@ function DateRangeBar({
   showComparison: boolean;
   setShowComparison: (b: boolean) => void;
   prevMesLabel: string;
+  prevDateFrom: string;
+  prevDateTo: string;
 }) {
   return (
     <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg" style={{ background: "var(--bg-page)" }}>
@@ -1863,6 +1892,11 @@ function DateRangeBar({
         <input type="checkbox" checked={showComparison} onChange={(e) => setShowComparison(e.target.checked)} className="accent-orange-500" />
         Comparar con {prevMesLabel}
       </label>
+      {showComparison && dateMode === "range" && (prevDateFrom || prevDateTo) && (
+        <span className="text-[10px] t-muted ml-2 self-end pb-1">
+          Espejo: <strong className="t-secondary">{prevDateFrom || "—"} → {prevDateTo || "—"}</strong>
+        </span>
+      )}
     </div>
   );
 }
