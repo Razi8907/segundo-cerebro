@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
+  PieChart, Pie,
 } from "recharts";
 
 /* ───────── constants ───────── */
@@ -100,6 +101,37 @@ const unifyEstatus = (raw: string, country: string): string => {
   const trimmed = (raw || "").trim();
   return AR_STATE_MAP[trimmed] || trimmed;
 };
+
+// Métricas de movilización para un set arbitrario de guías
+// (se usa en Resumen, Mov DS y Mov Prov; también para comparar mes anterior)
+function computeMovMetrics(rows: { estatus: string }[], country: string) {
+  const SG = getStatusGroups(country);
+  const total = rows.length;
+  let pendDS = 0, pendProv = 0, enProceso = 0, entregadas = 0, devueltas = 0, canceladas = 0;
+  for (const r of rows) {
+    const s = r.estatus;
+    if (SG.mov_dropshipper.includes(s)) pendDS++;
+    else if (SG.mov_proveedor.includes(s)) pendProv++;
+    else if (SG.mov_aex.includes(s) || SG.mov_fixy.includes(s)) enProceso++;
+    else if (s === "ENTREGADO") entregadas++;
+    else if (s === "DEVOLUCION" || s === "EN PROCESO DE DEVOLUCION") devueltas++;
+    else if (SG.cancelacion.includes(s)) canceladas++;
+  }
+  const movilizadas = total - pendDS;
+  const movilizadasProv = total - pendDS - pendProv;
+  const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+  return {
+    ingresadas: total,
+    movilizadas, pctMovilizadas: pct(movilizadas),
+    movilizadasProv, pctMovilizadasProv: pct(movilizadasProv),
+    pendDS, pendProv,
+    enProceso, pctEnProceso: pct(enProceso),
+    entregadas, pctEntrega: pct(entregadas),
+    devueltas, pctDevuelta: pct(devueltas),
+    canceladas, pctCancelada: pct(canceladas),
+  };
+}
+type MovMetrics = ReturnType<typeof computeMovMetrics>;
 
 // Tabs por país
 const TABS_PY = [
@@ -484,6 +516,14 @@ const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 202
 
 export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
+  const [prevRows, setPrevRows] = useState<GuideRow[]>([]);
+  const [serverUploadHistory, setServerUploadHistory] = useState<{ name: string; count: number }[]>([]);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  // Filtro de rango de fechas para Resumen / Mov DS / Mov Prov (sobre fecha_orden)
+  const [dateMode, setDateMode] = useState<"all" | "range">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [showComparison, setShowComparison] = useState(false);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState<TabKey>("resumen");
@@ -498,50 +538,66 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     return now.getFullYear() === 2026 && now.getMonth() >= 4 ? "mayo" : "abril";
   });
 
+  const mapRow = useCallback((r: any): GuideRow => ({
+    guia: r.guia || "",
+    fecha: r.fecha_reporte || r.fecha_orden || "",
+    dropshipper: r.dropshipper || "",
+    dropshipper_id: r.dropshipper_id || "",
+    dropshipper_email: r.dropshipper_email || "",
+    dropshipper_celular: r.dropshipper_celular || "",
+    nombre_tienda: r.tienda || "",
+    proveedor_nombre: r.proveedor || "",
+    transportadora: r.transportadora || "",
+    estatus: unifyEstatus(r.estatus || "", country),
+    fecha_procesamiento: r.fecha_procesamiento || "",
+    fecha_ultimo_movimiento: r.fecha_ultimo_movimiento || "",
+    hora_ultimo_movimiento: r.hora_ultimo_movimiento || "",
+    ciudad_destino: r.ciudad_destino || "",
+    departamento_destino: r.departamento_destino || "",
+    nombre_cliente: r.cliente || "",
+    telefono: r.telefono || "",
+    novedad: r.novedad || "",
+    concepto_ultimo_movimiento: r.concepto_ultimo_mov || "",
+    comercial_asignado: r.comercial || "",
+    total_orden: Number(r.valor_orden) || 0,
+    ganancia_entregado: Number(r.ganancia_si_entregado) || 0,
+    productos: r.producto || "",
+    fecha_carga: r.fecha_carga || "",
+    country: r.country || country,
+  }), [country]);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setRows([]);
+    setPrevRows([]);
+    setServerUploadHistory([]);
+    const prevMes: MesOps = mes === "mayo" ? "abril" : "mayo";
     try {
-      const res = await fetch(`/api/data/operations?country=${country}&mes=${mes}`);
-      if (res.ok) {
-        const data = await res.json();
+      const [resCur, resPrev] = await Promise.all([
+        fetch(`/api/data/operations?country=${country}&mes=${mes}`),
+        fetch(`/api/data/operations?country=${country}&mes=${prevMes}`),
+      ]);
+      if (resPrev.ok) {
+        const dataPrev = await resPrev.json();
+        const rawPrev = Array.isArray(dataPrev) ? dataPrev : dataPrev.rows || [];
+        setPrevRows(rawPrev.map(mapRow));
+      }
+      if (resCur.ok) {
+        const data = await resCur.json();
         const rawRows = Array.isArray(data) ? data : data.rows || [];
-        // Map DB fields → component fields
-        const mapped: GuideRow[] = rawRows.map((r: any) => ({
-          guia: r.guia || "",
-          fecha: r.fecha_reporte || r.fecha_orden || "",
-          dropshipper: r.dropshipper || "",
-          dropshipper_id: r.dropshipper_id || "",
-          dropshipper_email: r.dropshipper_email || "",
-          dropshipper_celular: r.dropshipper_celular || "",
-          nombre_tienda: r.tienda || "",
-          proveedor_nombre: r.proveedor || "",
-          transportadora: r.transportadora || "",
-          estatus: unifyEstatus(r.estatus || "", country),
-          fecha_procesamiento: r.fecha_procesamiento || "",
-          fecha_ultimo_movimiento: r.fecha_ultimo_movimiento || "",
-          hora_ultimo_movimiento: r.hora_ultimo_movimiento || "",
-          ciudad_destino: r.ciudad_destino || "",
-          departamento_destino: r.departamento_destino || "",
-          nombre_cliente: r.cliente || "",
-          telefono: r.telefono || "",
-          novedad: r.novedad || "",
-          concepto_ultimo_movimiento: r.concepto_ultimo_mov || "",
-          comercial_asignado: r.comercial || "",
-          total_orden: Number(r.valor_orden) || 0,
-          ganancia_entregado: Number(r.ganancia_si_entregado) || 0,
-          productos: r.producto || "",
-          fecha_carga: r.fecha_carga || "",
-          country: r.country || country,
-        }));
-        setRows(mapped);
+        const hist = Array.isArray(data?.uploadHistory) ? data.uploadHistory : [];
+        setServerUploadHistory(
+          hist.map((h: any) => ({ name: String(h.fecha_carga || ""), count: Number(h.cnt) || 0 }))
+            .sort((a: any, b: any) => a.name.localeCompare(b.name)),
+        );
+        setRows(rawRows.map(mapRow));
       }
     } catch (e) {
       console.error("Error fetching operations:", e);
     } finally {
       setLoading(false);
     }
-  }, [country, mes]);
+  }, [country, mes, mapRow]);
 
   useEffect(() => {
     fetchData();
@@ -590,11 +646,17 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         producto: r.productos,
       }));
 
-      // Upload in batches of 300 to avoid payload/timeout limits
-      const BATCH_SIZE = 300;
+      // Batches de 1000 con concurrencia 3 (acelera ~3x sin saturar Vercel).
+      const BATCH_SIZE = 1000;
+      const CONCURRENCY = 3;
       const fc = todayStr();
+      const batches: typeof apiRows[] = [];
       for (let i = 0; i < apiRows.length; i += BATCH_SIZE) {
-        const batch = apiRows.slice(i, i + BATCH_SIZE);
+        batches.push(apiRows.slice(i, i + BATCH_SIZE));
+      }
+      setUploadProgress(0);
+      let done = 0;
+      const uploadBatch = async (batch: typeof apiRows, idx: number) => {
         const res = await fetch("/api/data/operations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -604,16 +666,25 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           const contentType = res.headers.get("content-type") || "";
           if (contentType.includes("json")) {
             const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || `Error en lote ${Math.floor(i / BATCH_SIZE) + 1} (HTTP ${res.status})`);
-          } else {
-            // Probably redirected to login page
-            if (res.status === 401 || res.status === 403 || res.redirected) {
-              throw new Error("Sesión expirada. Volvé a iniciar sesión.");
-            }
-            throw new Error(`Error HTTP ${res.status} en lote ${Math.floor(i / BATCH_SIZE) + 1}`);
+            throw new Error(errData.error || `Error en lote ${idx + 1} (HTTP ${res.status})`);
           }
+          if (res.status === 401 || res.status === 403 || res.redirected) {
+            throw new Error("Sesión expirada. Volvé a iniciar sesión.");
+          }
+          throw new Error(`Error HTTP ${res.status} en lote ${idx + 1}`);
         }
-      }
+        done += 1;
+        setUploadProgress(Math.round((done / batches.length) * 100));
+      };
+      // Worker pool simple
+      let cursor = 0;
+      const workers = Array.from({ length: Math.min(CONCURRENCY, batches.length) }, async () => {
+        while (cursor < batches.length) {
+          const idx = cursor++;
+          await uploadBatch(batches[idx], idx);
+        }
+      });
+      await Promise.all(workers);
       // Set parsed data immediately + refresh from API
       setRows((prev) => {
         const existingGuias = new Set(parsed.map((r) => `${r.guia}-${r.fecha_carga}`));
@@ -673,20 +744,60 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     return result;
   }, [dedupedRows, fComercial, fTransportadora, fDropshipper, fProveedor]);
 
+  // Mismo dedup + filtros aplicados al mes anterior (para comparación)
+  const prevDedupedRows = useMemo(() => {
+    const guiaMap = new Map<string, typeof prevRows[0]>();
+    for (const r of prevRows) {
+      const existing = guiaMap.get(r.guia);
+      if (!existing || r.fecha_carga > existing.fecha_carga) guiaMap.set(r.guia, r);
+    }
+    return Array.from(guiaMap.values());
+  }, [prevRows]);
+
+  const prevFilteredRows = useMemo(() => {
+    let result = prevDedupedRows;
+    if (fComercial) result = result.filter((r) => r.comercial_asignado === fComercial);
+    if (fTransportadora) result = result.filter((r) => r.transportadora === fTransportadora);
+    if (fDropshipper) result = result.filter((r) => r.dropshipper === fDropshipper);
+    if (fProveedor) result = result.filter((r) => r.proveedor_nombre === fProveedor);
+    return result;
+  }, [prevDedupedRows, fComercial, fTransportadora, fDropshipper, fProveedor]);
+
+  // Aplica filtro de rango sobre fecha_orden (campo `fecha`)
+  const applyDateRange = useCallback((arr: GuideRow[]) => {
+    if (dateMode !== "range") return arr;
+    if (!dateFrom && !dateTo) return arr;
+    return arr.filter((r) => {
+      const f = r.fecha;
+      if (!f) return false;
+      if (dateFrom && f < dateFrom) return false;
+      if (dateTo && f > dateTo) return false;
+      return true;
+    });
+  }, [dateMode, dateFrom, dateTo]);
+
+  const rangedRows = useMemo(() => applyDateRange(filteredRows), [filteredRows, applyDateRange]);
+  const prevRangedRows = useMemo(() => applyDateRange(prevFilteredRows), [prevFilteredRows, applyDateRange]);
+
+  const prevMes: MesOps = mes === "mayo" ? "abril" : "mayo";
+
   const hasAnyFilter = fComercial || fTransportadora || fDropshipper || fProveedor;
   const clearFilters = () => { setFComercial(""); setFTransportadora(""); setFDropshipper(""); setFProveedor(""); };
 
   /* ───── derived data ───── */
-  const fechasCarga = useMemo(() => {
-    const set = new Set(rows.map((r) => r.fecha_carga));
-    return Array.from(set).sort();
-  }, [rows]);
-
+  // El historial llega agregado desde el servidor (no descargamos las cientos
+  // de miles de filas históricas). `rows` solo contiene la última fecha_carga.
+  const uploadHistory = serverUploadHistory;
+  const fechasCarga = useMemo(() => uploadHistory.map((h) => h.name), [uploadHistory]);
   const latestFechaCarga = fechasCarga[fechasCarga.length - 1] || "";
+  const totalFilasHistoricas = useMemo(
+    () => uploadHistory.reduce((sum, h) => sum + h.count, 0),
+    [uploadHistory],
+  );
 
-  const uploadHistory = useMemo(() => {
-    return countBy(rows, (r) => r.fecha_carga).sort((a, b) => a.name.localeCompare(b.name));
-  }, [rows]);
+  // Métricas de movilización del mes activo y del mes anterior
+  const movMetrics = useMemo(() => computeMovMetrics(rangedRows, country), [rangedRows, country]);
+  const prevMovMetrics = useMemo(() => computeMovMetrics(prevRangedRows, country), [prevRangedRows, country]);
 
   // Status counts
   const byStatus = useMemo(() => {
@@ -1075,7 +1186,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
           <MesSwitcher mes={mes} setMes={setMes} />
         </div>
         <label className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg dropi-gradient text-white text-sm font-medium cursor-pointer hover:opacity-90 transition-opacity">
-          {uploading ? "Procesando..." : `📥 Subir archivo Excel (${MES_LABEL[mes]})`}
+          {uploading ? `Procesando... ${uploadProgress}%` : `📥 Subir archivo Excel (${MES_LABEL[mes]})`}
           <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={uploading} />
         </label>
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
@@ -1091,13 +1202,13 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
         <div>
           <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"} · {MES_LABEL[mes]}</h2>
           <p className="text-xs t-secondary">
-            {dedupedRows.length.toLocaleString()} guias únicas en {MES_LABEL[mes]} ({rows.length.toLocaleString()} filas históricas) | Ultima carga: {latestFechaCarga} | {fechasCarga.length} dia(s) acumulados
+            {dedupedRows.length.toLocaleString()} guias en último día ({totalFilasHistoricas.toLocaleString()} filas históricas) | Ultima carga: {latestFechaCarga} | {fechasCarga.length} día(s) acumulados
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <MesSwitcher mes={mes} setMes={setMes} />
           <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg dropi-gradient text-white text-xs font-medium cursor-pointer hover:opacity-90 transition-opacity">
-            {uploading ? "Procesando..." : `📥 Actualizar ${MES_LABEL[mes]}`}
+            {uploading ? `Procesando... ${uploadProgress}%` : `📥 Actualizar ${MES_LABEL[mes]}`}
             <input type="file" accept=".xlsx,.xls" className="hidden" onChange={handleUpload} disabled={uploading} />
           </label>
         </div>
@@ -1166,6 +1277,20 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {/* ── RESUMEN TAB ── */}
       {tab === "resumen" && (
         <div className="space-y-4">
+          <DateRangeBar
+            dateMode={dateMode} setDateMode={setDateMode}
+            dateFrom={dateFrom} setDateFrom={setDateFrom}
+            dateTo={dateTo} setDateTo={setDateTo}
+            showComparison={showComparison} setShowComparison={setShowComparison}
+            prevMesLabel={MES_LABEL[prevMes]}
+          />
+          <MovSummarySection
+            metrics={movMetrics}
+            prevMetrics={prevMovMetrics}
+            mesLabel={MES_LABEL[mes]}
+            prevMesLabel={MES_LABEL[prevMes]}
+            showComparison={showComparison}
+          />
           <DownloadBtn onClick={() => downloadCSV("Resumen_Completo", filteredRows, EXPORT_COLUMNS)} label={`Descargar todo (${filteredRows.length} guías)`} />
           {/* KPI cards — distintas por país */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -1340,42 +1465,82 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
       {/* ── MOV PROVEEDOR TAB ── */}
       {tab === "mov_prov" && (
         <div className="space-y-4">
-          {renderStatusBreakdown(movProv, "Mov. Proveedor")}
-          <DownloadBtn onClick={() => downloadCSV("Mov_Proveedor", movProv, EXPORT_COLUMNS)} label={`Descargar Mov. Proveedor (${movProv.length})`} />
-          {Object.entries(groupBy(movProv, (r) => r.proveedor_nombre)).sort((a, b) => b[1].length - a[1].length).map(([prov, provRows]) => (
-            <div key={prov}>
-              <h4 className="text-xs font-bold t-primary mb-2 mt-3">{prov} ({provRows.length})</h4>
-              <DataTable rows={provRows} columns={[
-                { key: "guia", label: "Guia" },
-                { key: "fecha", label: "Fecha" },
-                { key: "estatus", label: "Estado" },
-                { key: "dropshipper", label: "Dropshipper" },
-                { key: "transportadora", label: "Transportadora" },
-                { key: "productos", label: "Productos" },
-              ]} />
-            </div>
-          ))}
+          <DateRangeBar
+            dateMode={dateMode} setDateMode={setDateMode}
+            dateFrom={dateFrom} setDateFrom={setDateFrom}
+            dateTo={dateTo} setDateTo={setDateTo}
+            showComparison={showComparison} setShowComparison={setShowComparison}
+            prevMesLabel={MES_LABEL[prevMes]}
+          />
+          <MovEntityRanking
+            rows={rangedRows}
+            prevRows={prevRangedRows}
+            country={country}
+            entityKey="proveedor_nombre"
+            level="prov"
+            title={`📦 Movilización por Proveedor — ${MES_LABEL[mes]}`}
+            showComparison={showComparison}
+            prevMesLabel={MES_LABEL[prevMes]}
+          />
+          {/* Detalle: guías que el Proveedor todavía no despachó */}
+          <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+            <h3 className="text-sm font-bold t-primary mb-3">📋 Guías pendientes de despachar por Proveedor ({movProv.length})</h3>
+            <DownloadBtn onClick={() => downloadCSV("Mov_Proveedor", movProv, EXPORT_COLUMNS)} label={`Descargar pendientes (${movProv.length})`} />
+            {Object.entries(groupBy(movProv, (r) => r.proveedor_nombre)).sort((a, b) => b[1].length - a[1].length).map(([prov, provRows]) => (
+              <div key={prov}>
+                <h4 className="text-xs font-bold t-primary mb-2 mt-3">{prov} ({provRows.length})</h4>
+                <DataTable rows={provRows} columns={[
+                  { key: "guia", label: "Guia" },
+                  { key: "fecha", label: "Fecha" },
+                  { key: "estatus", label: "Estado" },
+                  { key: "dropshipper", label: "Dropshipper" },
+                  { key: "transportadora", label: "Transportadora" },
+                  { key: "productos", label: "Productos" },
+                ]} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {/* ── MOV DROPSHIPPER TAB ── */}
       {tab === "mov_ds" && (
         <div className="space-y-4">
-          {renderStatusBreakdown(movDs, "Mov. Dropshipper")}
-          <DownloadBtn onClick={() => downloadCSV("Mov_Dropshipper", movDs, EXPORT_COLUMNS)} label={`Descargar Mov. Dropshipper (${movDs.length})`} />
-          {Object.entries(groupBy(movDs, (r) => r.dropshipper)).sort((a, b) => b[1].length - a[1].length).map(([ds, dsRows]) => (
-            <div key={ds}>
-              <h4 className="text-xs font-bold t-primary mb-2 mt-3">{ds} ({dsRows.length})</h4>
-              <DataTable rows={dsRows} columns={[
-                { key: "guia", label: "Guia" },
-                { key: "fecha", label: "Fecha" },
-                { key: "estatus", label: "Estado" },
-                { key: "proveedor_nombre", label: "Proveedor" },
-                { key: "nombre_tienda", label: "Tienda" },
-                { key: "productos", label: "Productos" },
-              ]} />
-            </div>
-          ))}
+          <DateRangeBar
+            dateMode={dateMode} setDateMode={setDateMode}
+            dateFrom={dateFrom} setDateFrom={setDateFrom}
+            dateTo={dateTo} setDateTo={setDateTo}
+            showComparison={showComparison} setShowComparison={setShowComparison}
+            prevMesLabel={MES_LABEL[prevMes]}
+          />
+          <MovEntityRanking
+            rows={rangedRows}
+            prevRows={prevRangedRows}
+            country={country}
+            entityKey="dropshipper"
+            level="ds"
+            title={`👤 Movilización por Dropshipper — ${MES_LABEL[mes]}`}
+            showComparison={showComparison}
+            prevMesLabel={MES_LABEL[prevMes]}
+          />
+          {/* Detalle: guías que el DS todavía no confirmó */}
+          <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+            <h3 className="text-sm font-bold t-primary mb-3">📋 Guías pendientes de confirmar por DS ({movDs.length})</h3>
+            <DownloadBtn onClick={() => downloadCSV("Mov_Dropshipper", movDs, EXPORT_COLUMNS)} label={`Descargar pendientes (${movDs.length})`} />
+            {Object.entries(groupBy(movDs, (r) => r.dropshipper)).sort((a, b) => b[1].length - a[1].length).map(([ds, dsRows]) => (
+              <div key={ds}>
+                <h4 className="text-xs font-bold t-primary mb-2 mt-3">{ds} ({dsRows.length})</h4>
+                <DataTable rows={dsRows} columns={[
+                  { key: "guia", label: "Guia" },
+                  { key: "fecha", label: "Fecha" },
+                  { key: "estatus", label: "Estado" },
+                  { key: "proveedor_nombre", label: "Proveedor" },
+                  { key: "nombre_tienda", label: "Tienda" },
+                  { key: "productos", label: "Productos" },
+                ]} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -1531,6 +1696,345 @@ function OpMetricsSection({ country, metrics }: { country: "py" | "ar"; metrics:
           ⓘ "Tiempo Promedio" y "% Entregas en 72hs" requieren fecha_procesamiento y fecha_ultimo_movimiento válidas. Verificá que el Excel tenga esas columnas con fechas parseables.
         </p>
       )}
+    </div>
+  );
+}
+
+/* ───────── DATE RANGE BAR ───────── */
+function DateRangeBar({
+  dateMode, setDateMode, dateFrom, setDateFrom, dateTo, setDateTo,
+  showComparison, setShowComparison, prevMesLabel,
+}: {
+  dateMode: "all" | "range";
+  setDateMode: (m: "all" | "range") => void;
+  dateFrom: string;
+  setDateFrom: (v: string) => void;
+  dateTo: string;
+  setDateTo: (v: string) => void;
+  showComparison: boolean;
+  setShowComparison: (b: boolean) => void;
+  prevMesLabel: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg" style={{ background: "var(--bg-page)" }}>
+      <div className="flex flex-col gap-1">
+        <label className="text-[10px] t-muted uppercase tracking-wider">Rango fecha orden</label>
+        <select value={dateMode} onChange={(e) => setDateMode(e.target.value as "all" | "range")} className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary focus:border-orange-500 outline-none">
+          <option value="all">Todo el mes</option>
+          <option value="range">Rango de fechas</option>
+        </select>
+      </div>
+      {dateMode === "range" && (
+        <>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Desde</label>
+            <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary focus:border-orange-500 outline-none" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Hasta</label>
+            <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary focus:border-orange-500 outline-none" />
+          </div>
+        </>
+      )}
+      <label className="flex items-center gap-2 text-xs t-primary cursor-pointer">
+        <input type="checkbox" checked={showComparison} onChange={(e) => setShowComparison(e.target.checked)} className="accent-orange-500" />
+        Comparar con {prevMesLabel}
+      </label>
+    </div>
+  );
+}
+
+/* ───────── MOV SUMMARY (Resumen tab) ───────── */
+function MovSummarySection({
+  metrics, prevMetrics, mesLabel, prevMesLabel, showComparison,
+}: {
+  metrics: MovMetrics;
+  prevMetrics: MovMetrics;
+  mesLabel: string;
+  prevMesLabel: string;
+  showComparison: boolean;
+}) {
+  const pieData = [
+    { name: "Entregadas", value: metrics.entregadas, color: "#10b981" },
+    { name: "Devueltas", value: metrics.devueltas, color: "#dc2626" },
+    { name: "En Proceso", value: metrics.enProceso, color: "#0891b2" },
+    { name: "Pend. Proveedor", value: metrics.pendProv, color: "#f59e0b" },
+    { name: "Pend. DS", value: metrics.pendDS, color: "#b45309" },
+    { name: "Canceladas", value: metrics.canceladas, color: "#6b7280" },
+  ].filter((d) => d.value > 0);
+
+  const delta = (curr: number, prev: number, isPct = false) => {
+    const d = curr - prev;
+    if (Math.abs(d) < 0.05 && isPct) return { txt: "=", color: "#6b7280" };
+    const sign = d > 0 ? "+" : "";
+    return {
+      txt: isPct ? `${sign}${d.toFixed(1)} pp` : `${sign}${d.toLocaleString("es-AR")}`,
+      color: d > 0 ? "#10b981" : d < 0 ? "#dc2626" : "#6b7280",
+    };
+  };
+
+  return (
+    <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+      <h3 className="text-sm font-bold t-primary mb-3">🎯 Resumen Operacional — {mesLabel}</h3>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Chart */}
+        <div className="h-64">
+          {pieData.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} innerRadius={40} paddingAngle={2}>
+                  {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "rgba(22,33,62,0.95)", border: "1px solid rgba(6,182,212,0.2)", borderRadius: 8, fontSize: 11 }}
+                  formatter={(v, n) => {
+                    const num = Number(v) || 0;
+                    return [`${num.toLocaleString("es-AR")} (${metrics.ingresadas > 0 ? ((num / metrics.ingresadas) * 100).toFixed(1) : 0}%)`, n as string];
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full t-muted text-xs">Sin datos para mostrar</div>
+          )}
+        </div>
+        {/* KPI list */}
+        <div className="space-y-2">
+          <MovKpiRow
+            label="📦 Ingresadas (órdenes totales)"
+            curr={metrics.ingresadas}
+            prev={prevMetrics.ingresadas}
+            showComp={showComparison}
+            prevMesLabel={prevMesLabel}
+            delta={delta(metrics.ingresadas, prevMetrics.ingresadas)}
+          />
+          <MovKpiRow
+            label="🚛 Movilizadas / Ingresadas"
+            curr={metrics.movilizadas}
+            prev={prevMetrics.movilizadas}
+            pct={metrics.pctMovilizadas}
+            prevPct={prevMetrics.pctMovilizadas}
+            showComp={showComparison}
+            prevMesLabel={prevMesLabel}
+            delta={delta(metrics.pctMovilizadas, prevMetrics.pctMovilizadas, true)}
+            color="#06b6d4"
+          />
+          <MovKpiRow
+            label="✅ Tasa Entrega"
+            curr={metrics.entregadas}
+            prev={prevMetrics.entregadas}
+            pct={metrics.pctEntrega}
+            prevPct={prevMetrics.pctEntrega}
+            showComp={showComparison}
+            prevMesLabel={prevMesLabel}
+            delta={delta(metrics.pctEntrega, prevMetrics.pctEntrega, true)}
+            color="#10b981"
+          />
+          <MovKpiRow
+            label="↩️ Devueltas"
+            curr={metrics.devueltas}
+            prev={prevMetrics.devueltas}
+            pct={metrics.pctDevuelta}
+            prevPct={prevMetrics.pctDevuelta}
+            showComp={showComparison}
+            prevMesLabel={prevMesLabel}
+            delta={delta(metrics.pctDevuelta, prevMetrics.pctDevuelta, true)}
+            color="#dc2626"
+            invertDelta
+          />
+          <MovKpiRow
+            label="🔄 En Proceso"
+            curr={metrics.enProceso}
+            prev={prevMetrics.enProceso}
+            pct={metrics.pctEnProceso}
+            prevPct={prevMetrics.pctEnProceso}
+            showComp={showComparison}
+            prevMesLabel={prevMesLabel}
+            delta={delta(metrics.pctEnProceso, prevMetrics.pctEnProceso, true)}
+            color="#0891b2"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MovKpiRow({
+  label, curr, prev, pct, prevPct, showComp, prevMesLabel, delta, color = "#ea580c", invertDelta = false,
+}: {
+  label: string;
+  curr: number;
+  prev: number;
+  pct?: number;
+  prevPct?: number;
+  showComp: boolean;
+  prevMesLabel: string;
+  delta: { txt: string; color: string };
+  color?: string;
+  invertDelta?: boolean;
+}) {
+  const finalDeltaColor = invertDelta
+    ? (delta.color === "#10b981" ? "#dc2626" : delta.color === "#dc2626" ? "#10b981" : delta.color)
+    : delta.color;
+  return (
+    <div className="rounded-lg p-3 border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
+      <p className="text-[10px] t-muted uppercase tracking-wider mb-1">{label}</p>
+      <div className="flex items-baseline gap-3 flex-wrap">
+        {pct !== undefined && (
+          <span className="text-2xl font-bold" style={{ color }}>{pct.toFixed(1)}%</span>
+        )}
+        <span className="text-sm font-semibold t-primary">{curr.toLocaleString("es-AR")}</span>
+        {showComp && (
+          <span className="text-[10px] t-muted">
+            vs {prevMesLabel}: {pct !== undefined ? `${(prevPct ?? 0).toFixed(1)}%` : prev.toLocaleString("es-AR")}
+            <span className="ml-1 font-bold" style={{ color: finalDeltaColor }}>{delta.txt}</span>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ───────── MOV ENTITY RANKING (Mov DS / Mov Prov tabs) ───────── */
+function MovEntityRanking({
+  rows, prevRows, country, entityKey, level, title, showComparison, prevMesLabel,
+}: {
+  rows: GuideRow[];
+  prevRows: GuideRow[];
+  country: "py" | "ar";
+  entityKey: "dropshipper" | "proveedor_nombre";
+  level: "ds" | "prov";
+  title: string;
+  showComparison: boolean;
+  prevMesLabel: string;
+}) {
+  const stats = useMemo(() => {
+    const map = new Map<string, GuideRow[]>();
+    for (const r of rows) {
+      const k = (r[entityKey] || "(sin nombre)").toString();
+      if (!map.has(k)) map.set(k, []);
+      map.get(k)!.push(r);
+    }
+    const prevMap = new Map<string, GuideRow[]>();
+    for (const r of prevRows) {
+      const k = (r[entityKey] || "(sin nombre)").toString();
+      if (!prevMap.has(k)) prevMap.set(k, []);
+      prevMap.get(k)!.push(r);
+    }
+    const arr = Array.from(map.entries()).map(([name, group]) => {
+      const m = computeMovMetrics(group, country);
+      const prevGroup = prevMap.get(name) || [];
+      const pm = computeMovMetrics(prevGroup, country);
+      const mov = level === "ds" ? m.movilizadas : m.movilizadasProv;
+      const pctMov = level === "ds" ? m.pctMovilizadas : m.pctMovilizadasProv;
+      const prevMov = level === "ds" ? pm.movilizadas : pm.movilizadasProv;
+      const prevPctMov = level === "ds" ? pm.pctMovilizadas : pm.pctMovilizadasProv;
+      return {
+        name,
+        ingresadas: m.ingresadas,
+        movilizadas: mov,
+        pctMov,
+        prevIngresadas: pm.ingresadas,
+        prevMovilizadas: prevMov,
+        prevPctMov,
+      };
+    });
+    arr.sort((a, b) => b.ingresadas - a.ingresadas);
+    return arr;
+  }, [rows, prevRows, entityKey, country, level]);
+
+  const totals = useMemo(() => {
+    const ing = stats.reduce((s, x) => s + x.ingresadas, 0);
+    const mov = stats.reduce((s, x) => s + x.movilizadas, 0);
+    const prevIng = stats.reduce((s, x) => s + x.prevIngresadas, 0);
+    const prevMov = stats.reduce((s, x) => s + x.prevMovilizadas, 0);
+    return {
+      ing, mov,
+      pct: ing > 0 ? (mov / ing) * 100 : 0,
+      prevIng, prevMov,
+      prevPct: prevIng > 0 ? (prevMov / prevIng) * 100 : 0,
+    };
+  }, [stats]);
+
+  const deltaCell = (curr: number, prev: number, isPct = false) => {
+    const d = curr - prev;
+    if (!showComparison) return null;
+    const sign = d > 0 ? "+" : "";
+    const color = d > 0 ? "#10b981" : d < 0 ? "#dc2626" : "#6b7280";
+    return (
+      <span className="text-[10px] font-bold ml-1" style={{ color }}>
+        {isPct ? `${sign}${d.toFixed(1)}pp` : `${sign}${d.toLocaleString("es-AR")}`}
+      </span>
+    );
+  };
+
+  return (
+    <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+      <h3 className="text-sm font-bold t-primary mb-3">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-gray-700">
+              <th className="py-2 px-3 text-left text-[11px] t-muted">{level === "ds" ? "Dropshipper" : "Proveedor"}</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">Ingresadas</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">Movilizadas</th>
+              <th className="py-2 px-3 text-right text-[11px] t-muted">% Mov.</th>
+              {showComparison && (
+                <th className="py-2 px-3 text-right text-[11px] t-muted">{prevMesLabel}</th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-gray-700 font-bold" style={{ background: "rgba(15,23,42,0.5)" }}>
+              <td className="py-2 px-3 t-primary text-xs">TOTAL</td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">
+                {totals.ing.toLocaleString("es-AR")}
+                {deltaCell(totals.ing, totals.prevIng)}
+              </td>
+              <td className="py-2 px-3 text-right font-mono text-xs t-primary">
+                {totals.mov.toLocaleString("es-AR")}
+                {deltaCell(totals.mov, totals.prevMov)}
+              </td>
+              <td className="py-2 px-3 text-right font-mono text-xs" style={{ color: "#06b6d4" }}>
+                {totals.pct.toFixed(1)}%
+                {deltaCell(totals.pct, totals.prevPct, true)}
+              </td>
+              {showComparison && (
+                <td className="py-2 px-3 text-right font-mono text-[11px] t-muted">
+                  {totals.prevIng.toLocaleString("es-AR")} · {totals.prevPct.toFixed(1)}%
+                </td>
+              )}
+            </tr>
+            {stats.map((r) => (
+              <tr key={r.name} className="border-b border-gray-800/50">
+                <td className="py-2 px-3 t-primary text-xs">{r.name}</td>
+                <td className="py-2 px-3 text-right font-mono text-xs t-primary">
+                  {r.ingresadas.toLocaleString("es-AR")}
+                  {deltaCell(r.ingresadas, r.prevIngresadas)}
+                </td>
+                <td className="py-2 px-3 text-right font-mono text-xs t-primary">
+                  {r.movilizadas.toLocaleString("es-AR")}
+                  {deltaCell(r.movilizadas, r.prevMovilizadas)}
+                </td>
+                <td className="py-2 px-3 text-right font-mono text-xs font-bold" style={{
+                  color: r.pctMov >= 80 ? "#10b981" : r.pctMov >= 60 ? "#f59e0b" : "#dc2626",
+                }}>
+                  {r.pctMov.toFixed(1)}%
+                  {deltaCell(r.pctMov, r.prevPctMov, true)}
+                </td>
+                {showComparison && (
+                  <td className="py-2 px-3 text-right font-mono text-[11px] t-muted">
+                    {r.prevIngresadas.toLocaleString("es-AR")} · {r.prevPctMov.toFixed(1)}%
+                  </td>
+                )}
+              </tr>
+            ))}
+            {stats.length === 0 && (
+              <tr><td colSpan={showComparison ? 5 : 4} className="py-6 text-center text-xs t-muted">Sin datos en el rango.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
