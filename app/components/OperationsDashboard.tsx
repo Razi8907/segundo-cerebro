@@ -102,11 +102,21 @@ const unifyEstatus = (raw: string, country: string): string => {
   return AR_STATE_MAP[trimmed] || trimmed;
 };
 
-// Métricas de movilización para un set arbitrario de guías
-// (se usa en Resumen, Mov DS y Mov Prov; también para comparar mes anterior)
-function computeMovMetrics(rows: { estatus: string }[], country: string) {
+// Normaliza fechas a YYYY-MM-DD para poder filtrar/cruzar fuentes con formatos distintos
+function toIsoDate(s: string): string {
+  if (!s) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+  if (!m) return s;
+  return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+}
+
+// Métricas de movilización. `rows` son las guías de operations_data (ya movilizadas).
+// `ingresadasOverride` viene de Comercial (operational_snapshots) — total real de
+// órdenes recibidas. Si no se pasa, se asume que rows representa ingresadas.
+function computeMovMetrics(rows: { estatus: string }[], country: string, ingresadasOverride?: number) {
   const SG = getStatusGroups(country);
-  const total = rows.length;
+  const rowsCount = rows.length;
   let pendDS = 0, pendProv = 0, enProceso = 0, entregadas = 0, devueltas = 0, canceladas = 0;
   for (const r of rows) {
     const s = r.estatus;
@@ -117,13 +127,18 @@ function computeMovMetrics(rows: { estatus: string }[], country: string) {
     else if (s === "DEVOLUCION" || s === "EN PROCESO DE DEVOLUCION") devueltas++;
     else if (SG.cancelacion.includes(s)) canceladas++;
   }
-  const movilizadas = total - pendDS;
-  const movilizadasProv = total - pendDS - pendProv;
-  const pct = (n: number) => (total > 0 ? (n / total) * 100 : 0);
+  // El file de Operaciones contiene "ya movilizadas". Si llegan filas en PENDIENTE
+  // CONFIRMACION, las excluimos del movilizado.
+  const movilizadas = rowsCount - pendDS;
+  const movilizadasProv = rowsCount - pendDS - pendProv;
+  const ingresadas = ingresadasOverride !== undefined ? ingresadasOverride : rowsCount;
+  const pct = (n: number) => (ingresadas > 0 ? (n / ingresadas) * 100 : 0);
+  const noMovilizadas = Math.max(ingresadas - movilizadas, 0);
   return {
-    ingresadas: total,
+    ingresadas,
     movilizadas, pctMovilizadas: pct(movilizadas),
     movilizadasProv, pctMovilizadasProv: pct(movilizadasProv),
+    noMovilizadas,
     pendDS, pendProv,
     enProceso, pctEnProceso: pct(enProceso),
     entregadas, pctEntrega: pct(entregadas),
@@ -132,6 +147,53 @@ function computeMovMetrics(rows: { estatus: string }[], country: string) {
   };
 }
 type MovMetrics = ReturnType<typeof computeMovMetrics>;
+
+// Total de ingresadas dentro de un rango de fechas usando operational_snapshots.by_date
+function ingresadasInRange(opData: any, dateMode: "all" | "range", dateFrom: string, dateTo: string): number {
+  if (!opData) return 0;
+  if (dateMode === "all" || (!dateFrom && !dateTo)) {
+    return Number(opData.total_orders) || 0;
+  }
+  const byDate = Array.isArray(opData.by_date) ? opData.by_date : [];
+  let sum = 0;
+  for (const d of byDate) {
+    const iso = toIsoDate(String(d.fecha || ""));
+    if (dateFrom && iso < dateFrom) continue;
+    if (dateTo && iso > dateTo) continue;
+    sum += Number(d.total) || 0;
+  }
+  return sum;
+}
+
+// Mapa DS-nombre → ingresadas (filtradas por rango usando by_ds_daily si hay range)
+function ingresadasByEntity(
+  opData: any,
+  kind: "ds" | "prov",
+  dateMode: "all" | "range",
+  dateFrom: string,
+  dateTo: string,
+): Map<string, number> {
+  const map = new Map<string, number>();
+  if (!opData) return map;
+  if (kind === "ds" && dateMode === "range" && (dateFrom || dateTo)) {
+    const daily = Array.isArray(opData.by_ds_daily) ? opData.by_ds_daily : [];
+    for (const r of daily) {
+      const iso = toIsoDate(String(r.fecha || ""));
+      if (dateFrom && iso < dateFrom) continue;
+      if (dateTo && iso > dateTo) continue;
+      const k = String(r.ds || "");
+      map.set(k, (map.get(k) || 0) + (Number(r.ordenes) || 0));
+    }
+    return map;
+  }
+  const arr = kind === "ds"
+    ? (Array.isArray(opData.by_dropshipper) ? opData.by_dropshipper : [])
+    : (Array.isArray(opData.by_proveedor) ? opData.by_proveedor : []);
+  for (const r of arr) {
+    map.set(String(r.nombre || ""), Number(r.total) || 0);
+  }
+  return map;
+}
 
 // Tabs por país
 const TABS_PY = [
@@ -517,6 +579,9 @@ const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 202
 export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
   const [prevRows, setPrevRows] = useState<GuideRow[]>([]);
+  // operational_snapshots: data agregada del área Comercial (total ingresadas, by_dropshipper, by_proveedor)
+  const [opCurr, setOpCurr] = useState<any>(null);
+  const [opPrev, setOpPrev] = useState<any>(null);
   const [serverUploadHistory, setServerUploadHistory] = useState<{ name: string; count: number }[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   // Filtro de rango de fechas para Resumen / Mov DS / Mov Prov (sobre fecha_orden)
@@ -570,13 +635,19 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     setLoading(true);
     setRows([]);
     setPrevRows([]);
+    setOpCurr(null);
+    setOpPrev(null);
     setServerUploadHistory([]);
     const prevMes: MesOps = mes === "mayo" ? "abril" : "mayo";
     try {
-      const [resCur, resPrev] = await Promise.all([
+      const [resCur, resPrev, resOpCur, resOpPrev] = await Promise.all([
         fetch(`/api/data/operations?country=${country}&mes=${mes}`),
         fetch(`/api/data/operations?country=${country}&mes=${prevMes}`),
+        fetch(`/api/data/operational?country=${country}&mes=${mes}`),
+        fetch(`/api/data/operational?country=${country}&mes=${prevMes}`),
       ]);
+      if (resOpCur.ok) { const d = await resOpCur.json(); setOpCurr(d?.data || null); }
+      if (resOpPrev.ok) { const d = await resOpPrev.json(); setOpPrev(d?.data || null); }
       if (resPrev.ok) {
         const dataPrev = await resPrev.json();
         const rawPrev = Array.isArray(dataPrev) ? dataPrev : dataPrev.rows || [];
@@ -795,9 +866,41 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     [uploadHistory],
   );
 
+  // Ingresadas vienen del snapshot Comercial (operational_snapshots)
+  const currIngresadas = useMemo(
+    () => ingresadasInRange(opCurr, dateMode, dateFrom, dateTo),
+    [opCurr, dateMode, dateFrom, dateTo],
+  );
+  const prevIngresadas = useMemo(
+    () => ingresadasInRange(opPrev, dateMode, dateFrom, dateTo),
+    [opPrev, dateMode, dateFrom, dateTo],
+  );
+  const ingByDsCurr = useMemo(
+    () => ingresadasByEntity(opCurr, "ds", dateMode, dateFrom, dateTo),
+    [opCurr, dateMode, dateFrom, dateTo],
+  );
+  const ingByDsPrev = useMemo(
+    () => ingresadasByEntity(opPrev, "ds", dateMode, dateFrom, dateTo),
+    [opPrev, dateMode, dateFrom, dateTo],
+  );
+  const ingByProvCurr = useMemo(
+    () => ingresadasByEntity(opCurr, "prov", dateMode, dateFrom, dateTo),
+    [opCurr, dateMode, dateFrom, dateTo],
+  );
+  const ingByProvPrev = useMemo(
+    () => ingresadasByEntity(opPrev, "prov", dateMode, dateFrom, dateTo),
+    [opPrev, dateMode, dateFrom, dateTo],
+  );
+
   // Métricas de movilización del mes activo y del mes anterior
-  const movMetrics = useMemo(() => computeMovMetrics(rangedRows, country), [rangedRows, country]);
-  const prevMovMetrics = useMemo(() => computeMovMetrics(prevRangedRows, country), [prevRangedRows, country]);
+  const movMetrics = useMemo(
+    () => computeMovMetrics(rangedRows, country, currIngresadas || undefined),
+    [rangedRows, country, currIngresadas],
+  );
+  const prevMovMetrics = useMemo(
+    () => computeMovMetrics(prevRangedRows, country, prevIngresadas || undefined),
+    [prevRangedRows, country, prevIngresadas],
+  );
 
   // Status counts
   const byStatus = useMemo(() => {
@@ -1284,6 +1387,11 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             showComparison={showComparison} setShowComparison={setShowComparison}
             prevMesLabel={MES_LABEL[prevMes]}
           />
+          {!opCurr && (
+            <div className="rounded-lg p-3 border border-amber-500/30 text-xs text-amber-300" style={{ background: "rgba(245,158,11,0.08)" }}>
+              ⚠️ No hay snapshot Comercial cargado para {MES_LABEL[mes]}. El % de Movilización usa el total de la planilla de Operaciones como base. Subí el reporte Dropi en el Dashboard Comercial para que tome las ingresadas reales.
+            </div>
+          )}
           <MovSummarySection
             metrics={movMetrics}
             prevMetrics={prevMovMetrics}
@@ -1481,6 +1589,8 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             title={`📦 Movilización por Proveedor — ${MES_LABEL[mes]}`}
             showComparison={showComparison}
             prevMesLabel={MES_LABEL[prevMes]}
+            ingCurr={ingByProvCurr}
+            ingPrev={ingByProvPrev}
           />
           {/* Detalle: guías que el Proveedor todavía no despachó */}
           <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
@@ -1522,6 +1632,8 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             title={`👤 Movilización por Dropshipper — ${MES_LABEL[mes]}`}
             showComparison={showComparison}
             prevMesLabel={MES_LABEL[prevMes]}
+            ingCurr={ingByDsCurr}
+            ingPrev={ingByDsPrev}
           />
           {/* Detalle: guías que el DS todavía no confirmó */}
           <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
@@ -1761,6 +1873,7 @@ function MovSummarySection({
     { name: "Pend. Proveedor", value: metrics.pendProv, color: "#f59e0b" },
     { name: "Pend. DS", value: metrics.pendDS, color: "#b45309" },
     { name: "Canceladas", value: metrics.canceladas, color: "#6b7280" },
+    { name: "No movilizadas (Comercial)", value: metrics.noMovilizadas, color: "#374151" },
   ].filter((d) => d.value > 0);
 
   const delta = (curr: number, prev: number, isPct = false) => {
@@ -1898,6 +2011,7 @@ function MovKpiRow({
 /* ───────── MOV ENTITY RANKING (Mov DS / Mov Prov tabs) ───────── */
 function MovEntityRanking({
   rows, prevRows, country, entityKey, level, title, showComparison, prevMesLabel,
+  ingCurr, ingPrev,
 }: {
   rows: GuideRow[];
   prevRows: GuideRow[];
@@ -1907,6 +2021,8 @@ function MovEntityRanking({
   title: string;
   showComparison: boolean;
   prevMesLabel: string;
+  ingCurr: Map<string, number>;
+  ingPrev: Map<string, number>;
 }) {
   const stats = useMemo(() => {
     const map = new Map<string, GuideRow[]>();
@@ -1921,10 +2037,20 @@ function MovEntityRanking({
       if (!prevMap.has(k)) prevMap.set(k, []);
       prevMap.get(k)!.push(r);
     }
-    const arr = Array.from(map.entries()).map(([name, group]) => {
-      const m = computeMovMetrics(group, country);
+    // Union de nombres: aparece en movilizadas (operations) y/o en ingresadas (comercial)
+    const allNames = new Set<string>([
+      ...map.keys(),
+      ...prevMap.keys(),
+      ...ingCurr.keys(),
+      ...ingPrev.keys(),
+    ]);
+    const arr = Array.from(allNames).map((name) => {
+      const ingCur = ingCurr.get(name) || 0;
+      const ingPre = ingPrev.get(name) || 0;
+      const group = map.get(name) || [];
       const prevGroup = prevMap.get(name) || [];
-      const pm = computeMovMetrics(prevGroup, country);
+      const m = computeMovMetrics(group, country, ingCur || undefined);
+      const pm = computeMovMetrics(prevGroup, country, ingPre || undefined);
       const mov = level === "ds" ? m.movilizadas : m.movilizadasProv;
       const pctMov = level === "ds" ? m.pctMovilizadas : m.pctMovilizadasProv;
       const prevMov = level === "ds" ? pm.movilizadas : pm.movilizadasProv;
@@ -1941,7 +2067,7 @@ function MovEntityRanking({
     });
     arr.sort((a, b) => b.ingresadas - a.ingresadas);
     return arr;
-  }, [rows, prevRows, entityKey, country, level]);
+  }, [rows, prevRows, entityKey, country, level, ingCurr, ingPrev]);
 
   const totals = useMemo(() => {
     const ing = stats.reduce((s, x) => s + x.ingresadas, 0);
