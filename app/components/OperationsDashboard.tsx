@@ -169,19 +169,21 @@ function computeMovMetrics(rows: { estatus: string }[], country: string, ingresa
 }
 type MovMetrics = ReturnType<typeof computeMovMetrics>;
 
-// Total de ingresadas dentro de un rango de fechas usando operational_snapshots.by_date
-function ingresadasInRange(opData: any, dateMode: "all" | "range", dateFrom: string, dateTo: string): number {
-  if (!opData) return 0;
+// Total de ingresadas: viene del Seguimiento Diario (daily_tracking).
+// `days` = array de { fecha: <day-of-month int>, ordenes: int, dia_semana: string }.
+// Cuando dateMode=range, filtra por el DÍA DEL MES (1..31) extraído del rango.
+function ingresadasInRange(days: { fecha: number; ordenes: number }[], dateMode: "all" | "range", dateFrom: string, dateTo: string): number {
+  if (!Array.isArray(days) || days.length === 0) return 0;
   if (dateMode === "all" || (!dateFrom && !dateTo)) {
-    return Number(opData.total_orders) || 0;
+    return days.reduce((s, d) => s + (Number(d.ordenes) || 0), 0);
   }
-  const byDate = Array.isArray(opData.by_date) ? opData.by_date : [];
+  const fromDay = dateFrom ? parseInt(dateFrom.slice(8, 10), 10) : 1;
+  const toDay = dateTo ? parseInt(dateTo.slice(8, 10), 10) : 31;
   let sum = 0;
-  for (const d of byDate) {
-    const iso = toIsoDate(String(d.fecha || ""));
-    if (dateFrom && iso < dateFrom) continue;
-    if (dateTo && iso > dateTo) continue;
-    sum += Number(d.total) || 0;
+  for (const d of days) {
+    const day = Number(d.fecha) || 0;
+    if (day < fromDay || day > toDay) continue;
+    sum += Number(d.ordenes) || 0;
   }
   return sum;
 }
@@ -600,9 +602,12 @@ const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 202
 export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
   const [prevRows, setPrevRows] = useState<GuideRow[]>([]);
-  // operational_snapshots: data agregada del área Comercial (total ingresadas, by_dropshipper, by_proveedor)
+  // operational_snapshots: data agregada del área Comercial (by_dropshipper, by_proveedor para per-entity)
   const [opCurr, setOpCurr] = useState<any>(null);
   const [opPrev, setOpPrev] = useState<any>(null);
+  // daily_tracking: seguimiento diario manual (acumulado mes) → fuente de "ingresadas total"
+  const [dailyCurr, setDailyCurr] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>([]);
+  const [dailyPrev, setDailyPrev] = useState<{ fecha: number; ordenes: number; dia_semana: string }[]>([]);
   const [serverUploadHistory, setServerUploadHistory] = useState<{ name: string; count: number }[]>([]);
   const [uploadProgress, setUploadProgress] = useState(0);
   // Filtro de rango de fechas para Resumen / Mov DS / Mov Prov (sobre fecha_orden)
@@ -658,17 +663,23 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     setPrevRows([]);
     setOpCurr(null);
     setOpPrev(null);
+    setDailyCurr([]);
+    setDailyPrev([]);
     setServerUploadHistory([]);
     const prevMes: MesOps = mes === "mayo" ? "abril" : "mayo";
     try {
-      const [resCur, resPrev, resOpCur, resOpPrev] = await Promise.all([
+      const [resCur, resPrev, resOpCur, resOpPrev, resDailyCur, resDailyPrev] = await Promise.all([
         fetch(`/api/data/operations?country=${country}&mes=${mes}`),
         fetch(`/api/data/operations?country=${country}&mes=${prevMes}`),
         fetch(`/api/data/operational?country=${country}&mes=${mes}`),
         fetch(`/api/data/operational?country=${country}&mes=${prevMes}`),
+        fetch(`/api/data/daily-tracking?country=${country}&mes=${mes}`),
+        fetch(`/api/data/daily-tracking?country=${country}&mes=${prevMes}`),
       ]);
       if (resOpCur.ok) { const d = await resOpCur.json(); setOpCurr(d?.data || null); }
       if (resOpPrev.ok) { const d = await resOpPrev.json(); setOpPrev(d?.data || null); }
+      if (resDailyCur.ok) { const d = await resDailyCur.json(); setDailyCurr(Array.isArray(d?.days) ? d.days : []); }
+      if (resDailyPrev.ok) { const d = await resDailyPrev.json(); setDailyPrev(Array.isArray(d?.days) ? d.days : []); }
       if (resPrev.ok) {
         const dataPrev = await resPrev.json();
         const rawPrev = Array.isArray(dataPrev) ? dataPrev : dataPrev.rows || [];
@@ -893,15 +904,16 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     [uploadHistory],
   );
 
-  // Ingresadas vienen del snapshot Comercial (operational_snapshots).
-  // El mes anterior usa el "rango espejo" (mismos días pero del mes previo).
+  // Total de ingresadas viene del SEGUIMIENTO DIARIO (daily_tracking).
+  // El per-entity (DS/Proveedor) sigue viniendo del snapshot Comercial porque
+  // daily_tracking no tiene desglose por DS/Proveedor.
   const currIngresadas = useMemo(
-    () => ingresadasInRange(opCurr, dateMode, dateFrom, dateTo),
-    [opCurr, dateMode, dateFrom, dateTo],
+    () => ingresadasInRange(dailyCurr, dateMode, dateFrom, dateTo),
+    [dailyCurr, dateMode, dateFrom, dateTo],
   );
   const prevIngresadas = useMemo(
-    () => ingresadasInRange(opPrev, dateMode, prevDateFrom, prevDateTo),
-    [opPrev, dateMode, prevDateFrom, prevDateTo],
+    () => ingresadasInRange(dailyPrev, dateMode, prevDateFrom, prevDateTo),
+    [dailyPrev, dateMode, prevDateFrom, prevDateTo],
   );
   const ingByDsCurr = useMemo(
     () => ingresadasByEntity(opCurr, "ds", dateMode, dateFrom, dateTo),
@@ -1416,9 +1428,14 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             prevMesLabel={MES_LABEL[prevMes]}
             prevDateFrom={prevDateFrom} prevDateTo={prevDateTo}
           />
-          {!opCurr && (
+          {dailyCurr.length === 0 && (
             <div className="rounded-lg p-3 border border-amber-500/30 text-xs text-amber-300" style={{ background: "rgba(245,158,11,0.08)" }}>
-              ⚠️ No hay snapshot Comercial cargado para {MES_LABEL[mes]}. El % de Movilización usa el total de la planilla de Operaciones como base. Subí el reporte Dropi en el Dashboard Comercial para que tome las ingresadas reales.
+              ⚠️ No hay Seguimiento Diario cargado para {MES_LABEL[mes]}. El % de Movilización usa la planilla de Operaciones como base hasta que cargues los días en Seguimiento Diario.
+            </div>
+          )}
+          {!opCurr && (
+            <div className="rounded-lg p-3 border border-amber-500/30 text-[11px] text-amber-300" style={{ background: "rgba(245,158,11,0.05)" }}>
+              ⓘ Subí el snapshot Comercial (Dashboard Comercial) para que los rankings por Dropshipper y Proveedor muestren las ingresadas reales por entidad.
             </div>
           )}
           <MovSummarySection
