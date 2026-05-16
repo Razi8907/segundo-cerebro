@@ -132,18 +132,22 @@ function computeMovMetrics(rows: { estatus: string }[], country: string, ingresa
   const movilizadas = rowsCount - pendDS;
   const movilizadasProv = rowsCount - pendDS - pendProv;
   const ingresadas = ingresadasOverride !== undefined ? ingresadasOverride : rowsCount;
-  const pct = (n: number) => (ingresadas > 0 ? (n / ingresadas) * 100 : 0);
+  // % Movilizadas se mide vs INGRESADAS (todo lo que llegó del Comercial).
+  // El resto (entrega, devolución, en proceso, canceladas) se mide vs MOVILIZADAS
+  // (las que efectivamente entraron a la operación logística).
+  const pctIng = (n: number) => (ingresadas > 0 ? (n / ingresadas) * 100 : 0);
+  const pctMov = (n: number) => (movilizadas > 0 ? (n / movilizadas) * 100 : 0);
   const noMovilizadas = Math.max(ingresadas - movilizadas, 0);
   return {
     ingresadas,
-    movilizadas, pctMovilizadas: pct(movilizadas),
-    movilizadasProv, pctMovilizadasProv: pct(movilizadasProv),
+    movilizadas, pctMovilizadas: pctIng(movilizadas),
+    movilizadasProv, pctMovilizadasProv: pctIng(movilizadasProv),
     noMovilizadas,
     pendDS, pendProv,
-    enProceso, pctEnProceso: pct(enProceso),
-    entregadas, pctEntrega: pct(entregadas),
-    devueltas, pctDevuelta: pct(devueltas),
-    canceladas, pctCancelada: pct(canceladas),
+    enProceso, pctEnProceso: pctMov(enProceso),
+    entregadas, pctEntrega: pctMov(entregadas),
+    devueltas, pctDevuelta: pctMov(devueltas),
+    canceladas, pctCancelada: pctMov(canceladas),
   };
 }
 type MovMetrics = ReturnType<typeof computeMovMetrics>;
@@ -1399,6 +1403,13 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
             prevMesLabel={MES_LABEL[prevMes]}
             showComparison={showComparison}
           />
+          <LogisticsBreakdown
+            rows={rangedRows}
+            prevRows={prevRangedRows}
+            country={country}
+            showComparison={showComparison}
+            prevMesLabel={MES_LABEL[prevMes]}
+          />
           <DownloadBtn onClick={() => downloadCSV("Resumen_Completo", filteredRows, EXPORT_COLUMNS)} label={`Descargar todo (${filteredRows.length} guías)`} />
           {/* KPI cards — distintas por país */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
@@ -1933,7 +1944,7 @@ function MovSummarySection({
             color="#06b6d4"
           />
           <MovKpiRow
-            label="✅ Tasa Entrega"
+            label="✅ Tasa Entrega (/ movilizadas)"
             curr={metrics.entregadas}
             prev={prevMetrics.entregadas}
             pct={metrics.pctEntrega}
@@ -1944,7 +1955,7 @@ function MovSummarySection({
             color="#10b981"
           />
           <MovKpiRow
-            label="↩️ Devueltas"
+            label="↩️ Devueltas (/ movilizadas)"
             curr={metrics.devueltas}
             prev={prevMetrics.devueltas}
             pct={metrics.pctDevuelta}
@@ -1956,7 +1967,7 @@ function MovSummarySection({
             invertDelta
           />
           <MovKpiRow
-            label="🔄 En Proceso"
+            label="🔄 En Proceso (/ movilizadas)"
             curr={metrics.enProceso}
             prev={prevMetrics.enProceso}
             pct={metrics.pctEnProceso}
@@ -2160,6 +2171,135 @@ function MovEntityRanking({
             )}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+/* ───────── LOGISTICS BREAKDOWN ───────── */
+function LogisticsBreakdown({
+  rows, prevRows, country, showComparison, prevMesLabel,
+}: {
+  rows: GuideRow[];
+  prevRows: GuideRow[];
+  country: "py" | "ar";
+  showComparison: boolean;
+  prevMesLabel: string;
+}) {
+  // Lista de transportadoras presentes en current o prev
+  const transportadoras = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of rows) if (r.transportadora) set.add(r.transportadora);
+    for (const r of prevRows) if (r.transportadora) set.add(r.transportadora);
+    return Array.from(set).sort();
+  }, [rows, prevRows]);
+
+  if (transportadoras.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+      <h3 className="text-sm font-bold t-primary mb-1">🚚 Por Logística</h3>
+      <p className="text-[11px] t-muted mb-3">Tasa de entrega/devolución/proceso por transportadora — todas las % se miden sobre las guías que esa logística recibió.</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+        {transportadoras.map((t) => (
+          <LogisticsCard
+            key={t}
+            transp={t}
+            rows={rows.filter((r) => r.transportadora === t)}
+            prevRows={prevRows.filter((r) => r.transportadora === t)}
+            country={country}
+            showComparison={showComparison}
+            prevMesLabel={prevMesLabel}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LogisticsCard({
+  transp, rows, prevRows, country, showComparison, prevMesLabel,
+}: {
+  transp: string;
+  rows: GuideRow[];
+  prevRows: GuideRow[];
+  country: "py" | "ar";
+  showComparison: boolean;
+  prevMesLabel: string;
+}) {
+  const m = computeMovMetrics(rows, country);
+  const pm = computeMovMetrics(prevRows, country);
+  const pieData = [
+    { name: "Entregadas", value: m.entregadas, color: "#10b981" },
+    { name: "Devueltas", value: m.devueltas, color: "#dc2626" },
+    { name: "En Proceso", value: m.enProceso, color: "#0891b2" },
+    { name: "Canceladas", value: m.canceladas, color: "#6b7280" },
+  ].filter((d) => d.value > 0);
+
+  const totalGuias = m.movilizadas;
+  const fmtDelta = (curr: number, prev: number, invert = false) => {
+    const d = curr - prev;
+    const sign = d > 0 ? "+" : "";
+    let color = d > 0 ? "#10b981" : d < 0 ? "#dc2626" : "#6b7280";
+    if (invert) color = d > 0 ? "#dc2626" : d < 0 ? "#10b981" : "#6b7280";
+    return <span className="text-[10px] font-bold ml-1" style={{ color }}>{sign}{d.toFixed(1)}pp</span>;
+  };
+
+  return (
+    <div className="rounded-lg p-3 border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-bold t-primary">{transp}</h4>
+        <span className="text-[10px] t-muted">{totalGuias.toLocaleString("es-AR")} guías</span>
+      </div>
+      <div className="h-36 mb-2">
+        {pieData.length > 0 ? (
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={56} innerRadius={28} paddingAngle={2}>
+                {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
+              </Pie>
+              <Tooltip
+                contentStyle={{ background: "rgba(22,33,62,0.95)", border: "1px solid rgba(6,182,212,0.2)", borderRadius: 8, fontSize: 11 }}
+                formatter={(v, n) => {
+                  const num = Number(v) || 0;
+                  return [`${num.toLocaleString("es-AR")} (${totalGuias > 0 ? ((num / totalGuias) * 100).toFixed(1) : 0}%)`, n as string];
+                }}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex items-center justify-center h-full t-muted text-[11px]">Sin datos</div>
+        )}
+      </div>
+      <div className="space-y-1 text-[11px]">
+        <div className="flex items-center justify-between">
+          <span className="t-muted">✅ Entrega</span>
+          <span className="font-bold" style={{ color: "#10b981" }}>
+            {m.pctEntrega.toFixed(1)}% <span className="t-muted font-normal">({m.entregadas.toLocaleString("es-AR")})</span>
+            {showComparison && fmtDelta(m.pctEntrega, pm.pctEntrega)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="t-muted">↩️ Devolución</span>
+          <span className="font-bold" style={{ color: "#dc2626" }}>
+            {m.pctDevuelta.toFixed(1)}% <span className="t-muted font-normal">({m.devueltas.toLocaleString("es-AR")})</span>
+            {showComparison && fmtDelta(m.pctDevuelta, pm.pctDevuelta, true)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="t-muted">🔄 En proceso</span>
+          <span className="font-bold" style={{ color: "#0891b2" }}>
+            {m.pctEnProceso.toFixed(1)}% <span className="t-muted font-normal">({m.enProceso.toLocaleString("es-AR")})</span>
+            {showComparison && fmtDelta(m.pctEnProceso, pm.pctEnProceso)}
+          </span>
+        </div>
+        {showComparison && (
+          <div className="text-[10px] t-muted mt-1 pt-1 border-t border-gray-700/40">
+            vs {prevMesLabel}: {pm.movilizadas.toLocaleString("es-AR")} guías
+          </div>
+        )}
       </div>
     </div>
   );
