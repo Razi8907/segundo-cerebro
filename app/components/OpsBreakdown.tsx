@@ -652,6 +652,7 @@ export default function OpsBreakdown({
             <thead>
               <tr className="border-b border-gray-700">
                 <th className="py-2 px-3 text-left text-[11px] t-muted">Dropshipper</th>
+                <th className="py-2 px-3 text-left text-[11px] t-muted">Usuario Dropi</th>
                 <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[prevMes].split(" ")[0]} ing</th>
                 <th className="py-2 px-3 text-right text-[11px] t-muted">Días activos {MES_LABEL[prevMes].split(" ")[0]}</th>
                 <th className="py-2 px-3 text-right text-[11px] t-muted">Prom/día {MES_LABEL[prevMes].split(" ")[0]}</th>
@@ -666,6 +667,9 @@ export default function OpsBreakdown({
                 <tr key={r.ds} className="border-b border-gray-800/50 hover:bg-orange-500/5">
                   <td className="py-2 px-3 t-primary text-xs">
                     <span className="t-muted mr-2">{i + 1}.</span>{r.cleanDs}
+                  </td>
+                  <td className="py-2 px-3 text-cyan-300 text-[11px] font-mono max-w-[180px] truncate" title={dropiUserByEntity.get(r.cleanDs) || ""}>
+                    {dropiUserByEntity.get(r.cleanDs) || "—"}
                   </td>
                   <td className="py-2 px-3 text-right font-mono text-xs t-muted">{r.abrIng > 0 ? r.abrIng.toLocaleString("es-AR") : "—"}</td>
                   <td className="py-2 px-3 text-right font-mono text-xs t-muted">{r.diasActivosAbr || "—"}</td>
@@ -687,6 +691,7 @@ export default function OpsBreakdown({
                 return (
                   <tr style={{ background: "rgba(249,115,22,0.08)", fontWeight: 700 }}>
                     <td className="py-2 px-3 t-primary text-xs">TOTAL ({rangeByDS.length})</td>
+                    <td className="py-2 px-3"></td>
                     <td className="py-2 px-3 text-right font-mono text-xs">{tAbr.toLocaleString("es-AR")}</td>
                     <td colSpan={2}></td>
                     <td className="py-2 px-3 text-right font-mono text-xs text-orange-400">{tMay.toLocaleString("es-AR")}</td>
