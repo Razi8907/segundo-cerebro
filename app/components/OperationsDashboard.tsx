@@ -128,13 +128,21 @@ function shiftDateToMes(iso: string, targetMes: "abril" | "mayo"): string {
   return `${year}-${String(targetMonth).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
 }
 
-// Métricas de movilización. `rows` son las guías de operations_data (ya movilizadas).
-// `ingresadasOverride` viene de Comercial (operational_snapshots) — total real de
-// órdenes recibidas. Si no se pasa, se asume que rows representa ingresadas.
-function computeMovMetrics(rows: { estatus: string }[], country: string, ingresadasOverride?: number) {
+// Métricas de movilización. `rows` son las guías de operations_data.
+// `ingresadasOverride` viene de Seguimiento Diario (daily_tracking) — total real
+// de órdenes recibidas. Si no se pasa, se asume que rows representa ingresadas.
+//
+// Definición de "movilizada" (regla de negocio):
+//   fecha_procesamiento NO nula  AND  estado NOT IN ('CANCELADO', 'RECHAZADO', ...)
+// Una orden sin fecha_procesamiento nunca entró a la operación logística.
+function computeMovMetrics(
+  rows: { estatus: string; fecha_procesamiento?: string }[],
+  country: string,
+  ingresadasOverride?: number,
+) {
   const SG = getStatusGroups(country);
-  const rowsCount = rows.length;
   let pendDS = 0, pendProv = 0, enProceso = 0, entregadas = 0, devueltas = 0, canceladas = 0;
+  let movilizadas = 0, movilizadasProv = 0;
   for (const r of rows) {
     const s = r.estatus;
     if (SG.mov_dropshipper.includes(s)) pendDS++;
@@ -143,15 +151,18 @@ function computeMovMetrics(rows: { estatus: string }[], country: string, ingresa
     else if (s === "ENTREGADO") entregadas++;
     else if (s === "DEVOLUCION" || s === "EN PROCESO DE DEVOLUCION") devueltas++;
     else if (SG.cancelacion.includes(s)) canceladas++;
+
+    const hasProc = !!(r.fecha_procesamiento && String(r.fecha_procesamiento).trim());
+    const isCanceled = SG.cancelacion.includes(s);
+    if (hasProc && !isCanceled) {
+      movilizadas++;
+      if (!SG.mov_proveedor.includes(s)) movilizadasProv++;
+    }
   }
-  // El file de Operaciones contiene "ya movilizadas". Si llegan filas en PENDIENTE
-  // CONFIRMACION, las excluimos del movilizado.
-  const movilizadas = rowsCount - pendDS;
-  const movilizadasProv = rowsCount - pendDS - pendProv;
-  const ingresadas = ingresadasOverride !== undefined ? ingresadasOverride : rowsCount;
-  // % Movilizadas se mide vs INGRESADAS (todo lo que llegó del Comercial).
-  // El resto (entrega, devolución, en proceso, canceladas) se mide vs MOVILIZADAS
-  // (las que efectivamente entraron a la operación logística).
+  const ingresadas = ingresadasOverride !== undefined ? ingresadasOverride : movilizadas;
+  // % Movilizadas se mide vs INGRESADAS (lo que cargás en Seguimiento Diario).
+  // El resto (entrega, devolución, en proceso) se mide vs MOVILIZADAS (las que
+  // efectivamente entraron a la operación logística).
   const pctIng = (n: number) => (ingresadas > 0 ? (n / ingresadas) * 100 : 0);
   const pctMov = (n: number) => (movilizadas > 0 ? (n / movilizadas) * 100 : 0);
   const noMovilizadas = Math.max(ingresadas - movilizadas, 0);
