@@ -54,6 +54,7 @@ interface AggData {
   by_proveedor: { nombre: string; id: number; total: number; estados: Record<string, number> }[];
   by_dropshipper: { nombre: string; total: number; estados: Record<string, number> }[];
   by_ds_daily: { ds: string; dsId: string; dsEmail: string; dsCelular: string; fecha: string; ordenes: number }[];
+  by_prov_daily: { proveedor: string; provId: number; fecha: string; ordenes: number; estados: Record<string, number> }[];
   by_ds_producto: { ds: string; producto: string; ordenes: number }[];
   by_producto: { nombre: string; productoId: string; proveedor: string; cantidad: number; ordenes: number }[];
   by_departamento: { nombre: string; total: number }[];
@@ -108,6 +109,7 @@ function aggregateRows(rows: RawRow[]): AggData {
   const by_dept_map: Record<string, number> = {};
   const ds_daily_map: Record<string, { ds: string; dsId: string; dsEmail: string; dsCelular: string; fecha: string; ordenes: number }> = {};
   const ds_prod_map: Record<string, { ds: string; producto: string; ordenes: number }> = {};
+  const prov_daily_map: Record<string, { proveedor: string; provId: number; fecha: string; ordenes: number; estados: Record<string, number> }> = {};
 
   for (const r of rows) {
     by_status[r.estatus] = (by_status[r.estatus] || 0) + 1;
@@ -136,6 +138,12 @@ function aggregateRows(rows: RawRow[]): AggData {
     const dsProdKey = `${r.dropshipper}||${r.producto}`;
     if (!ds_prod_map[dsProdKey]) ds_prod_map[dsProdKey] = { ds: r.dropshipper, producto: r.producto, ordenes: 0 };
     ds_prod_map[dsProdKey].ordenes++;
+
+    // Provider daily tracking (para filtros por rango de fecha en ProveedorManager)
+    const provDayKey = `${r.proveedor}||${r.fecha}`;
+    if (!prov_daily_map[provDayKey]) prov_daily_map[provDayKey] = { proveedor: r.proveedor, provId: r.provId, fecha: r.fecha, ordenes: 0, estados: {} };
+    prov_daily_map[provDayKey].ordenes++;
+    prov_daily_map[provDayKey].estados[r.estatus] = (prov_daily_map[provDayKey].estados[r.estatus] || 0) + 1;
   }
   const fechas = Object.keys(by_date_map).sort();
 
@@ -211,6 +219,7 @@ function aggregateRows(rows: RawRow[]): AggData {
     by_proveedor: Object.entries(by_prov_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.total - a.total),
     by_dropshipper: Object.entries(by_ds_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.total - a.total),
     by_ds_daily: Object.values(ds_daily_map).sort((a, b) => a.fecha.localeCompare(b.fecha) || b.ordenes - a.ordenes),
+    by_prov_daily: Object.values(prov_daily_map).sort((a, b) => a.fecha.localeCompare(b.fecha) || b.ordenes - a.ordenes),
     by_ds_producto: Object.values(ds_prod_map).sort((a, b) => b.ordenes - a.ordenes),
     by_producto: Object.entries(by_prod_map).map(([nombre, v]) => ({ nombre, ...v })).sort((a, b) => b.ordenes - a.ordenes),
     by_departamento: Object.entries(by_dept_map).map(([nombre, total]) => ({ nombre, total })).sort((a, b) => b.total - a.total),

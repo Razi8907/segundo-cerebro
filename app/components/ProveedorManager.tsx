@@ -94,35 +94,75 @@ export default function ProveedorManager({
 
   const [opsAbril, setOpsAbril] = useState<OpsRow[]>([]);
   const [opsMayo, setOpsMayo] = useState<OpsRow[]>([]);
+  type ProvDaily = { proveedor: string; provId: number; fecha: string; ordenes: number; estados: Record<string, number> };
+  const [provDailyAbril, setProvDailyAbril] = useState<ProvDaily[]>([]);
+  const [provDailyMayo, setProvDailyMayo] = useState<ProvDaily[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "escalar" | "reactivar" | "mejorar_conv" | "alto_dev">("all");
   const [selectedNombre, setSelectedNombre] = useState<string | null>(null);
 
+  // Filtro por rango de fecha (sobre el día del mes — el filtro espejo se aplica al mes anterior)
+  const [dateMode, setDateMode] = useState<"all" | "range">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    const reqs: Promise<any>[] = [
+    Promise.all([
       fetch(`/api/data/operational?country=${country}&mes=abril`).then((r) => r.json()).catch(() => null),
-    ];
-    if (isMayo) {
-      reqs.push(fetch(`/api/data/operational?country=${country}&mes=mayo`).then((r) => r.json()).catch(() => null));
-    }
-    Promise.all(reqs).then(([abr, may]) => {
+      fetch(`/api/data/operational?country=${country}&mes=mayo`).then((r) => r.json()).catch(() => null),
+    ]).then(([abr, may]) => {
       if (cancelled) return;
-      if (Array.isArray(abr?.data?.by_proveedor)) setOpsAbril(abr.data.by_proveedor);
-      else setOpsAbril([]);
-      if (Array.isArray(may?.data?.by_proveedor)) setOpsMayo(may.data.by_proveedor);
-      else setOpsMayo([]);
+      setOpsAbril(Array.isArray(abr?.data?.by_proveedor) ? abr.data.by_proveedor : []);
+      setOpsMayo(Array.isArray(may?.data?.by_proveedor) ? may.data.by_proveedor : []);
+      setProvDailyAbril(Array.isArray(abr?.data?.by_prov_daily) ? abr.data.by_prov_daily : []);
+      setProvDailyMayo(Array.isArray(may?.data?.by_prov_daily) ? may.data.by_prov_daily : []);
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [country, isMayo]);
+  }, [country]);
+
+  // Agrupa by_prov_daily filtrando por día del mes (1..31) → OpsRow agregada por proveedor
+  function aggregateProvDaily(daily: ProvDaily[], fromDay: number, toDay: number): OpsRow[] {
+    const map = new Map<string, { id: number; total: number; estados: Record<string, number> }>();
+    const fechaToDay = (s: string): number => {
+      const m = s.match(/^(\d{1,2})[-\/]/);
+      return m ? parseInt(m[1], 10) : 0;
+    };
+    for (const r of daily) {
+      const day = fechaToDay(r.fecha);
+      if (day < fromDay || day > toDay) continue;
+      if (!map.has(r.proveedor)) map.set(r.proveedor, { id: r.provId, total: 0, estados: {} });
+      const e = map.get(r.proveedor)!;
+      e.total += r.ordenes || 0;
+      for (const [s, c] of Object.entries(r.estados || {})) {
+        e.estados[s] = (e.estados[s] || 0) + (c as number);
+      }
+    }
+    return Array.from(map.entries()).map(([nombre, v]) => ({ nombre, ...v }));
+  }
+
+  // Efectivos: si dateMode=range usa los daily filtrados; si "all", los monthly totals
+  const effOpsAbril = useMemo(() => {
+    if (dateMode !== "range" || (!dateFrom && !dateTo)) return opsAbril;
+    const fromDay = dateFrom ? parseInt(dateFrom.slice(8, 10), 10) : 1;
+    const toDay = dateTo ? parseInt(dateTo.slice(8, 10), 10) : 31;
+    return aggregateProvDaily(provDailyAbril, fromDay, toDay);
+  }, [dateMode, dateFrom, dateTo, opsAbril, provDailyAbril]);
+
+  const effOpsMayo = useMemo(() => {
+    if (dateMode !== "range" || (!dateFrom && !dateTo)) return opsMayo;
+    const fromDay = dateFrom ? parseInt(dateFrom.slice(8, 10), 10) : 1;
+    const toDay = dateTo ? parseInt(dateTo.slice(8, 10), 10) : 31;
+    return aggregateProvDaily(provDailyMayo, fromDay, toDay);
+  }, [dateMode, dateFrom, dateTo, opsMayo, provDailyMayo]);
 
   const rows: ProveedorRow[] = useMemo(() => {
-    const aMap = aggregate(opsAbril);
-    const mMap = aggregate(opsMayo);
+    const aMap = aggregate(effOpsAbril);
+    const mMap = aggregate(effOpsMayo);
     const allKeys = new Set<string>([...aMap.keys(), ...mMap.keys()]);
 
     // Pre-compute totals for share calculation
@@ -233,7 +273,7 @@ export default function ProveedorManager({
         if (b.baseMov !== a.baseMov) return b.baseMov - a.baseMov;
         return b.score - a.score;
       });
-  }, [opsAbril, opsMayo, META_MOV, META_ING, TARGET]);
+  }, [effOpsAbril, effOpsMayo, META_MOV, META_ING, TARGET]);
 
   const escalables = rows.filter((r) => r.category === "escalar");
   const reactivar = rows.filter((r) => r.category === "reactivar");
@@ -324,6 +364,35 @@ export default function ProveedorManager({
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Date range filter (compara mismos días en ambos meses) */}
+      <div className="flex flex-wrap items-end gap-3 mb-3 p-3 rounded-lg bg-[#16213e]/40 border border-orange-500/15">
+        <div className="flex flex-col gap-1">
+          <label className="text-[10px] text-gray-400 uppercase tracking-wider">Rango fecha orden</label>
+          <select value={dateMode} onChange={(e) => setDateMode(e.target.value as "all" | "range")} className="text-xs px-2 py-1.5 rounded-lg bg-transparent border border-gray-700 text-white focus:border-orange-500 outline-none">
+            <option value="all">Todo el mes</option>
+            <option value="range">Rango de días</option>
+          </select>
+        </div>
+        {dateMode === "range" && (
+          <>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-400 uppercase tracking-wider">Desde</label>
+              <input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg bg-transparent border border-gray-700 text-white focus:border-orange-500 outline-none" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] text-gray-400 uppercase tracking-wider">Hasta</label>
+              <input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg bg-transparent border border-gray-700 text-white focus:border-orange-500 outline-none" />
+            </div>
+            <span className="text-[10px] text-cyan-300 self-end pb-1">
+              Comparación: mismos días de {COMP} vs {TARGET}.
+              {provDailyAbril.length === 0 && provDailyMayo.length === 0 && (
+                <span className="block text-amber-300">⚠️ Re-subí el reporte Comercial para activar el filtro por día (necesita la nueva agregación by_prov_daily).</span>
+              )}
+            </span>
+          </>
+        )}
       </div>
 
       {/* Filters */}

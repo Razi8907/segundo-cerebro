@@ -71,6 +71,13 @@ export interface AggData {
     fecha: string;
     ordenes: number;
   }[];
+  by_prov_daily: {
+    proveedor: string;
+    provId: number;
+    fecha: string;
+    ordenes: number;
+    estados: Record<string, number>;
+  }[];
   by_ds_producto: { ds: string; producto: string; ordenes: number }[];
   by_producto: {
     nombre: string;
@@ -169,6 +176,10 @@ export function aggregateRows(rows: RawRow[]): AggData {
     }
   > = {};
   const ds_prod_map: Record<string, { ds: string; producto: string; ordenes: number }> = {};
+  const prov_daily_map: Record<
+    string,
+    { proveedor: string; provId: number; fecha: string; ordenes: number; estados: Record<string, number> }
+  > = {};
 
   for (const r of rows) {
     by_status[r.estatus] = (by_status[r.estatus] || 0) + 1;
@@ -215,6 +226,19 @@ export function aggregateRows(rows: RawRow[]): AggData {
     if (!ds_prod_map[dsProdKey])
       ds_prod_map[dsProdKey] = { ds: r.dropshipper, producto: r.producto, ordenes: 0 };
     ds_prod_map[dsProdKey].ordenes++;
+
+    const provDayKey = `${r.proveedor}||${r.fecha}`;
+    if (!prov_daily_map[provDayKey])
+      prov_daily_map[provDayKey] = {
+        proveedor: r.proveedor,
+        provId: r.provId,
+        fecha: r.fecha,
+        ordenes: 0,
+        estados: {},
+      };
+    prov_daily_map[provDayKey].ordenes++;
+    prov_daily_map[provDayKey].estados[r.estatus] =
+      (prov_daily_map[provDayKey].estados[r.estatus] || 0) + 1;
   }
 
   const fechas = Object.keys(by_date_map).sort();
@@ -349,6 +373,9 @@ export function aggregateRows(rows: RawRow[]): AggData {
       .map(([nombre, v]) => ({ nombre, ...v }))
       .sort((a, b) => b.total - a.total),
     by_ds_daily: Object.values(ds_daily_map).sort(
+      (a, b) => a.fecha.localeCompare(b.fecha) || b.ordenes - a.ordenes
+    ),
+    by_prov_daily: Object.values(prov_daily_map).sort(
       (a, b) => a.fecha.localeCompare(b.fecha) || b.ordenes - a.ordenes
     ),
     by_ds_producto: Object.values(ds_prod_map).sort((a, b) => b.ordenes - a.ordenes),
