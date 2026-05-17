@@ -26,6 +26,7 @@ type OpsRow = { nombre: string; total: number; estados: Record<string, number>; 
 interface ProveedorRow {
   nombre: string;
   cleanNombre: string;
+  dropiId: string;
   abrIng: number;
   abrMov: number;
   abrEnt: number;
@@ -211,9 +212,11 @@ export default function ProveedorManager({
       const devScore = (1 - Math.min(pctDev, 1)) * 10;
       const score = Math.round(volumeScore + growthScore + entScore + devScore);
 
+      const idMatch = nombre.match(/\((\d+)\)\s*$/);
       out.push({
         nombre,
         cleanNombre: nombre.replace(/\s*\(\d+\)\s*$/, "").trim(),
+        dropiId: idMatch ? idMatch[1] : "",
         abrIng: a.ing, abrMov: a.mov, abrEnt: a.ent, abrDev: a.dev,
         mayIng: m.ing, mayMov: m.mov, mayEnt: m.ent, mayDev: m.dev,
         baseMov, baseIng,
@@ -414,6 +417,7 @@ export default function ProveedorManager({
             <tr className="border-b border-orange-500/20">
               <th className="text-left py-2 px-2 text-gray-400">#</th>
               <th className="text-left py-2 px-2 text-gray-400">Proveedor</th>
+              <th className="text-left py-2 px-2 text-gray-400">Usuario Dropi</th>
               <th className="text-right py-2 px-2 text-gray-400">{COMP} Ing</th>
               <th className="text-right py-2 px-2 text-gray-400">{COMP} Mov</th>
               <th className="text-right py-2 px-2 text-gray-400">{TARGET} Ing</th>
@@ -432,6 +436,7 @@ export default function ProveedorManager({
               <tr key={p.nombre} className={`border-b border-gray-800/40 hover:bg-orange-500/5 ${selectedNombre === p.nombre ? "bg-orange-500/10" : ""}`}>
                 <td className="py-2 px-2 text-gray-500">{i + 1}</td>
                 <td className="py-2 px-2 text-white font-medium max-w-[180px] truncate" title={p.cleanNombre}>{p.cleanNombre}</td>
+                <td className="py-2 px-2 text-cyan-300 text-[11px] font-mono">{p.dropiId || "—"}</td>
                 <td className="py-2 px-2 text-right text-gray-400">{p.abrIng > 0 ? p.abrIng.toLocaleString() : "—"}</td>
                 <td className="py-2 px-2 text-right text-blue-400">{p.abrMov > 0 ? p.abrMov.toLocaleString() : "—"}</td>
                 <td className="py-2 px-2 text-right text-gray-400">{p.mayIng > 0 ? p.mayIng.toLocaleString() : "—"}</td>

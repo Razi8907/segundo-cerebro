@@ -89,17 +89,34 @@ export default function DropshipperManager({
   type OpsRow = { nombre: string; total: number; estados: Record<string, number> };
   const [opsAbril, setOpsAbril] = useState<OpsRow[]>([]);
   const [opsMayo, setOpsMayo] = useState<OpsRow[]>([]);
+  // Map cleanName → dsEmail (usuario en Dropi). Se construye de by_ds_daily de ambos meses.
+  const [dropiUserByDs, setDropiUserByDs] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
-    if (!isMayo) return;
     let cancelled = false;
     Promise.all([
       fetch(`/api/data/operational?country=${country}&mes=abril`).then((r) => r.json()).catch(() => null),
       fetch(`/api/data/operational?country=${country}&mes=mayo`).then((r) => r.json()).catch(() => null),
     ]).then(([abr, may]) => {
       if (cancelled) return;
-      if (Array.isArray(abr?.data?.by_dropshipper)) setOpsAbril(abr.data.by_dropshipper);
-      if (Array.isArray(may?.data?.by_dropshipper)) setOpsMayo(may.data.by_dropshipper);
+      if (isMayo) {
+        if (Array.isArray(abr?.data?.by_dropshipper)) setOpsAbril(abr.data.by_dropshipper);
+        if (Array.isArray(may?.data?.by_dropshipper)) setOpsMayo(may.data.by_dropshipper);
+      }
+      // Build email map de TODOS los meses para que aparezca en cualquier vista
+      const m = new Map<string, string>();
+      const ingest = (snap: any) => {
+        const daily = Array.isArray(snap?.data?.by_ds_daily) ? snap.data.by_ds_daily : [];
+        for (const r of daily) {
+          const email = String(r?.dsEmail || "").trim();
+          if (!email) continue;
+          const ds = String(r?.ds || "").trim();
+          const clean = ds.replace(/\s*\(\d+\)\s*$/, "").trim();
+          if (clean && !m.has(clean)) m.set(clean, email);
+        }
+      };
+      ingest(abr); ingest(may);
+      setDropiUserByDs(m);
     });
     return () => { cancelled = true; };
   }, [isMayo, country]);
@@ -456,6 +473,7 @@ export default function DropshipperManager({
             <tr className="border-b border-orange-500/20">
               <th className="text-left py-2 px-2 text-gray-400">#</th>
               <th className="text-left py-2 px-2 text-gray-400">Dropshipper</th>
+              <th className="text-left py-2 px-2 text-gray-400">Usuario Dropi</th>
               <th className="text-right py-2 px-2 text-gray-400">Provs</th>
               <th className="text-right py-2 px-2 text-gray-400">Ene</th>
               <th className="text-right py-2 px-2 text-gray-400">Feb</th>
@@ -474,6 +492,7 @@ export default function DropshipperManager({
               <tr key={d.email} className={`border-b border-gray-800/40 hover:bg-orange-500/5 ${selectedDS === d.email ? "bg-orange-500/10" : ""}`}>
                 <td className="py-2 px-2 text-gray-500">{i + 1}</td>
                 <td className="py-2 px-2 text-white font-medium max-w-[200px] truncate">{d.email}</td>
+                <td className="py-2 px-2 text-cyan-300 text-[11px] max-w-[200px] truncate" title={dropiUserByDs.get(d.email) || ""}>{dropiUserByDs.get(d.email) || "—"}</td>
                 <td className="py-2 px-2 text-right text-gray-400">{d.num_proveedores}</td>
                 <td className="py-2 px-2 text-right text-gray-400">{d.ene.mov > 0 ? d.ene.mov.toLocaleString() : "—"}</td>
                 <td className="py-2 px-2 text-right text-gray-400">{d.feb.mov > 0 ? d.feb.mov.toLocaleString() : "—"}</td>
