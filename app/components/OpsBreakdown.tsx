@@ -110,6 +110,8 @@ export default function OpsBreakdown({
   const [dailyCur, setDailyCur] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[] }>({ dsDaily: [], byDate: [], dsProducto: [] });
   const [dailyPrev, setDailyPrev] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[] }>({ dsDaily: [], byDate: [], dsProducto: [] });
   const [filterDS, setFilterDS] = useState<string>("__all__");
+  // Map cleanNombre → "usuario en Dropi" (email para DS, ID numérico para Proveedor)
+  const [dropiUserByEntity, setDropiUserByEntity] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -136,10 +138,37 @@ export default function OpsBreakdown({
         byDate: pr?.data?.by_date || [],
         dsProducto: pr?.data?.by_ds_producto || [],
       });
+      // Construir mapa de "Usuario Dropi"
+      const m = new Map<string, string>();
+      if (category === "dropshipper") {
+        const ingest = (snap: any) => {
+          const daily = Array.isArray(snap?.data?.by_ds_daily) ? snap.data.by_ds_daily : [];
+          for (const r of daily) {
+            const email = String(r?.dsEmail || "").trim();
+            if (!email) continue;
+            const clean = String(r?.ds || "").replace(/\s*\(\d+\)\s*$/, "").trim();
+            if (clean && !m.has(clean)) m.set(clean, email);
+          }
+        };
+        ingest(cur); ingest(pr);
+      } else {
+        // Proveedor: extraer ID del nombre o usar campo id
+        const ingest = (rows: any[]) => {
+          for (const r of rows) {
+            const nombre = String(r?.nombre || "");
+            const clean = nombre.replace(/\s*\(\d+\)\s*$/, "").trim();
+            const idMatch = nombre.match(/\((\d+)\)\s*$/);
+            const id = idMatch ? idMatch[1] : (r?.id ? String(r.id) : "");
+            if (clean && id && !m.has(clean)) m.set(clean, id);
+          }
+        };
+        ingest(curRows); ingest(prevRows);
+      }
+      setDropiUserByEntity(m);
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [country, mes, dataKey, prevMes]);
+  }, [country, mes, dataKey, prevMes, category]);
 
   // Lista única de DS para el filtro (combina ambos meses)
   const dsList = useMemo(() => {
@@ -695,6 +724,7 @@ export default function OpsBreakdown({
           <thead>
             <tr className="border-b border-gray-700">
               <th className="py-2 px-3 text-left text-[11px] t-muted">{catSing}</th>
+              <th className="py-2 px-3 text-left text-[11px] t-muted">Usuario Dropi</th>
               {prevMes && <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[prevMes].split(" ")[0]} ing.</th>}
               {prevMes && <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[prevMes].split(" ")[0]} mov.</th>}
               <th className="py-2 px-3 text-right text-[11px] t-muted">{MES_LABEL[mes].split(" ")[0]} ing.</th>
@@ -712,6 +742,9 @@ export default function OpsBreakdown({
               <tr key={d.nombre} className="border-b border-gray-800/50 hover:bg-orange-500/5">
                 <td className="py-2 px-3 t-primary text-xs">
                   <span className="t-muted mr-2">{i + 1}.</span>{d.cleanNombre}
+                </td>
+                <td className="py-2 px-3 text-cyan-300 text-[11px] font-mono max-w-[180px] truncate" title={dropiUserByEntity.get(d.cleanNombre) || ""}>
+                  {dropiUserByEntity.get(d.cleanNombre) || "—"}
                 </td>
                 {prevMes && <td className="py-2 px-3 text-right font-mono text-xs t-muted">{d.prevTotal > 0 ? d.prevTotal.toLocaleString("es-AR") : "—"}</td>}
                 {prevMes && <td className="py-2 px-3 text-right font-mono text-xs t-muted">{d.prevMov > 0 ? d.prevMov.toLocaleString("es-AR") : "—"}</td>}
@@ -735,6 +768,7 @@ export default function OpsBreakdown({
           <tfoot>
             <tr style={{ background: "rgba(249,115,22,0.08)", fontWeight: 700 }}>
               <td className="py-2 px-3 t-primary text-xs">TOTAL ({data.length})</td>
+              <td className="py-2 px-3"></td>
               {prevMes && <td className="py-2 px-3 text-right font-mono text-xs">{prevTotals.total.toLocaleString("es-AR")}</td>}
               {prevMes && <td className="py-2 px-3 text-right font-mono text-xs">{prevTotals.mov.toLocaleString("es-AR")}</td>}
               <td className="py-2 px-3 text-right font-mono text-xs">{totals.total.toLocaleString("es-AR")}</td>
