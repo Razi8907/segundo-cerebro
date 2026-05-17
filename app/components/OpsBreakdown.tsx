@@ -107,8 +107,9 @@ export default function OpsBreakdown({
   type DSDaily = { ds: string; fecha: string; ordenes: number };
   type DateRow = { fecha: string; total: number };
   type DSProducto = { ds: string; producto: string; ordenes: number };
-  const [dailyCur, setDailyCur] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[] }>({ dsDaily: [], byDate: [], dsProducto: [] });
-  const [dailyPrev, setDailyPrev] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[] }>({ dsDaily: [], byDate: [], dsProducto: [] });
+  type ProvDaily = { proveedor: string; provId: number; fecha: string; ordenes: number; estados: Record<string, number> };
+  const [dailyCur, setDailyCur] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[]; provDaily: ProvDaily[] }>({ dsDaily: [], byDate: [], dsProducto: [], provDaily: [] });
+  const [dailyPrev, setDailyPrev] = useState<{ dsDaily: DSDaily[]; byDate: DateRow[]; dsProducto: DSProducto[]; provDaily: ProvDaily[] }>({ dsDaily: [], byDate: [], dsProducto: [], provDaily: [] });
   const [filterDS, setFilterDS] = useState<string>("__all__");
   // Map cleanNombre → "usuario en Dropi" (email para DS, ID numérico para Proveedor)
   const [dropiUserByEntity, setDropiUserByEntity] = useState<Map<string, string>>(new Map());
@@ -132,11 +133,13 @@ export default function OpsBreakdown({
         dsDaily: cur?.data?.by_ds_daily || [],
         byDate: cur?.data?.by_date || [],
         dsProducto: cur?.data?.by_ds_producto || [],
+        provDaily: cur?.data?.by_prov_daily || [],
       });
       setDailyPrev({
         dsDaily: pr?.data?.by_ds_daily || [],
         byDate: pr?.data?.by_date || [],
         dsProducto: pr?.data?.by_ds_producto || [],
+        provDaily: pr?.data?.by_prov_daily || [],
       });
       // Construir mapa de "Usuario Dropi"
       const m = new Map<string, string>();
@@ -330,37 +333,71 @@ export default function OpsBreakdown({
     return { cur, prev: pr };
   }, [dailySeries, mes, prevMes]);
 
+  // Cuando hay rango activo y la categoría es proveedor, reagregamos by_prov_daily
+  // filtrando por día del mes → reemplaza data/prev en la tabla de Detalle.
+  const aggregateProvDailyInRange = (daily: ProvDaily[]): Aggregated[] => {
+    const map = new Map<string, { id: number; total: number; estados: Record<string, number> }>();
+    for (const r of daily) {
+      const d = dayOf(r.fecha);
+      if (!d || d < effectiveRange.from || d > effectiveRange.to) continue;
+      if (!map.has(r.proveedor)) map.set(r.proveedor, { id: r.provId, total: 0, estados: {} });
+      const e = map.get(r.proveedor)!;
+      e.total += r.ordenes || 0;
+      for (const [s, c] of Object.entries(r.estados || {})) {
+        e.estados[s] = (e.estados[s] || 0) + (c as number);
+      }
+    }
+    const rows: OpsRow[] = Array.from(map.entries()).map(([nombre, v]) => ({ nombre, ...v }));
+    return aggregate(rows);
+  };
+
+  const effData = useMemo(() => {
+    if (category === "proveedor" && isRangeFiltered && dailyCur.provDaily.length > 0) {
+      return aggregateProvDailyInRange(dailyCur.provDaily);
+    }
+    return data;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, category, isRangeFiltered, dailyCur.provDaily, effectiveRange.from, effectiveRange.to]);
+
+  const effPrev = useMemo(() => {
+    if (category === "proveedor" && isRangeFiltered && dailyPrev.provDaily.length > 0) {
+      return aggregateProvDailyInRange(dailyPrev.provDaily);
+    }
+    return prev;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prev, category, isRangeFiltered, dailyPrev.provDaily, effectiveRange.from, effectiveRange.to]);
+
   const prevByKey = useMemo(() => {
     const m = new Map<string, Aggregated>();
-    for (const r of prev) m.set(normalizeName(r.nombre), r);
+    for (const r of effPrev) m.set(normalizeName(r.nombre), r);
     return m;
-  }, [prev]);
+  }, [effPrev]);
 
   const enriched = useMemo(() => {
-    return data.map((d) => {
+    return effData.map((d) => {
       const prevEntry = prevByKey.get(normalizeName(d.nombre));
       const prevMov = prevEntry?.mov ?? 0;
       const prevTotal = prevEntry?.total ?? 0;
       const growthMov = prevMov > 0 ? ((d.mov - prevMov) / prevMov) * 100 : (d.mov > 0 && !prevEntry ? null : 0);
       return { ...d, prevMov, prevTotal, growthMov };
     });
-  }, [data, prevByKey]);
+  }, [effData, prevByKey]);
 
   const totals = useMemo(() => ({
-    total: data.reduce((s, r) => s + r.total, 0),
-    mov: data.reduce((s, r) => s + r.mov, 0),
-    ent: data.reduce((s, r) => s + r.ent, 0),
-    dev: data.reduce((s, r) => s + r.dev, 0),
-    noEnt: data.reduce((s, r) => s + r.noEnt, 0),
-    cancelado: data.reduce((s, r) => s + r.cancelado, 0),
-    novedad: data.reduce((s, r) => s + r.novedad, 0),
-    pendienteDS: data.reduce((s, r) => s + r.pendienteDS, 0),
-  }), [data]);
+    total: effData.reduce((s, r) => s + r.total, 0),
+    mov: effData.reduce((s, r) => s + r.mov, 0),
+    ent: effData.reduce((s, r) => s + r.ent, 0),
+    dev: effData.reduce((s, r) => s + r.dev, 0),
+    noEnt: effData.reduce((s, r) => s + r.noEnt, 0),
+    cancelado: effData.reduce((s, r) => s + r.cancelado, 0),
+    novedad: effData.reduce((s, r) => s + r.novedad, 0),
+    pendienteDS: effData.reduce((s, r) => s + r.pendienteDS, 0),
+  }), [effData]);
 
   const prevTotals = useMemo(() => ({
-    mov: prev.reduce((s, r) => s + r.mov, 0),
-    total: prev.reduce((s, r) => s + r.total, 0),
-  }), [prev]);
+    mov: effPrev.reduce((s, r) => s + r.mov, 0),
+    total: effPrev.reduce((s, r) => s + r.total, 0),
+  }), [effPrev]);
 
   const growthTotalMov = prevTotals.mov > 0 ? ((totals.mov - prevTotals.mov) / prevTotals.mov) * 100 : null;
 
@@ -724,7 +761,18 @@ export default function OpsBreakdown({
 
       {/* Tabla detallada con comparación */}
       <div className="glass-card overflow-x-auto">
-        <h3 className="text-sm font-semibold t-primary mb-3 px-5 pt-5">Detalle por {catSing.toLowerCase()} — {MES_LABEL[mes]}</h3>
+        <h3 className="text-sm font-semibold t-primary mb-3 px-5 pt-5">
+          Detalle por {catSing.toLowerCase()} — {MES_LABEL[mes]}
+          {category === "proveedor" && isRangeFiltered && (
+            <span className="text-[11px] t-muted ml-2 font-normal">
+              · {rangeMode === "single" ? `Día ${effectiveRange.from}` : `Días ${effectiveRange.from}–${effectiveRange.to}`}
+              {prevMes && ` (vs ${rangeMode === "single" ? `día ${effectiveRange.from}` : `días ${effectiveRange.from}–${effectiveRange.to}`} de ${MES_LABEL[prevMes].split(" ")[0]})`}
+              {dailyCur.provDaily.length === 0 && (
+                <span className="text-amber-400 ml-2">⚠️ Re-subí el reporte Comercial para activar el filtro por día.</span>
+              )}
+            </span>
+          )}
+        </h3>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-gray-700">
@@ -772,7 +820,7 @@ export default function OpsBreakdown({
           </tbody>
           <tfoot>
             <tr style={{ background: "rgba(249,115,22,0.08)", fontWeight: 700 }}>
-              <td className="py-2 px-3 t-primary text-xs">TOTAL ({data.length})</td>
+              <td className="py-2 px-3 t-primary text-xs">TOTAL ({effData.length})</td>
               <td className="py-2 px-3"></td>
               {prevMes && <td className="py-2 px-3 text-right font-mono text-xs">{prevTotals.total.toLocaleString("es-AR")}</td>}
               {prevMes && <td className="py-2 px-3 text-right font-mono text-xs">{prevTotals.mov.toLocaleString("es-AR")}</td>}
