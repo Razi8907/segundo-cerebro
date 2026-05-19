@@ -956,17 +956,18 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
 
   // Persistencia fire-and-forget de los 5 números del Resumen Operacional
   // en dashboard_snapshots.data.resumen.<mes>, para que otras apps los lean.
-  // Solo persistimos cuando el usuario está viendo el mes en curso para no
-  // sobreescribir un mes con datos de otro.
+  // Permitimos escribir meses cerrados (backfill) y el mes en curso; bloqueamos
+  // solo meses futuros (no hay data válida todavía).
   useEffect(() => {
     const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-    const mesActual = MESES[new Date().getMonth()];
+    const selectedIdx = MESES.indexOf(mes);
+    const currentIdx = new Date().getMonth();
     if (loading) return;
-    if (mes !== mesActual) return;
+    if (selectedIdx < 0 || selectedIdx > currentIdx) return;
     if (movMetrics.ingresadas === 0 && movMetrics.movilizadas === 0) return;
     persistResumenOperacional({
       country,
-      mes: mesActual,
+      mes,
       ingresadas: movMetrics.ingresadas,
       movilizadas: movMetrics.movilizadas,
       entregadas: movMetrics.entregadas,
