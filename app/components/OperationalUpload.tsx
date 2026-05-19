@@ -1183,8 +1183,15 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
           if (m2) return m2[1] === mesNum;
           return true; // fallback: si formato desconocido, no filtrar
         };
+        // Excluir el día de hoy: la operación del día en curso es parcial y
+        // recién se cierra a la noche → se ve recién mañana.
+        const today = new Date();
+        const todayDDMM = `${String(today.getDate()).padStart(2, "0")}-${String(today.getMonth() + 1).padStart(2, "0")}-${today.getFullYear()}`;
+        const todayISO = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+        const isToday = (f: string) => f === todayDDMM || f === todayISO;
         const fechas = Array.from(new Set(aggData.by_ds_daily.map((d) => d.fecha)))
           .filter(belongsToMes)
+          .filter((f) => !isToday(f))
           .sort();
 
         // Per DS: daily orders + trend
