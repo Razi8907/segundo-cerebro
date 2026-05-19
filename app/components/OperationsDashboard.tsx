@@ -2072,7 +2072,14 @@ function MovKpiRow({
         <span className="text-sm font-semibold t-primary">{curr.toLocaleString("es-AR")}</span>
         {showComp && (
           <span className="text-[10px] t-muted">
-            vs {prevMesLabel}: {pct !== undefined ? `${(prevPct ?? 0).toFixed(1)}%` : prev.toLocaleString("es-AR")}
+            vs {prevMesLabel}:{" "}
+            {pct !== undefined
+              ? <>
+                  <strong className="t-secondary">{(prevPct ?? 0).toFixed(1)}%</strong>
+                  {" "}<span className="t-muted">({prev.toLocaleString("es-AR")})</span>
+                </>
+              : <strong className="t-secondary">{prev.toLocaleString("es-AR")}</strong>
+            }
             <span className="ml-1 font-bold" style={{ color: finalDeltaColor }}>{delta.txt}</span>
           </span>
         )}
