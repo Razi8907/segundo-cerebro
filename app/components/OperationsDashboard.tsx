@@ -5,6 +5,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
   PieChart, Pie,
 } from "recharts";
+import { persistResumenOperacional } from "../actions/persistResumenOperacional";
 
 /* ───────── constants ───────── */
 // ─── PARAGUAY: estados (sin unificación, archivo Dropi original) ───
@@ -952,6 +953,27 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     () => computeMovMetrics(prevRangedRows, country, prevIngresadas || undefined),
     [prevRangedRows, country, prevIngresadas],
   );
+
+  // Persistencia fire-and-forget de los 5 números del Resumen Operacional
+  // en dashboard_snapshots.data.resumen.<mes>, para que otras apps los lean.
+  // Solo persistimos cuando el usuario está viendo el mes en curso para no
+  // sobreescribir un mes con datos de otro.
+  useEffect(() => {
+    const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+    const mesActual = MESES[new Date().getMonth()];
+    if (loading) return;
+    if (mes !== mesActual) return;
+    if (movMetrics.ingresadas === 0 && movMetrics.movilizadas === 0) return;
+    persistResumenOperacional({
+      country,
+      mes: mesActual,
+      ingresadas: movMetrics.ingresadas,
+      movilizadas: movMetrics.movilizadas,
+      entregadas: movMetrics.entregadas,
+      devueltas: movMetrics.devueltas,
+      en_proceso: movMetrics.enProceso,
+    }).catch(() => {});
+  }, [country, mes, loading, movMetrics.ingresadas, movMetrics.movilizadas, movMetrics.entregadas, movMetrics.devueltas, movMetrics.enProceso]);
 
   // Status counts
   const byStatus = useMemo(() => {
