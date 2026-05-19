@@ -13,6 +13,7 @@ type ResumenInput = {
 };
 
 export async function persistResumenOperacional(input: ResumenInput): Promise<void> {
+  console.log("[server persistResumen] received", { country: input.country, mes: input.mes });
   try {
     const supabase = getSupabase();
     const { data: row, error: readErr } = await supabase

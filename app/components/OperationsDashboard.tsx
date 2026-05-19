@@ -965,6 +965,15 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     if (loading) return;
     if (selectedIdx < 0 || selectedIdx > currentIdx) return;
     if (movMetrics.ingresadas === 0 && movMetrics.movilizadas === 0) return;
+    console.log("[DEBUG persistResumen]", {
+      country,
+      mes,
+      ingresadas: movMetrics.ingresadas,
+      movilizadas: movMetrics.movilizadas,
+      entregadas: movMetrics.entregadas,
+      devueltas: movMetrics.devueltas,
+      en_proceso: movMetrics.enProceso,
+    });
     persistResumenOperacional({
       country,
       mes,
