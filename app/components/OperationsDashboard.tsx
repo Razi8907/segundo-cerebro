@@ -1819,9 +1819,9 @@ function OpMetricsSection({ country, metrics }: { country: "py" | "ar"; metrics:
   const colorFor = (metric: "entrega" | "devol" | "tiempo" | "en72" | "novedades" | "criticos", value: number): string => {
     switch (metric) {
       case "entrega":
-        if (value >= 95) return "#10B981"; if (value >= 85) return "#F59E0B"; return "#EF4444";
+        if (value >= 75) return "#10B981"; if (value >= 65) return "#F59E0B"; return "#EF4444";
       case "devol":
-        if (value < 5) return "#10B981"; if (value < 10) return "#F59E0B"; return "#EF4444";
+        if (value <= 25) return "#10B981"; if (value <= 30) return "#F59E0B"; return "#EF4444";
       case "tiempo":
         if (value < 48) return "#10B981"; if (value < 72) return "#F59E0B"; return "#EF4444";
       case "en72":
@@ -1872,8 +1872,8 @@ function OpMetricsSection({ country, metrics }: { country: "py" | "ar"; metrics:
             </tr>
           </thead>
           <tbody>
-            {metricRow("% Tasa de Entrega", "tasaEntrega", "entrega", "%", "> 95% 🔴")}
-            {metricRow("% Tasa de Devolución", "tasaDevolucion", "devol", "%", "< 5% 🔴")}
+            {metricRow("% Tasa de Entrega", "tasaEntrega", "entrega", "%", "≥ 75% 🟢")}
+            {metricRow("% Tasa de Devolución", "tasaDevolucion", "devol", "%", "≤ 25% 🟢")}
             {metricRow("Tiempo Promedio Entrega", "tiempoProm", "tiempo", "h", "< 48h 🟠")}
             {metricRow("% Entregas en 72hs", "pctEn72", "en72", "%", "> 90% 🟠")}
             {metricRow("Críticos +72hs (en tránsito)", "criticos72", "criticos", "", "= 0 🔴")}
