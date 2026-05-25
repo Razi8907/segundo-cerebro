@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import ThemeToggle from "./components/ThemeToggle";
+import { useUser } from "./lib/useUser";
 
 export default function Home() {
+  const { user } = useUser();
+  const isAdmin = user?.role === "admin";
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ background: "var(--bg-page)" }}>
       <div className="w-full max-w-2xl py-12">
@@ -148,6 +151,20 @@ export default function Home() {
             </div>
           </Link>
         </div>
+
+        {/* Admin shortcut */}
+        {isAdmin && (
+          <div className="flex justify-center mb-4">
+            <Link
+              href="/admin"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-orange-500/30 hover:border-orange-500/60 hover:bg-orange-500/5 transition-all text-sm font-medium text-orange-400"
+            >
+              <span>🔐</span>
+              <span>Administración de usuarios y accesos</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7"/></svg>
+            </Link>
+          </div>
+        )}
 
         {/* Status */}
         <div className="flex items-center justify-center gap-2 text-xs text-gray-600">
