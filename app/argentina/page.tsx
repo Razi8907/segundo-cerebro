@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useDashboardData } from "../lib/useDashboardData";
 import KPICards from "../components/KPICards";
+import CRMCentroGestion from "../components/CRMCentroGestion";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -59,7 +60,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
 }
 
 type Sector = "comercial" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
-type ComercialSub = "general" | "dropshippers" | "proveedores";
+type ComercialSub = "general" | "dropshippers" | "proveedores" | "crm";
 
 export default function ArgentinaDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
@@ -197,6 +198,7 @@ export default function ArgentinaDashboard() {
                 { key: "general" as ComercialSub, label: "📊 General" },
                 { key: "dropshippers" as ComercialSub, label: "👥 Dropshippers" },
                 { key: "proveedores" as ComercialSub, label: "📦 Proveedores" },
+                { key: "crm" as ComercialSub, label: "🎯 CRM" },
               ]).map((s) => (
                 <button
                   key={s.key}
@@ -249,6 +251,10 @@ export default function ArgentinaDashboard() {
                   </>
                 )}
               </>
+            )}
+
+            {comercialSub === "crm" && (
+              <CRMCentroGestion country="ar" />
             )}
           </>
         ) : (
