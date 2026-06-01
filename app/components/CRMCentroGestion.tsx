@@ -42,19 +42,27 @@ const STATE_COLORS: Record<State, string> = {
   Alerta: "#dc2626",
 };
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+// Fechas en formato YYYY-MM-DD usando la hora LOCAL (evita el corrimiento
+// de un día que provoca interpretar la string como UTC).
+const todayIso = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 function addDays(iso: string, days: number) {
-  const d = new Date(iso);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const date = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  date.setDate(date.getDate() + days);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function fmtDate(iso: string | null) {
   if (!iso) return "—";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString("es-AR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  // Parseamos manualmente para evitar la conversión UTC→local del constructor Date.
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return iso;
+  return `${m[3]}/${m[2]}/${m[1]}`;
 }
 
 function fmtDateTime(iso: string) {
