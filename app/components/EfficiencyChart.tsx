@@ -18,13 +18,13 @@ interface Resumen {
 export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resumen; mesFilter: MesFilter }) {
   let totalIng: number, totalMov: number, totalEnt: number, totalDev: number;
 
-  if (mesFilter === "q1" || mesFilter === "abril" || mesFilter === "mayo") {
+  if (mesFilter === "q1" || mesFilter === "abril" || mesFilter === "mayo" || mesFilter === "junio") {
     totalIng = resumen.enero.ingresadas + resumen.febrero.ingresadas + resumen.marzo.ingresadas;
     totalMov = resumen.enero.movilizadas + resumen.febrero.movilizadas + resumen.marzo.movilizadas;
     totalEnt = resumen.enero.entregados + resumen.febrero.entregados + resumen.marzo.entregados;
     totalDev = resumen.enero.devoluciones + resumen.febrero.devoluciones + resumen.marzo.devoluciones;
   } else {
-    const d = resumen[mesFilter];
+    const d = resumen[mesFilter as "enero" | "febrero" | "marzo"];
     totalIng = d.ingresadas;
     totalMov = d.movilizadas;
     totalEnt = d.entregados;

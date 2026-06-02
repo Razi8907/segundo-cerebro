@@ -67,20 +67,31 @@ export default function DropshipperManager({
 }) {
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
+  const isJunio = mesFilter === "junio";
+  const isPlanning = isMayo || isJunio;
+  // Cuando hay un mes en planificación, opsAbril guarda la data del mes
+  // COMPARATIVO (anterior) y opsMayo la del mes ACTIVO (target).
+  const TARGET_MES = isJunio ? "junio" : "mayo";
+  const COMP_MES = isJunio ? "mayo" : "abril";
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "escalar" | "reactivar" | "nuevos_provs" | "alto_dev">("all");
   const [selectedDS, setSelectedDS] = useState<string | null>(null);
 
   // Etiquetas dinámicas
-  const TARGET_LABEL = isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isMayo ? "Abril" : "Marzo";
-  const HIST_LABEL = isMayo ? "Abril" : "Q1";
+  const TARGET_LABEL = isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const HIST_LABEL = isJunio ? "Mayo" : isMayo ? "Abril" : "Q1";
 
   // Metas del mes target
-  const META_MOV_ABRIL = isMayo
+  const mi = metaInfo as any;
+  const META_MOV_ABRIL = isJunio
+    ? (mi?.meta_movilizadas_junio ?? metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
+    : isMayo
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
-  const META_ING_ABRIL = isMayo
+  const META_ING_ABRIL = isJunio
+    ? (mi?.meta_ingresadas_junio ?? metaInfo?.meta_ingresadas_mayo ?? metaInfo?.meta_ingresadas_abril ?? 51283)
+    : isMayo
     ? (metaInfo?.meta_ingresadas_mayo ?? metaInfo?.meta_ingresadas_abril ?? 51283)
     : (metaInfo?.meta_ingresadas_abril ?? 51283);
 
@@ -94,14 +105,18 @@ export default function DropshipperManager({
 
   useEffect(() => {
     let cancelled = false;
+    // En meses planificación: fetcheamos COMP (mes anterior) y TARGET (mes activo)
     Promise.all([
       fetch(`/api/data/operational?country=${country}&mes=abril`).then((r) => r.json()).catch(() => null),
       fetch(`/api/data/operational?country=${country}&mes=mayo`).then((r) => r.json()).catch(() => null),
-    ]).then(([abr, may]) => {
+      fetch(`/api/data/operational?country=${country}&mes=junio`).then((r) => r.json()).catch(() => null),
+    ]).then(([abr, may, jun]) => {
       if (cancelled) return;
-      if (isMayo) {
-        if (Array.isArray(abr?.data?.by_dropshipper)) setOpsAbril(abr.data.by_dropshipper);
-        if (Array.isArray(may?.data?.by_dropshipper)) setOpsMayo(may.data.by_dropshipper);
+      if (isPlanning) {
+        const compSnap = isJunio ? may : abr;
+        const targetSnap = isJunio ? jun : may;
+        if (Array.isArray(compSnap?.data?.by_dropshipper)) setOpsAbril(compSnap.data.by_dropshipper);
+        if (Array.isArray(targetSnap?.data?.by_dropshipper)) setOpsMayo(targetSnap.data.by_dropshipper);
       }
       // Build email map de TODOS los meses para que aparezca en cualquier vista
       const m = new Map<string, string>();
@@ -115,11 +130,11 @@ export default function DropshipperManager({
           if (clean && !m.has(clean)) m.set(clean, email);
         }
       };
-      ingest(abr); ingest(may);
+      ingest(abr); ingest(may); ingest(jun);
       setDropiUserByDs(m);
     });
     return () => { cancelled = true; };
-  }, [isMayo, country]);
+  }, [isPlanning, isJunio, country]);
 
   // Reconstruimos el array `dropshippers` desde operational cuando isMayo.
   // Cada DS sintético reusa los campos del shape original:
@@ -129,7 +144,7 @@ export default function DropshipperManager({
   //   growth  = Mayo vs Abril
   //   pct_ent/pct_dev/pct_mov = derivados de Abril (mes cerrado)
   const dataDropshippers: Dropshipper[] = useMemo(() => {
-    if (!isMayo) return dropshippers;
+    if (!isPlanning) return dropshippers;
     const aggregate = (rows: OpsRow[]) => {
       const map = new Map<string, { mov: number; ing: number; ent: number; dev: number }>();
       for (const r of rows) {
@@ -172,7 +187,7 @@ export default function DropshipperManager({
       });
     });
     return out.sort((x, y) => y.mar.mov - x.mar.mov);
-  }, [isMayo, dropshippers, opsAbril, opsMayo]);
+  }, [isPlanning, dropshippers, opsAbril, opsMayo]);
 
   // Top providers ranked by potential — derived from data
   const TOP_PROVIDERS = proveedores
@@ -296,7 +311,7 @@ export default function DropshipperManager({
   const chartData = analysis.scored.slice(0, 20).map((d) => ({
     name: d.email.split("@")[0].slice(0, 16),
     [`${COMP_LABEL} Mov`]: d.marMov,
-    ...((isAbril || isMayo) ? { [`Meta ${TARGET_LABEL}`]: d.goalAbrilMov } : {}),
+    ...((isAbril || isPlanning) ? { [`Meta ${TARGET_LABEL}`]: d.goalAbrilMov } : {}),
     category: d.category,
   }));
 
@@ -304,10 +319,10 @@ export default function DropshipperManager({
     <ChartDownloadBtn filename="Gestion_Dropshippers">
     <div className="glass-card p-6 border-orange-500/30">
       <h2 className="text-xl font-bold text-white flex items-center gap-2 mb-1">
-        👥 Gestión de Dropshippers {isAbril ? "— Plan de Seguimiento Abril" : isMayo ? `— Plan de Seguimiento ${TARGET_LABEL}` : "— Rendimiento Q1"}
+        👥 Gestión de Dropshippers {isAbril ? "— Plan de Seguimiento Abril" : isPlanning ? `— Plan de Seguimiento ${TARGET_LABEL}` : "— Rendimiento Q1"}
       </h2>
       <p className="text-xs text-gray-400 mb-6">
-        {dataDropshippers.length} dropshippers activos &middot; {isAbril ? "Seguimiento, proveedores y metas individuales" : isMayo ? `Base ${COMP_LABEL} → meta ${TARGET_LABEL}, score y categorización` : "Análisis de rendimiento y categorización"}
+        {dataDropshippers.length} dropshippers activos &middot; {isAbril ? "Seguimiento, proveedores y metas individuales" : isPlanning ? `Base ${COMP_LABEL} → meta ${TARGET_LABEL}, score y categorización` : "Análisis de rendimiento y categorización"}
       </p>
 
       {/* Summary */}
@@ -332,7 +347,7 @@ export default function DropshipperManager({
 
       {/* Chart */}
       <div className="mb-6">
-        <h3 className="text-sm font-medium text-gray-300 mb-3">{(isAbril || isMayo) ? `Top 20 Dropshippers: ${COMP_LABEL} vs Meta ${TARGET_LABEL}` : "Top 20 Dropshippers: Movilizaciones por Mes"}</h3>
+        <h3 className="text-sm font-medium text-gray-300 mb-3">{(isAbril || isPlanning) ? `Top 20 Dropshippers: ${COMP_LABEL} vs Meta ${TARGET_LABEL}` : "Top 20 Dropshippers: Movilizaciones por Mes"}</h3>
         <ResponsiveContainer width="100%" height={300}>
           <BarChart data={chartData} layout="vertical" margin={{ left: 5 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#2a2a4a" />
@@ -344,8 +359,8 @@ export default function DropshipperManager({
               labelStyle={{ color: "#e5e7eb" }}
               formatter={(value) => Number(value).toLocaleString()}
             />
-            <Bar dataKey={`${COMP_LABEL} Mov`} fill={(isAbril || isMayo) ? "#6B7280" : "#F97316"} radius={[0, 4, 4, 0]} barSize={10} />
-            {(isAbril || isMayo) && (
+            <Bar dataKey={`${COMP_LABEL} Mov`} fill={(isAbril || isPlanning) ? "#6B7280" : "#F97316"} radius={[0, 4, 4, 0]} barSize={10} />
+            {(isAbril || isPlanning) && (
               <Bar dataKey={`Meta ${TARGET_LABEL}`} radius={[0, 4, 4, 0]} barSize={10}>
                 {chartData.map((entry, i) => (
                   <Cell key={i} fill={catColors[entry.category]} />
@@ -395,7 +410,7 @@ export default function DropshipperManager({
             <h3 className="text-sm font-bold text-orange-400">{selected.email}</h3>
             <button onClick={() => setSelectedDS(null)} className="text-xs text-gray-500 hover:text-gray-300">Cerrar</button>
           </div>
-          {(isAbril || isMayo) && (
+          {(isAbril || isPlanning) && (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
               <div className="text-center">
                 <p className="text-[10px] text-gray-400">Meta {TARGET_LABEL} Mov</p>
@@ -415,7 +430,7 @@ export default function DropshipperManager({
               </div>
             </div>
           )}
-          {!(isAbril || isMayo) && (
+          {!(isAbril || isPlanning) && (
             <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 mb-3">
               <div className="text-center">
                 <p className="text-[10px] text-gray-400">Total Mov Q1</p>
@@ -478,8 +493,8 @@ export default function DropshipperManager({
               <th className="text-right py-2 px-2 text-gray-400">Ene</th>
               <th className="text-right py-2 px-2 text-gray-400">Feb</th>
               <th className="text-right py-2 px-2 text-gray-400">{COMP_LABEL}</th>
-              {(isAbril || isMayo) && <th className="text-right py-2 px-2 text-orange-400 font-bold">Meta {TARGET_LABEL.slice(0, 3)}</th>}
-              {(isAbril || isMayo) && <th className="text-right py-2 px-2 text-gray-400">Incr.</th>}
+              {(isAbril || isPlanning) && <th className="text-right py-2 px-2 text-orange-400 font-bold">Meta {TARGET_LABEL.slice(0, 3)}</th>}
+              {(isAbril || isPlanning) && <th className="text-right py-2 px-2 text-gray-400">Incr.</th>}
               <th className="text-right py-2 px-2 text-gray-400">% Ent</th>
               <th className="text-right py-2 px-2 text-gray-400">% Dev</th>
               <th className="text-right py-2 px-2 text-gray-400">Trend</th>
@@ -497,8 +512,8 @@ export default function DropshipperManager({
                 <td className="py-2 px-2 text-right text-gray-400">{d.ene.mov > 0 ? d.ene.mov.toLocaleString() : "—"}</td>
                 <td className="py-2 px-2 text-right text-gray-400">{d.feb.mov > 0 ? d.feb.mov.toLocaleString() : "—"}</td>
                 <td className="py-2 px-2 text-right text-blue-400">{d.marMov > 0 ? d.marMov.toLocaleString() : "—"}</td>
-                {(isAbril || isMayo) && <td className="py-2 px-2 text-right text-orange-400 font-bold">{d.goalAbrilMov.toLocaleString()}</td>}
-                {(isAbril || isMayo) && (
+                {(isAbril || isPlanning) && <td className="py-2 px-2 text-right text-orange-400 font-bold">{d.goalAbrilMov.toLocaleString()}</td>}
+                {(isAbril || isPlanning) && (
                   <td className="py-2 px-2 text-right">
                     <span className={d.incrementNeeded > 50 ? "text-red-400" : d.incrementNeeded > 20 ? "text-yellow-400" : "text-green-400"}>
                       +{d.incrementNeeded}%
@@ -536,7 +551,7 @@ export default function DropshipperManager({
       </div>
 
       {/* Bottom strategies - planning months */}
-      {(isAbril || isMayo) && <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
+      {(isAbril || isPlanning) && <div className="mt-6 p-4 rounded-xl bg-orange-500/5 border border-orange-500/20">
         <h3 className="text-sm font-bold text-orange-400 mb-3">📋 Estrategia de Seguimiento por Categoría</h3>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs text-gray-300">
           <div>
