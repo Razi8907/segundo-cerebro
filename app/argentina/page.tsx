@@ -123,13 +123,13 @@ export default function ArgentinaDashboard() {
                 onClick={() => setMesFilter(m)}
                 className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
                   mesFilter === m
-                    ? m === "mayo"
+                    ? m === "junio"
                       ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20"
                       : "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
                     : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
                 }`}
               >
-                {m === "q1" ? "Q1 Completo" : m === "mayo" ? "🎯 Mayo (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
+                {m === "q1" ? "Q1 Completo" : m === "junio" ? "🎯 Junio (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
               </button>
             ))}
             <span className="text-xs px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 ml-2">

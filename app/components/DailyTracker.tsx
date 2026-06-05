@@ -1123,9 +1123,14 @@ export default function DailyTracker({
             {["Lun", "Mar", "Mie", "Jue", "Vie", "Sáb", "Dom"].map((d) => (
               <div key={d} className="text-center text-[9px] font-medium py-1" style={{ color: "var(--text-muted)" }}>{d}</div>
             ))}
-            {/* Offset según día de la semana del día 1 del mes activo
-                Abril 2026 = miércoles (offset 2), Mayo 2026 = viernes (offset 4) */}
-            {Array.from({ length: isMayo ? 4 : 2 }).map((_, i) => <div key={`empty-${i}`} />)}
+            {/* Offset según día de la semana del día 1 del mes activo.
+                Lun=0, Mar=1, Mié=2, Jue=3, Vie=4, Sáb=5, Dom=6.
+                Abril 2026 = miércoles (2), Mayo 2026 = viernes (4), Junio 2026 = lunes (0). */}
+            {(() => {
+              const dow0 = DIAS_SEMANA_ACTIVE[0];
+              const offset = { LUNES: 0, MARTES: 1, MIÉRCOLES: 2, JUEVES: 3, VIERNES: 4, SÁBADO: 5, DOMINGO: 6 }[dow0] ?? 0;
+              return Array.from({ length: offset }).map((_, i) => <div key={`empty-${i}`} />);
+            })()}
             {Array.from({ length: TOTAL_DAYS }).map((_, i) => {
               const dia = i + 1;
               const abrilDay = abrilData.find((d) => d.fecha === dia);
