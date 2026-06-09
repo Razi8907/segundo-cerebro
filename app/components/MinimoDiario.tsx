@@ -8,19 +8,18 @@ const NO_MOV = new Set([
   "CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA",
 ]);
 
+type Mes = "abril" | "mayo" | "junio";
 type ByDS = { nombre: string; total: number; estados: Record<string, number> };
 type ByDSDaily = { ds: string; fecha: string; ordenes: number };
 
-interface MetaInfoLike {
-  meta_movilizadas_junio?: number;
-  meta_ingresadas_junio?: number;
-  meta_movilizadas_mayo?: number;
-  meta_ingresadas_mayo?: number;
-  meta_movilizadas_abril?: number;
-  meta_ingresadas_abril?: number;
-  dias_junio?: number;
-  dias_mayo?: number;
-  [k: string]: any;
+const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6 };
+const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio" };
+const MES_DIAS_DEFAULT: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30 };
+
+function prevMes(m: Mes): Mes | null {
+  if (m === "junio") return "mayo";
+  if (m === "mayo") return "abril";
+  return null; // abril no tiene mes anterior con data
 }
 
 function aggregateDS(rows: ByDS[]): Map<string, { ing: number; mov: number; nombre: string }> {
@@ -37,7 +36,6 @@ function aggregateDS(rows: ByDS[]): Map<string, { ing: number; mov: number; nomb
   return map;
 }
 
-// Días en los que un DS estuvo "activo" (con al menos 1 orden ingresada)
 function activeDaysByDS(daily: ByDSDaily[]): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
   for (const r of daily) {
@@ -49,12 +47,15 @@ function activeDaysByDS(daily: ByDSDaily[]): Map<string, Set<string>> {
   return map;
 }
 
-export default function MinimoDiario({ country }: { country: "ar" | "py" }) {
-  const [opsMayo, setOpsMayo] = useState<ByDS[]>([]);
-  const [opsJunio, setOpsJunio] = useState<ByDS[]>([]);
-  const [dailyMayo, setDailyMayo] = useState<ByDSDaily[]>([]);
-  const [dailyJunio, setDailyJunio] = useState<ByDSDaily[]>([]);
-  const [metaInfo, setMetaInfo] = useState<MetaInfoLike>({});
+export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; mes: Mes }) {
+  const mesBase: Mes = prevMes(mes) ?? mes;
+  const isSameBase = prevMes(mes) === null;
+
+  const [opsBase, setOpsBase] = useState<ByDS[]>([]);
+  const [opsTarget, setOpsTarget] = useState<ByDS[]>([]);
+  const [dailyBase, setDailyBase] = useState<ByDSDaily[]>([]);
+  const [dailyTarget, setDailyTarget] = useState<ByDSDaily[]>([]);
+  const [metaInfo, setMetaInfo] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
@@ -62,130 +63,120 @@ export default function MinimoDiario({ country }: { country: "ar" | "py" }) {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [opMay, opJun, dash] = await Promise.all([
-        fetch(`/api/data/operational?country=${country}&mes=mayo`).then(r => r.json()).catch(() => null),
-        fetch(`/api/data/operational?country=${country}&mes=junio`).then(r => r.json()).catch(() => null),
+      const [opBase, opTar, dash] = await Promise.all([
+        fetch(`/api/data/operational?country=${country}&mes=${mesBase}`).then(r => r.json()).catch(() => null),
+        fetch(`/api/data/operational?country=${country}&mes=${mes}`).then(r => r.json()).catch(() => null),
         fetch(`/api/data/${country}`).then(r => r.json()).catch(() => null),
       ]);
-      setOpsMayo(Array.isArray(opMay?.data?.by_dropshipper) ? opMay.data.by_dropshipper : []);
-      setOpsJunio(Array.isArray(opJun?.data?.by_dropshipper) ? opJun.data.by_dropshipper : []);
-      setDailyMayo(Array.isArray(opMay?.data?.by_ds_daily) ? opMay.data.by_ds_daily : []);
-      setDailyJunio(Array.isArray(opJun?.data?.by_ds_daily) ? opJun.data.by_ds_daily : []);
+      setOpsBase(Array.isArray(opBase?.data?.by_dropshipper) ? opBase.data.by_dropshipper : []);
+      setOpsTarget(Array.isArray(opTar?.data?.by_dropshipper) ? opTar.data.by_dropshipper : []);
+      setDailyBase(Array.isArray(opBase?.data?.by_ds_daily) ? opBase.data.by_ds_daily : []);
+      setDailyTarget(Array.isArray(opTar?.data?.by_ds_daily) ? opTar.data.by_ds_daily : []);
       setMetaInfo(dash?.meta_info || {});
     } finally {
       setLoading(false);
     }
-  }, [country]);
+  }, [country, mes, mesBase]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Día actual (1..30) — hoy es en Junio 2026
+  // Determinar si el mes target está EN CURSO según el calendario (no por filtro)
   const today = new Date();
-  const isInJunio = today.getFullYear() === 2026 && today.getMonth() === 5;
-  const diaActualJunio = isInJunio ? today.getDate() : 30;
-  const diasJunio = metaInfo.dias_junio ?? 30;
-  const diasTranscurridos = Math.max(1, Math.min(diaActualJunio, diasJunio));
-  const diasRestantes = Math.max(1, diasJunio - diasTranscurridos);
+  const monthInCourse = today.getFullYear() === 2026 && (today.getMonth() + 1) === MES_MONTH_NUM[mes];
+  const diasMes = (metaInfo[`dias_${mes}`] as number) ?? MES_DIAS_DEFAULT[mes];
+  const diaActual = monthInCourse ? today.getDate() : diasMes;
+  const diasTranscurridos = Math.max(1, Math.min(diaActual, diasMes));
+  const diasRestantes = monthInCourse ? Math.max(1, diasMes - diasTranscurridos) : 0;
 
-  // % movilización país (basado en Mayo cerrado)
-  const totalsMayo = useMemo(() => {
-    const m = aggregateDS(opsMayo);
+  // % movilización país basado en mes base (cerrado)
+  const totalsBase = useMemo(() => {
+    const m = aggregateDS(opsBase);
     let ing = 0, mov = 0;
     m.forEach((v) => { ing += v.ing; mov += v.mov; });
     return { ing, mov, pctMov: ing > 0 ? mov / ing : 0 };
-  }, [opsMayo]);
+  }, [opsBase]);
 
-  // DSs activos en Mayo (con ≥1 ingresada en el mes)
-  const dsMayo = useMemo(() => aggregateDS(opsMayo), [opsMayo]);
-  const dsJunio = useMemo(() => aggregateDS(opsJunio), [opsJunio]);
-  const activeDaysMayo = useMemo(() => activeDaysByDS(dailyMayo), [dailyMayo]);
-  const activeDaysJunio = useMemo(() => activeDaysByDS(dailyJunio), [dailyJunio]);
+  const dsBase = useMemo(() => aggregateDS(opsBase), [opsBase]);
+  const dsTarget = useMemo(() => aggregateDS(opsTarget), [opsTarget]);
+  const activeDaysBase = useMemo(() => activeDaysByDS(dailyBase), [dailyBase]);
+  const activeDaysTarget = useMemo(() => activeDaysByDS(dailyTarget), [dailyTarget]);
 
-  const activosMayo = Array.from(dsMayo.values()).filter(v => v.ing > 0).length;
-  const activosJunio = Array.from(dsJunio.values()).filter(v => v.ing > 0).length;
+  const activosBase = Array.from(dsBase.values()).filter(v => v.ing > 0).length;
+  const activosTarget = Array.from(dsTarget.values()).filter(v => v.ing > 0).length;
 
-  // Metas Junio (con fallback)
-  const metaMovJunio = metaInfo.meta_movilizadas_junio ?? metaInfo.meta_movilizadas_mayo ?? 0;
-  const metaIngJunio = metaInfo.meta_ingresadas_junio
-    ?? (totalsMayo.pctMov > 0 ? Math.round(metaMovJunio / totalsMayo.pctMov) : metaInfo.meta_ingresadas_mayo ?? 0);
+  // Metas del mes target (con fallback al mes base)
+  const metaMov = metaInfo[`meta_movilizadas_${mes}`]
+    ?? metaInfo[`meta_movilizadas_${mesBase}`] ?? 0;
+  const metaIng = metaInfo[`meta_ingresadas_${mes}`]
+    ?? (totalsBase.pctMov > 0 ? Math.round(metaMov / totalsBase.pctMov) : (metaInfo[`meta_ingresadas_${mesBase}`] ?? 0));
 
-  // Mov real Junio (a la fecha)
-  const movRealJunio = useMemo(() => {
+  // Real del target (a la fecha si está en curso, o total si está cerrado)
+  const movRealTarget = useMemo(() => {
     let mov = 0;
-    dsJunio.forEach((v) => { mov += v.mov; });
+    dsTarget.forEach((v) => { mov += v.mov; });
     return mov;
-  }, [dsJunio]);
-  const ingRealJunio = useMemo(() => {
+  }, [dsTarget]);
+  const ingRealTarget = useMemo(() => {
     let ing = 0;
-    dsJunio.forEach((v) => { ing += v.ing; });
+    dsTarget.forEach((v) => { ing += v.ing; });
     return ing;
-  }, [dsJunio]);
+  }, [dsTarget]);
 
-  // Brecha pendiente para llegar a la meta
-  const movPendiente = Math.max(metaMovJunio - movRealJunio, 0);
-  const ingPendiente = Math.max(metaIngJunio - ingRealJunio, 0);
+  const movPendiente = Math.max(metaMov - movRealTarget, 0);
+  const ingPendiente = Math.max(metaIng - ingRealTarget, 0);
 
-  // ─── BASELINE (basado en DSs activos de Mayo) ───
-  const baselineDsCount = Math.max(activosMayo, 1);
-  const baselineMovPerDsTotal = metaMovJunio / baselineDsCount;
-  const baselineIngPerDsTotal = metaIngJunio / baselineDsCount;
-  const baselineMovPerDsPerDay = baselineMovPerDsTotal / diasJunio;
-  const baselineIngPerDsPerDay = baselineIngPerDsTotal / diasJunio;
+  // ─── BASELINE (DSs activos del mes base) ───
+  const baselineDsCount = Math.max(activosBase, 1);
+  const baselineMovPerDsTotal = metaMov / baselineDsCount;
+  const baselineIngPerDsTotal = metaIng / baselineDsCount;
+  const baselineMovPerDsPerDay = baselineMovPerDsTotal / diasMes;
+  const baselineIngPerDsPerDay = baselineIngPerDsTotal / diasMes;
 
-  // ─── LIVE (basado en DSs activos de Junio hasta hoy) ───
-  const liveDsCount = Math.max(activosJunio, 1);
-  const liveMovPerDsRemaining = movPendiente / liveDsCount / diasRestantes;
-  const liveIngPerDsRemaining = ingPendiente / liveDsCount / diasRestantes;
+  // ─── LIVE / RETROSPECTIVE ───
+  // En curso → brecha / activos / días restantes (lo que falta desde mañana).
+  // Cerrado → meta total / activos del mes / días del mes (lo que cada uno tuvo que hacer en promedio).
+  const liveDsCount = Math.max(activosTarget, 1);
+  const liveMovPerDs = monthInCourse
+    ? movPendiente / liveDsCount / diasRestantes
+    : metaMov / liveDsCount / diasMes;
+  const liveIngPerDs = monthInCourse
+    ? ingPendiente / liveDsCount / diasRestantes
+    : metaIng / liveDsCount / diasMes;
 
-  // ─── Tabla por DS ───
+  // ─── Tabla por DS (cuota proporcional al share en mes base) ───
   const tabla = useMemo(() => {
-    const rows: {
-      nombre: string;
-      mayoIng: number;
-      mayoMov: number;
-      mayoDiasActivos: number;
-      mayoMovPorDia: number;
-      juniIng: number;
-      juniMov: number;
-      juniDiasActivos: number;
-      juniMovPorDia: number;
-      reqMovPorDia: number;  // necesario por día para llegar a su cuota
-      reqIngPorDia: number;
-      gap: number; // diferencia entre lo que necesita y lo que está haciendo
-    }[] = [];
-
-    // Cuota por DS basada en Mayo (proporción del % de Mayo)
-    let totalMovMayo = 0;
-    dsMayo.forEach((v) => { totalMovMayo += v.mov; });
-
-    const allKeys = new Set<string>([...dsMayo.keys(), ...dsJunio.keys()]);
+    let totalMovBase = 0;
+    dsBase.forEach((v) => { totalMovBase += v.mov; });
+    const allKeys = new Set<string>([...dsBase.keys(), ...dsTarget.keys()]);
+    const rows: any[] = [];
     allKeys.forEach((nombre) => {
-      const may = dsMayo.get(nombre) || { ing: 0, mov: 0, nombre };
-      const jun = dsJunio.get(nombre) || { ing: 0, mov: 0, nombre };
-      const mayDays = (activeDaysMayo.get(nombre)?.size) || 0;
-      const junDays = (activeDaysJunio.get(nombre)?.size) || 0;
-      const mayoMovPorDia = mayDays > 0 ? may.mov / mayDays : 0;
-      const juniMovPorDia = junDays > 0 ? jun.mov / junDays : 0;
+      const b = dsBase.get(nombre) || { ing: 0, mov: 0, nombre };
+      const t = dsTarget.get(nombre) || { ing: 0, mov: 0, nombre };
+      const baseDays = (activeDaysBase.get(nombre)?.size) || 0;
+      const targetDays = (activeDaysTarget.get(nombre)?.size) || 0;
+      const baseMovPorDia = baseDays > 0 ? b.mov / baseDays : 0;
+      const targetMovPorDia = targetDays > 0 ? t.mov / targetDays : 0;
 
-      // Cuota mensual = share del DS en Mayo aplicada a la meta de Junio
-      const share = totalMovMayo > 0 ? may.mov / totalMovMayo : 1 / Math.max(allKeys.size, 1);
-      const cuotaMov = metaMovJunio * share;
-      const cuotaMovRestante = Math.max(cuotaMov - jun.mov, 0);
-      const reqMovPorDia = diasRestantes > 0 ? cuotaMovRestante / diasRestantes : 0;
-      const reqIngPorDia = totalsMayo.pctMov > 0 ? reqMovPorDia / totalsMayo.pctMov : 0;
-      const gap = reqMovPorDia - juniMovPorDia;
+      // Cuota mensual = share del DS en mes base aplicada a la meta del target
+      const share = totalMovBase > 0 ? b.mov / totalMovBase : 1 / Math.max(allKeys.size, 1);
+      const cuotaMov = metaMov * share;
+      const cuotaRestante = monthInCourse ? Math.max(cuotaMov - t.mov, 0) : cuotaMov;
+      const divisor = monthInCourse ? diasRestantes : diasMes;
+      const reqMovPorDia = divisor > 0 ? cuotaRestante / divisor : 0;
+      const reqIngPorDia = totalsBase.pctMov > 0 ? reqMovPorDia / totalsBase.pctMov : 0;
+      const gap = reqMovPorDia - targetMovPorDia;
 
       rows.push({
         nombre,
-        mayoIng: may.ing, mayoMov: may.mov, mayoDiasActivos: mayDays, mayoMovPorDia,
-        juniIng: jun.ing, juniMov: jun.mov, juniDiasActivos: junDays, juniMovPorDia,
+        baseIng: b.ing, baseMov: b.mov, baseDays, baseMovPorDia,
+        targetIng: t.ing, targetMov: t.mov, targetDays, targetMovPorDia,
         reqMovPorDia, reqIngPorDia, gap,
+        cuotaMov,
       });
     });
-
-    rows.sort((a, b) => (b.mayoMov + b.juniMov) - (a.mayoMov + a.juniMov));
+    rows.sort((a, b) => (b.baseMov + b.targetMov) - (a.baseMov + a.targetMov));
     return rows;
-  }, [dsMayo, dsJunio, activeDaysMayo, activeDaysJunio, metaMovJunio, diasRestantes, totalsMayo.pctMov]);
+  }, [dsBase, dsTarget, activeDaysBase, activeDaysTarget, metaMov, diasMes, diasRestantes, monthInCourse, totalsBase.pctMov]);
 
   const tablaFiltrada = useMemo(() => {
     let r = tabla;
@@ -196,64 +187,67 @@ export default function MinimoDiario({ country }: { country: "ar" | "py" }) {
     return r;
   }, [tabla, search]);
 
-  // Escenarios "cuántos DSs necesito activar para que cada uno necesite N/día"
+  // Escenarios: cuántos DSs activar para diluir la carga
   const escenarios = useMemo(() => {
-    const targets = [1.5, 2, 3]; // multiplicadores sobre baseline
+    const targets = [1.5, 2, 3];
     return targets.map((mult) => {
       const movPorDsTarget = baselineMovPerDsPerDay / mult;
-      // ¿cuántos DSs hacen falta para que cada uno necesite movPorDsTarget?
-      const dsNecesarios = movPorDsTarget > 0 ? Math.ceil(metaMovJunio / diasJunio / movPorDsTarget) : 0;
-      const adicionales = Math.max(dsNecesarios - activosMayo, 0);
-      return { mult, dsNecesarios, adicionales, movPorDsTarget, ingPorDsTarget: totalsMayo.pctMov > 0 ? movPorDsTarget / totalsMayo.pctMov : 0 };
+      const dsNecesarios = movPorDsTarget > 0 ? Math.ceil(metaMov / diasMes / movPorDsTarget) : 0;
+      const adicionales = Math.max(dsNecesarios - activosBase, 0);
+      return {
+        mult,
+        dsNecesarios,
+        adicionales,
+        movPorDsTarget,
+        ingPorDsTarget: totalsBase.pctMov > 0 ? movPorDsTarget / totalsBase.pctMov : 0,
+      };
     });
-  }, [baselineMovPerDsPerDay, metaMovJunio, diasJunio, activosMayo, totalsMayo.pctMov]);
+  }, [baselineMovPerDsPerDay, metaMov, diasMes, activosBase, totalsBase.pctMov]);
 
   if (loading) {
     return <div className="glass-card p-6 t-muted text-sm">Cargando análisis de mínimo diario…</div>;
   }
 
+  const labelTarget = MES_LABEL[mes];
+  const labelBase = MES_LABEL[mesBase];
+
   return (
     <div className="space-y-4">
       {/* Encabezado */}
       <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
-        <h2 className="text-base font-bold t-primary mb-1">📐 Mínimo Diario — Proyección de Crecimiento</h2>
+        <h2 className="text-base font-bold t-primary mb-1">
+          📐 Mínimo Diario — {labelTarget} 2026 {monthInCourse && <span className="text-[11px] text-green-400 ml-1">(EN CURSO)</span>}
+          {!monthInCourse && <span className="text-[11px] text-gray-400 ml-1">(cerrado)</span>}
+        </h2>
         <p className="text-[11px] t-muted">
-          Cuánto necesita movilizar cada Dropshipper activo por día para llegar a la meta de Junio.
-          Basado en la cartera de Mayo y ajustado por los DSs activos de Junio hasta el día {diasTranscurridos}.
+          {monthInCourse
+            ? `Cuánto necesita movilizar cada DS por día para llegar a la meta de ${labelTarget}. Basado en la cartera de ${labelBase} y ajustado por los activos de ${labelTarget} hasta el día ${diasTranscurridos}.`
+            : `Análisis retrospectivo: cuántos DSs estuvieron activos en ${labelTarget}, cuánto hizo cada uno y cuánto deberían haber hecho para llegar a la meta. Base: ${labelBase}.`}
         </p>
+        {isSameBase && (
+          <p className="text-[10px] mt-1 text-amber-300">⚠️ Para {labelTarget} no hay snapshot Comercial del mes anterior — el "base" usa los mismos datos de {labelTarget}.</p>
+        )}
       </div>
 
-      {/* KPIs principales */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Kpi label="Meta Movilizadas Junio" value={metaMovJunio.toLocaleString("es-AR")} color="#f97316" />
-        <Kpi label="Meta Ingresadas Junio" value={metaIngJunio.toLocaleString("es-AR")} color="#0891b2" />
-        <Kpi label="% Movilización país (Mayo)" value={`${(totalsMayo.pctMov * 100).toFixed(1)}%`} color="#10b981" sub={`${totalsMayo.mov.toLocaleString("es-AR")} / ${totalsMayo.ing.toLocaleString("es-AR")}`} />
-        <Kpi label="DSs activos Mayo" value={activosMayo.toLocaleString("es-AR")} color="#a78bfa" />
-        <Kpi label="DSs activos Junio" value={activosJunio.toLocaleString("es-AR")} color="#a78bfa" sub={`hasta día ${diasTranscurridos}`} />
-        <Kpi label="Días restantes Junio" value={diasRestantes.toLocaleString("es-AR")} color="#dc2626" sub={`de ${diasJunio}`} />
+        <Kpi label={`Meta Movilizadas ${labelTarget}`} value={metaMov.toLocaleString("es-AR")} color="#f97316" />
+        <Kpi label={`Meta Ingresadas ${labelTarget}`} value={metaIng.toLocaleString("es-AR")} color="#0891b2" />
+        <Kpi label={`% Movilización país (${labelBase})`} value={`${(totalsBase.pctMov * 100).toFixed(1)}%`} color="#10b981" sub={`${totalsBase.mov.toLocaleString("es-AR")} / ${totalsBase.ing.toLocaleString("es-AR")}`} />
+        <Kpi label={`DSs activos ${labelBase}`} value={activosBase.toLocaleString("es-AR")} color="#a78bfa" />
+        <Kpi label={`DSs activos ${labelTarget}`} value={activosTarget.toLocaleString("es-AR")} color="#a78bfa" sub={monthInCourse ? `hasta día ${diasTranscurridos}` : "mes cerrado"} />
+        <Kpi label={monthInCourse ? "Días restantes" : "Días del mes"} value={(monthInCourse ? diasRestantes : diasMes).toLocaleString("es-AR")} color="#dc2626" sub={`de ${diasMes}`} />
       </div>
 
-      {/* Progreso real vs meta */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <ProgressCard
-          label="Movilizadas Junio (real vs meta)"
-          actual={movRealJunio}
-          target={metaMovJunio}
-          color="#10b981"
-        />
-        <ProgressCard
-          label="Ingresadas Junio (real vs meta)"
-          actual={ingRealJunio}
-          target={metaIngJunio}
-          color="#0891b2"
-        />
+        <ProgressCard label={`Movilizadas ${labelTarget} (real vs meta)`} actual={movRealTarget} target={metaMov} color="#10b981" />
+        <ProgressCard label={`Ingresadas ${labelTarget} (real vs meta)`} actual={ingRealTarget} target={metaIng} color="#0891b2" />
       </div>
 
-      {/* Comparación BASELINE vs LIVE */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
         <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
-          <h3 className="text-sm font-bold t-primary mb-2">📊 BASELINE — Si mantenés la cartera de Mayo</h3>
-          <p className="text-[11px] t-muted mb-3">{activosMayo} dropshippers activos, distribuidos en {diasJunio} días.</p>
+          <h3 className="text-sm font-bold t-primary mb-2">📊 BASELINE — Cartera {labelBase}</h3>
+          <p className="text-[11px] t-muted mb-3">{activosBase} DSs activos, distribuidos en {diasMes} días.</p>
           <div className="space-y-2">
             <PerDsRow label="Movilizadas / DS / día" value={baselineMovPerDsPerDay} color="#10b981" suffix=" guías" />
             <PerDsRow label="Ingresadas / DS / día" value={baselineIngPerDsPerDay} color="#0891b2" suffix=" guías" />
@@ -262,18 +256,28 @@ export default function MinimoDiario({ country }: { country: "ar" | "py" }) {
           </div>
         </div>
         <div className="rounded-xl p-4 border border-orange-500/30" style={{ background: "rgba(249,115,22,0.05)" }}>
-          <h3 className="text-sm font-bold t-primary mb-2">🎯 LIVE — Ajustado a los activos de Junio</h3>
-          <p className="text-[11px] t-muted mb-3">{activosJunio} DSs activos al día {diasTranscurridos}. Resto = brecha / activos / {diasRestantes} días.</p>
+          <h3 className="text-sm font-bold t-primary mb-2">
+            {monthInCourse ? `🎯 LIVE — Ajustado a activos de ${labelTarget}` : `📈 PROMEDIO — Cartera ${labelTarget}`}
+          </h3>
+          <p className="text-[11px] t-muted mb-3">
+            {monthInCourse
+              ? `${activosTarget} DSs activos al día ${diasTranscurridos}. Brecha / activos / ${diasRestantes} días restantes.`
+              : `${activosTarget} DSs activos en el mes cerrado. Meta total / activos / ${diasMes} días.`}
+          </p>
           <div className="space-y-2">
-            <PerDsRow label="Movilizadas / DS / día (necesario)" value={liveMovPerDsRemaining} color="#10b981" suffix=" guías" />
-            <PerDsRow label="Ingresadas / DS / día (necesario)" value={liveIngPerDsRemaining} color="#0891b2" suffix=" guías" />
-            <PerDsRow label="Brecha movilizadas pendiente" value={movPendiente} color="#f59e0b" suffix=" guías" intRound />
-            <PerDsRow label="Brecha ingresadas pendiente" value={ingPendiente} color="#f59e0b" suffix=" guías" intRound />
+            <PerDsRow label="Movilizadas / DS / día" value={liveMovPerDs} color="#10b981" suffix=" guías" />
+            <PerDsRow label="Ingresadas / DS / día" value={liveIngPerDs} color="#0891b2" suffix=" guías" />
+            {monthInCourse && (
+              <>
+                <PerDsRow label="Brecha movilizadas pendiente" value={movPendiente} color="#f59e0b" suffix=" guías" intRound />
+                <PerDsRow label="Brecha ingresadas pendiente" value={ingPendiente} color="#f59e0b" suffix=" guías" intRound />
+              </>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Escenarios estratégicos */}
+      {/* Escenarios */}
       <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
         <h3 className="text-sm font-bold t-primary mb-2">🧭 Escenarios — ¿Crecer con los actuales o activar más?</h3>
         <p className="text-[11px] t-muted mb-3">Cuántos DSs activos necesitarías para que cada uno tenga una carga más liviana.</p>
@@ -298,7 +302,7 @@ export default function MinimoDiario({ country }: { country: "ar" | "py" }) {
         </div>
       </div>
 
-      {/* Tabla por DS */}
+      {/* Tabla */}
       <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <h3 className="text-sm font-bold t-primary">📋 Detalle por Dropshipper ({tabla.length})</h3>
@@ -311,28 +315,28 @@ export default function MinimoDiario({ country }: { country: "ar" | "py" }) {
               <tr className="border-b border-gray-700 text-[10px] t-muted">
                 <th className="text-left py-2 px-2">#</th>
                 <th className="text-left py-2 px-2">Dropshipper</th>
-                <th className="text-right py-2 px-2">Mayo mov</th>
-                <th className="text-right py-2 px-2">Mayo días</th>
-                <th className="text-right py-2 px-2">Mayo mov/día</th>
-                <th className="text-right py-2 px-2">Junio mov</th>
-                <th className="text-right py-2 px-2">Junio días</th>
-                <th className="text-right py-2 px-2">Junio mov/día</th>
+                <th className="text-right py-2 px-2">{labelBase} mov</th>
+                <th className="text-right py-2 px-2">{labelBase} días</th>
+                <th className="text-right py-2 px-2">{labelBase} mov/día</th>
+                <th className="text-right py-2 px-2">{labelTarget} mov</th>
+                <th className="text-right py-2 px-2">{labelTarget} días</th>
+                <th className="text-right py-2 px-2">{labelTarget} mov/día</th>
                 <th className="text-right py-2 px-2 text-orange-300">Necesario mov/día</th>
                 <th className="text-right py-2 px-2 text-cyan-300">Necesario ing/día</th>
                 <th className="text-right py-2 px-2">Gap</th>
               </tr>
             </thead>
             <tbody>
-              {(showAll ? tablaFiltrada : tablaFiltrada.slice(0, 50)).map((r, i) => (
+              {(showAll ? tablaFiltrada : tablaFiltrada.slice(0, 50)).map((r: any, i: number) => (
                 <tr key={r.nombre} className="border-b border-gray-800/40 hover:bg-orange-500/5">
                   <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
                   <td className="py-2 px-2 t-primary max-w-[220px] truncate" title={r.nombre}>{r.nombre}</td>
-                  <td className="py-2 px-2 text-right font-mono">{r.mayoMov.toLocaleString("es-AR")}</td>
-                  <td className="py-2 px-2 text-right t-muted">{r.mayoDiasActivos}</td>
-                  <td className="py-2 px-2 text-right font-mono">{r.mayoMovPorDia.toFixed(1)}</td>
-                  <td className="py-2 px-2 text-right font-mono text-orange-400">{r.juniMov.toLocaleString("es-AR")}</td>
-                  <td className="py-2 px-2 text-right t-muted">{r.juniDiasActivos}</td>
-                  <td className="py-2 px-2 text-right font-mono">{r.juniMovPorDia.toFixed(1)}</td>
+                  <td className="py-2 px-2 text-right font-mono">{r.baseMov.toLocaleString("es-AR")}</td>
+                  <td className="py-2 px-2 text-right t-muted">{r.baseDays}</td>
+                  <td className="py-2 px-2 text-right font-mono">{r.baseMovPorDia.toFixed(1)}</td>
+                  <td className="py-2 px-2 text-right font-mono text-orange-400">{r.targetMov.toLocaleString("es-AR")}</td>
+                  <td className="py-2 px-2 text-right t-muted">{r.targetDays}</td>
+                  <td className="py-2 px-2 text-right font-mono">{r.targetMovPorDia.toFixed(1)}</td>
                   <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{r.reqMovPorDia.toFixed(1)}</td>
                   <td className="py-2 px-2 text-right font-mono font-bold text-cyan-300">{r.reqIngPorDia.toFixed(1)}</td>
                   <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: r.gap > 0 ? "#dc2626" : "#10b981" }}>
@@ -349,8 +353,8 @@ export default function MinimoDiario({ country }: { country: "ar" | "py" }) {
           )}
         </div>
         <p className="text-[10px] t-muted mt-3">
-          <strong>Gap</strong> = lo que falta movilizar por día para cumplir su cuota (proporcional a Mayo). Verde = ya está al ritmo o sobrado.
-          Rojo = está por debajo del ritmo necesario.
+          <strong>Gap</strong> = lo que falta movilizar por día para cumplir la cuota (proporcional al share en {labelBase}).
+          Verde = al ritmo o sobrado. Rojo = por debajo del ritmo necesario.
         </p>
       </div>
     </div>

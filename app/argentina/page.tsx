@@ -269,7 +269,7 @@ export default function ArgentinaDashboard() {
             )}
 
             {comercialSub === "minimo" && (
-              <MinimoDiario country="ar" />
+              <MinimoDiario country="ar" mes={isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "crm" && (

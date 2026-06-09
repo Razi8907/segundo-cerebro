@@ -269,7 +269,7 @@ export default function ParaguayDashboard() {
             )}
 
             {comercialSub === "minimo" && (
-              <MinimoDiario country="py" />
+              <MinimoDiario country="py" mes={isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "crm" && (
