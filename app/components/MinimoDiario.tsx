@@ -1,6 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceDot, Legend,
+} from "recharts";
 
 // Estados que se consideran NO movilizadas (alineado con el resto del dashboard)
 const NO_MOV = new Set([
@@ -11,6 +14,22 @@ const NO_MOV = new Set([
 type Mes = "abril" | "mayo" | "junio";
 type ByDS = { nombre: string; total: number; estados: Record<string, number> };
 type ByDSDaily = { ds: string; fecha: string; ordenes: number };
+type ByDate = { fecha: string; total: number; estados: Record<string, number> };
+
+function dayOfMonth(fechaStr: string): number | null {
+  const m = fechaStr.match(/^(\d{1,2})[-/]/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function movFromEstados(estados: Record<string, number>): number {
+  let total = 0;
+  let noMov = 0;
+  for (const k in estados) {
+    total += estados[k] || 0;
+    if (NO_MOV.has(k)) noMov += estados[k] || 0;
+  }
+  return Math.max(total - noMov, 0);
+}
 
 const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6 };
 const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio" };
@@ -55,10 +74,13 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   const [opsTarget, setOpsTarget] = useState<ByDS[]>([]);
   const [dailyBase, setDailyBase] = useState<ByDSDaily[]>([]);
   const [dailyTarget, setDailyTarget] = useState<ByDSDaily[]>([]);
+  const [byDateTarget, setByDateTarget] = useState<ByDate[]>([]);
   const [metaInfo, setMetaInfo] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showAll, setShowAll] = useState(false);
+  // Simulador: # de DSs activos hipotéticos para el target
+  const [simDs, setSimDs] = useState<number | null>(null);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -72,6 +94,7 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
       setOpsTarget(Array.isArray(opTar?.data?.by_dropshipper) ? opTar.data.by_dropshipper : []);
       setDailyBase(Array.isArray(opBase?.data?.by_ds_daily) ? opBase.data.by_ds_daily : []);
       setDailyTarget(Array.isArray(opTar?.data?.by_ds_daily) ? opTar.data.by_ds_daily : []);
+      setByDateTarget(Array.isArray(opTar?.data?.by_date) ? opTar.data.by_date : []);
       setMetaInfo(dash?.meta_info || {});
     } finally {
       setLoading(false);
@@ -210,6 +233,102 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
     });
   }, [baselineMovPerDsPerDay, metaMov, diasMes, activosBase, totalsBase.pctMov]);
 
+  // ─── Simulador ───
+  // Cuando cambia el mes base recalculamos el default del simulador.
+  useEffect(() => {
+    if (simDs === null && activosBase > 0) setSimDs(activosBase);
+  }, [activosBase, simDs]);
+
+  const simDsValue = simDs ?? Math.max(activosBase, 1);
+  const simMovPerDsPerDay = simDsValue > 0 ? metaMov / simDsValue / diasMes : 0;
+  const simIngPerDsPerDay = totalsBase.pctMov > 0 ? simMovPerDsPerDay / totalsBase.pctMov : 0;
+
+  // Curva: para un rango de #DSs (de 10% a 200% del baseline), calcular
+  // las guías mov/día/DS necesarias para llegar a la meta del target.
+  // Y otra curva con la meta del mes base como referencia.
+  const simChart = useMemo(() => {
+    const minDs = Math.max(10, Math.floor(activosBase * 0.3));
+    const maxDs = Math.max(Math.ceil(activosBase * 2.0), simDsValue + 50, 200);
+    const step = Math.max(1, Math.round((maxDs - minDs) / 40));
+    const data: { ds: number; targetMov: number; targetIng: number; baseMov: number; baseIng: number }[] = [];
+    const metaMovBase = metaInfo[`meta_movilizadas_${mesBase}`] ?? totalsBase.mov;
+    const metaIngBase = metaInfo[`meta_ingresadas_${mesBase}`] ?? totalsBase.ing;
+    const diasBase = (metaInfo[`dias_${mesBase}`] as number) ?? MES_DIAS_DEFAULT[mesBase];
+    for (let n = minDs; n <= maxDs; n += step) {
+      data.push({
+        ds: n,
+        targetMov: n > 0 ? metaMov / n / diasMes : 0,
+        targetIng: n > 0 && totalsBase.pctMov > 0 ? (metaMov / n / diasMes) / totalsBase.pctMov : 0,
+        baseMov: n > 0 ? metaMovBase / n / diasBase : 0,
+        baseIng: n > 0 && totalsBase.pctMov > 0 ? (metaMovBase / n / diasBase) / totalsBase.pctMov : 0,
+      });
+    }
+    return data;
+  }, [activosBase, simDsValue, metaMov, diasMes, totalsBase, mesBase, metaInfo]);
+
+  // ─── Análisis día por día (target mes) ───
+  // Para cada día del mes: # DSs activos ese día, ing/mov del día, promedios
+  // por DS activo, y cuánto cada activo tuvo que mover según la brecha al
+  // arranque del día.
+  const dailyAnalysis = useMemo(() => {
+    // Build day → { activeDs, ing, mov } maps
+    type DaySlot = { dia: number; activeDs: number; ing: number; mov: number };
+    const slots: DaySlot[] = [];
+    for (let d = 1; d <= diasMes; d++) slots.push({ dia: d, activeDs: 0, ing: 0, mov: 0 });
+
+    // ing y activos desde by_ds_daily
+    const dsByDay = new Map<number, Set<string>>();
+    for (const row of dailyTarget) {
+      const d = dayOfMonth(row.fecha);
+      if (!d || d < 1 || d > diasMes) continue;
+      slots[d - 1].ing += row.ordenes || 0;
+      if (!dsByDay.has(d)) dsByDay.set(d, new Set());
+      if (row.ds && (row.ordenes || 0) > 0) {
+        dsByDay.get(d)!.add(String(row.ds).replace(/\s*\(\d+\)\s*$/, "").trim());
+      }
+    }
+    dsByDay.forEach((set, d) => { slots[d - 1].activeDs = set.size; });
+
+    // mov desde by_date
+    for (const row of byDateTarget) {
+      const d = dayOfMonth(row.fecha);
+      if (!d || d < 1 || d > diasMes) continue;
+      slots[d - 1].mov = movFromEstados(row.estados || {});
+    }
+
+    // Acumulado + necesario por día
+    let movAcum = 0;
+    const out = slots.map((s) => {
+      const movAcumPrev = movAcum;
+      movAcum += s.mov;
+      const movRestante = Math.max(metaMov - movAcumPrev, 0);
+      const diasRestantesAlInicio = Math.max(diasMes - s.dia + 1, 1);
+      const reqMovDiaPais = movRestante / diasRestantesAlInicio;
+      const reqIngDiaPais = totalsBase.pctMov > 0 ? reqMovDiaPais / totalsBase.pctMov : 0;
+      const movPerDsReal = s.activeDs > 0 ? s.mov / s.activeDs : 0;
+      const ingPerDsReal = s.activeDs > 0 ? s.ing / s.activeDs : 0;
+      const reqMovPerDs = s.activeDs > 0 ? reqMovDiaPais / s.activeDs : 0;
+      const reqIngPerDs = s.activeDs > 0 ? reqIngDiaPais / s.activeDs : 0;
+      const tieneData = s.activeDs > 0 || s.ing > 0;
+      return {
+        dia: s.dia,
+        activeDs: s.activeDs,
+        ing: s.ing,
+        mov: s.mov,
+        ingPerDsReal,
+        movPerDsReal,
+        reqMovPerDs,
+        reqIngPerDs,
+        reqMovDiaPais,
+        gap: reqMovPerDs - movPerDsReal,
+        tieneData,
+        // Para mes en curso: si el día ya pasó (≤ diasTranscurridos) → "real"; sino → "futuro/proyección"
+        isPast: !monthInCourse ? true : s.dia <= diasTranscurridos,
+      };
+    });
+    return out;
+  }, [dailyTarget, byDateTarget, diasMes, metaMov, totalsBase.pctMov, monthInCourse, diasTranscurridos]);
+
   if (loading) {
     return <div className="glass-card p-6 t-muted text-sm">Cargando análisis de mínimo diario…</div>;
   }
@@ -306,6 +425,139 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Análisis día por día */}
+      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <h3 className="text-sm font-bold t-primary mb-1">📅 Análisis día por día — {labelTarget}</h3>
+        <p className="text-[11px] t-muted mb-3">
+          Movimiento real por DS activo cada día vs lo que cada uno necesitaba mover (según la brecha al arranque del día y los DSs activos esa jornada).
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-700 text-[10px] t-muted">
+                <th className="text-left py-2 px-2">Día</th>
+                <th className="text-right py-2 px-2">DSs activos</th>
+                <th className="text-right py-2 px-2">Ing. del día</th>
+                <th className="text-right py-2 px-2">Mov. del día</th>
+                <th className="text-right py-2 px-2">Ing/DS real</th>
+                <th className="text-right py-2 px-2">Mov/DS real</th>
+                <th className="text-right py-2 px-2 text-cyan-300">Ing/DS necesario</th>
+                <th className="text-right py-2 px-2 text-orange-300">Mov/DS necesario</th>
+                <th className="text-right py-2 px-2">Gap</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyAnalysis.map((d) => (
+                <tr key={d.dia} className={`border-b border-gray-800/40 ${d.isPast ? "" : "opacity-60"}`}>
+                  <td className="py-2 px-2 t-primary font-medium">{d.dia}{!d.isPast && <span className="text-[9px] t-muted ml-1">(proy)</span>}</td>
+                  <td className="py-2 px-2 text-right font-mono">{d.activeDs.toLocaleString("es-AR")}</td>
+                  <td className="py-2 px-2 text-right font-mono">{d.tieneData ? d.ing.toLocaleString("es-AR") : "—"}</td>
+                  <td className="py-2 px-2 text-right font-mono text-orange-400">{d.tieneData ? d.mov.toLocaleString("es-AR") : "—"}</td>
+                  <td className="py-2 px-2 text-right font-mono">{d.tieneData ? d.ingPerDsReal.toFixed(1) : "—"}</td>
+                  <td className="py-2 px-2 text-right font-mono">{d.tieneData ? d.movPerDsReal.toFixed(1) : "—"}</td>
+                  <td className="py-2 px-2 text-right font-mono font-bold text-cyan-300">{d.activeDs > 0 ? d.reqIngPerDs.toFixed(1) : "—"}</td>
+                  <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{d.activeDs > 0 ? d.reqMovPerDs.toFixed(1) : "—"}</td>
+                  <td className="py-2 px-2 text-right font-mono font-bold" style={{
+                    color: !d.tieneData ? "#6b7280" : d.gap > 0 ? "#dc2626" : "#10b981",
+                  }}>
+                    {d.tieneData ? (d.gap > 0 ? "+" : "") + d.gap.toFixed(1) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] t-muted mt-3">
+          Verde = los activos del día movieron al ritmo necesario o por encima. Rojo = quedaron por debajo de lo que cada uno tenía que aportar ese día.
+        </p>
+      </div>
+
+      {/* Simulador */}
+      <div className="rounded-xl p-4 border border-purple-500/30" style={{ background: "rgba(167,139,250,0.05)" }}>
+        <h3 className="text-sm font-bold t-primary mb-1">🧪 Simulador — ¿Y si tengo N DSs activos?</h3>
+        <p className="text-[11px] t-muted mb-3">
+          Probá distintas cantidades de DSs activos en {labelTarget} y comparalos con {labelBase}. La curva muestra cuánto necesita cada uno por día para llegar a la meta.
+        </p>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mb-4">
+          <div className="rounded-lg p-3 border border-purple-500/20" style={{ background: "var(--bg-input)" }}>
+            <label className="text-[10px] t-muted uppercase tracking-wider block mb-1">DSs activos en {labelTarget}</label>
+            <input type="number" min={1} value={simDsValue}
+              onChange={(e) => setSimDs(Math.max(1, parseInt(e.target.value) || 1))}
+              className="w-full text-2xl font-bold px-2 py-1 rounded border border-gray-700 bg-transparent t-primary outline-none focus:border-purple-500" />
+            <div className="flex gap-2 mt-2">
+              <button type="button" onClick={() => setSimDs(activosBase)} className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-purple-500/50">
+                = Base ({activosBase})
+              </button>
+              <button type="button" onClick={() => setSimDs(activosTarget)} className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-purple-500/50">
+                = {labelTarget} actual ({activosTarget})
+              </button>
+              {simDsValue !== Math.round(activosBase * 1.5) && (
+                <button type="button" onClick={() => setSimDs(Math.round(activosBase * 1.5))} className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-purple-500/50">
+                  +50%
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="rounded-lg p-3 border border-orange-500/30" style={{ background: "var(--bg-input)" }}>
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Necesario por DS / día — {labelTarget}</p>
+            <p className="text-[11px] t-secondary mb-1">Para meta de {metaMov.toLocaleString("es-AR")} mov / {metaIng.toLocaleString("es-AR")} ing</p>
+            <p className="text-2xl font-bold" style={{ color: "#10b981" }}>{simMovPerDsPerDay.toFixed(1)} <span className="text-sm">mov</span></p>
+            <p className="text-base font-bold" style={{ color: "#0891b2" }}>{simIngPerDsPerDay.toFixed(1)} <span className="text-xs">ing</span></p>
+          </div>
+          <div className="rounded-lg p-3 border border-cyan-500/30" style={{ background: "var(--bg-input)" }}>
+            <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Comparación con {labelBase}</p>
+            <p className="text-[11px] t-secondary mb-1">
+              {activosBase} DSs activos · {totalsBase.mov.toLocaleString("es-AR")} mov
+            </p>
+            {(() => {
+              const baseMovPerDsPerDay = activosBase > 0 ? totalsBase.mov / activosBase / ((metaInfo[`dias_${mesBase}`] as number) ?? MES_DIAS_DEFAULT[mesBase]) : 0;
+              const delta = simMovPerDsPerDay - baseMovPerDsPerDay;
+              const pctChange = baseMovPerDsPerDay > 0 ? (delta / baseMovPerDsPerDay) * 100 : 0;
+              return (
+                <>
+                  <p className="text-sm t-primary">Real en {labelBase}: <strong style={{ color: "#10b981" }}>{baseMovPerDsPerDay.toFixed(1)}</strong> mov/DS/día</p>
+                  <p className="text-sm" style={{ color: delta > 0 ? "#dc2626" : "#10b981" }}>
+                    {delta > 0 ? "+" : ""}{delta.toFixed(1)} mov/DS/día ({pctChange > 0 ? "+" : ""}{pctChange.toFixed(0)}%)
+                  </p>
+                  <p className="text-[10px] t-muted mt-1">
+                    {delta > baseMovPerDsPerDay * 0.5
+                      ? "🚨 Salto enorme — más fácil activar más DSs"
+                      : delta > baseMovPerDsPerDay * 0.2
+                      ? "⚠️ Requiere crecimiento fuerte por DS"
+                      : delta > 0
+                      ? "✓ Crecimiento moderado y alcanzable"
+                      : "✅ Por debajo de lo que ya hacían"}
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={simChart} margin={{ top: 10, right: 20, bottom: 30, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="ds" tick={{ fontSize: 10, fill: "#94a3b8" }} label={{ value: "# DSs activos", position: "insideBottom", offset: -5, fontSize: 10, fill: "#94a3b8" }} />
+              <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} label={{ value: "Guías / DS / día", angle: -90, position: "insideLeft", fontSize: 10, fill: "#94a3b8" }} />
+              <Tooltip
+                contentStyle={{ background: "rgba(22,33,62,0.95)", border: "1px solid rgba(167,139,250,0.3)", borderRadius: 8, fontSize: 11 }}
+                formatter={(v: any, n: any) => [Number(v).toFixed(1), String(n)]}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line type="monotone" dataKey="targetMov" name={`${labelTarget} — Mov/DS/día`} stroke="#10b981" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="targetIng" name={`${labelTarget} — Ing/DS/día`} stroke="#0891b2" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="baseMov" name={`${labelBase} — Mov/DS/día`} stroke="#10b981" strokeDasharray="4 4" strokeWidth={1.5} dot={false} />
+              <Line type="monotone" dataKey="baseIng" name={`${labelBase} — Ing/DS/día`} stroke="#0891b2" strokeDasharray="4 4" strokeWidth={1.5} dot={false} />
+              <ReferenceDot x={simDsValue} y={simMovPerDsPerDay} r={5} fill="#a78bfa" stroke="#fff" strokeWidth={1.5} />
+              <ReferenceDot x={activosBase} y={activosBase > 0 ? totalsBase.mov / activosBase / ((metaInfo[`dias_${mesBase}`] as number) ?? MES_DIAS_DEFAULT[mesBase]) : 0} r={4} fill="#f97316" stroke="#fff" strokeWidth={1} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <p className="text-[10px] t-muted text-center mt-2">
+          🟣 = simulación · 🟧 = punto real en {labelBase}. Líneas sólidas: necesidad para meta {labelTarget}. Líneas punteadas: ritmo real de {labelBase}.
+        </p>
       </div>
 
       {/* Tabla */}
