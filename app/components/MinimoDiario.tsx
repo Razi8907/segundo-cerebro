@@ -123,7 +123,13 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   }, [dsTarget]);
 
   const movPendiente = Math.max(metaMov - movRealTarget, 0);
-  const ingPendiente = Math.max(metaIng - ingRealTarget, 0);
+  // La brecha de ingresadas debe ser al menos la brecha de movilizadas / % de
+  // movilización del país (porque movilizadas es un subconjunto de ingresadas).
+  // Si ya ingresaste de más pero te falta movilizar, igual tenés que cargar
+  // más para que el % de mov real cubra la meta de mov.
+  const ingPendienteRaw = Math.max(metaIng - ingRealTarget, 0);
+  const ingPendienteFromMov = totalsBase.pctMov > 0 ? movPendiente / totalsBase.pctMov : ingPendienteRaw;
+  const ingPendiente = Math.max(ingPendienteRaw, ingPendienteFromMov);
 
   // ─── BASELINE (DSs activos del mes base) ───
   const baselineDsCount = Math.max(activosBase, 1);
