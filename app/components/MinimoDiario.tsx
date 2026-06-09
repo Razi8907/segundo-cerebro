@@ -86,6 +86,10 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   // Filtros del semáforo
   const [semaFilter, setSemaFilter] = useState<"all" | "rojo" | "amarillo" | "verde" | "nuevo" | "perdido">("all");
   const [semaSearch, setSemaSearch] = useState("");
+  // Modo de comparación temporal del semáforo
+  const [semaMode, setSemaMode] = useState<"mtd" | "single" | "range">("mtd");
+  const [semaFrom, setSemaFrom] = useState<number>(1);
+  const [semaTo, setSemaTo] = useState<number>(7);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -367,15 +371,22 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   }, [dailyCompRows]);
 
   // ─── Semáforo por DS — variación base vs target ───
-  // Mes en curso: compara MTD (días 1..diasTranscurridos) en ambos meses
-  // para que sea apples-to-apples. Mes cerrado: meses completos.
+  // Filtros temporales:
+  // - mtd: días 1..diasTranscurridos (cerrado: 1..diasMes)
+  // - single: solo el día semaFrom (en ambos meses)
+  // - range: días semaFrom..semaTo (en ambos meses)
+  const semaRangeFrom = semaMode === "mtd" ? 1 : Math.max(1, Math.min(semaFrom, maxDias));
+  const semaRangeTo = semaMode === "mtd"
+    ? (monthInCourse ? diasTranscurridos : diasMes)
+    : semaMode === "single"
+    ? Math.max(1, Math.min(semaFrom, maxDias))
+    : Math.max(semaRangeFrom, Math.min(semaTo, maxDias));
   const semaforoRows = useMemo(() => {
-    const limiteDias = monthInCourse ? diasTranscurridos : diasMes;
     const baseByDs = new Map<string, number>();
     const targetByDs = new Map<string, number>();
     const acumular = (src: Map<number, Map<string, number>>, dest: Map<string, number>) => {
       src.forEach((dsMap, day) => {
-        if (day > limiteDias) return;
+        if (day < semaRangeFrom || day > semaRangeTo) return;
         dsMap.forEach((v, ds) => { dest.set(ds, (dest.get(ds) || 0) + v); });
       });
     };
@@ -416,7 +427,7 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
       return b.baseIng - a.baseIng;
     });
     return rows;
-  }, [ingByDayDs, monthInCourse, diasMes, diasTranscurridos, dsMonthlyRatios]);
+  }, [ingByDayDs, dsMonthlyRatios, semaRangeFrom, semaRangeTo]);
 
   const semaforoSummary = useMemo(() => {
     const s = { verde: 0, amarillo: 0, rojo: 0, nuevo: 0, perdido: 0 };
@@ -566,16 +577,69 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
           <div>
             <h3 className="text-sm font-bold t-primary">
               🚦 Semáforo por Dropshipper — {labelTarget} vs {labelBase}
-              {monthInCourse && <span className="text-[10px] text-cyan-300 ml-1">(MTD: días 1–{diasTranscurridos})</span>}
+              <span className="text-[10px] text-cyan-300 ml-1">
+                {semaMode === "mtd"
+                  ? (monthInCourse ? `(MTD: días 1–${diasTranscurridos})` : "(mes completo)")
+                  : semaMode === "single"
+                  ? `(día ${semaRangeFrom})`
+                  : `(días ${semaRangeFrom}–${semaRangeTo})`}
+              </span>
             </h3>
             <p className="text-[11px] t-muted">
-              Variación de ingresadas a igualdad de período. {monthInCourse ? `Compara los primeros ${diasTranscurridos} días de ${labelBase} con los primeros ${diasTranscurridos} de ${labelTarget}.` : `Mes completo vs mes completo.`}
+              Variación de ingresadas a igualdad de período. Compara los mismos días en {labelBase} y {labelTarget}.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <input type="text" placeholder="🔍 Buscar..." value={semaSearch} onChange={(e) => setSemaSearch(e.target.value)}
-              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none focus:border-orange-500 w-40" />
+          <input type="text" placeholder="🔍 Buscar..." value={semaSearch} onChange={(e) => setSemaSearch(e.target.value)}
+            className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none focus:border-orange-500 w-40" />
+        </div>
+
+        {/* Filtro temporal */}
+        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg mb-3" style={{ background: "var(--bg-input)" }}>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Modo</label>
+            <select value={semaMode} onChange={(e) => setSemaMode(e.target.value as "mtd" | "single" | "range")}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none">
+              <option value="mtd">{monthInCourse ? `MTD (1–${diasTranscurridos})` : "Mes completo"}</option>
+              <option value="single">Día único</option>
+              <option value="range">Rango de días</option>
+            </select>
           </div>
+          {semaMode === "single" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] t-muted uppercase tracking-wider">Día (1–{maxDias})</label>
+              <input type="number" min={1} max={maxDias} value={semaFrom}
+                onChange={(e) => setSemaFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              <span className="text-[9px] t-muted">Compara día {semaFrom} de {labelBase} vs día {semaFrom} de {labelTarget}</span>
+            </div>
+          )}
+          {semaMode === "range" && (
+            <>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Desde día</label>
+                <input type="number" min={1} max={maxDias} value={semaFrom}
+                  onChange={(e) => setSemaFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Hasta día</label>
+                <input type="number" min={1} max={maxDias} value={semaTo}
+                  onChange={(e) => setSemaTo(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+              <span className="text-[10px] t-muted self-end pb-1">
+                {semaRangeFrom > semaRangeTo
+                  ? <span className="text-red-400">⚠️ rango inválido</span>
+                  : `${semaRangeTo - semaRangeFrom + 1} días: ${semaRangeFrom}–${semaRangeTo} de ${labelBase} vs ${semaRangeFrom}–${semaRangeTo} de ${labelTarget}`}
+              </span>
+            </>
+          )}
+          {semaMode !== "mtd" && (
+            <button type="button" onClick={() => { setSemaMode("mtd"); setSemaFrom(1); setSemaTo(7); }}
+              className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40 self-end">
+              ↺ Volver a MTD
+            </button>
+          )}
         </div>
 
         {/* Resumen + filtros */}
