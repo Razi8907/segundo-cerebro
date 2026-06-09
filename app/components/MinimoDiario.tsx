@@ -83,6 +83,9 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   const [showAll, setShowAll] = useState(false);
   // Simulador: # de DSs activos hipotéticos para el target
   const [simDs, setSimDs] = useState<number | null>(null);
+  // Filtros del semáforo
+  const [semaFilter, setSemaFilter] = useState<"all" | "rojo" | "amarillo" | "verde" | "nuevo" | "perdido">("all");
+  const [semaSearch, setSemaSearch] = useState("");
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -363,6 +366,64 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
     return { baseIng, baseMov, targetIng, targetMov };
   }, [dailyCompRows]);
 
+  // ─── Semáforo por DS — variación base vs target ───
+  // Mes en curso: compara MTD (días 1..diasTranscurridos) en ambos meses
+  // para que sea apples-to-apples. Mes cerrado: meses completos.
+  const semaforoRows = useMemo(() => {
+    const limiteDias = monthInCourse ? diasTranscurridos : diasMes;
+    const baseByDs = new Map<string, number>();
+    const targetByDs = new Map<string, number>();
+    const acumular = (src: Map<number, Map<string, number>>, dest: Map<string, number>) => {
+      src.forEach((dsMap, day) => {
+        if (day > limiteDias) return;
+        dsMap.forEach((v, ds) => { dest.set(ds, (dest.get(ds) || 0) + v); });
+      });
+    };
+    acumular(ingByDayDs.base, baseByDs);
+    acumular(ingByDayDs.target, targetByDs);
+
+    const all = new Set<string>([...baseByDs.keys(), ...targetByDs.keys()]);
+    const rows: {
+      ds: string;
+      baseIng: number; targetIng: number; deltaIng: number; pctIng: number;
+      baseMov: number; targetMov: number; pctMov: number;
+      status: "verde" | "amarillo" | "rojo" | "nuevo" | "perdido";
+    }[] = [];
+    all.forEach((ds) => {
+      const b = baseByDs.get(ds) || 0;
+      const t = targetByDs.get(ds) || 0;
+      const deltaIng = t - b;
+      const pctIng = b > 0 ? (deltaIng / b) * 100 : (t > 0 ? 100 : 0);
+      const rb = dsMonthlyRatios.base.get(ds)?.ratio || 0;
+      const rt = dsMonthlyRatios.target.get(ds)?.ratio || 0;
+      const baseMov = Math.round(b * rb);
+      const targetMov = Math.round(t * rt);
+      const pctMov = baseMov > 0 ? ((targetMov - baseMov) / baseMov) * 100 : (targetMov > 0 ? 100 : 0);
+
+      let status: "verde" | "amarillo" | "rojo" | "nuevo" | "perdido";
+      if (b === 0 && t > 0) status = "nuevo";
+      else if (t === 0 && b > 0) status = "perdido";
+      else if (pctIng >= 10) status = "verde";
+      else if (pctIng <= -10) status = "rojo";
+      else status = "amarillo";
+
+      rows.push({ ds, baseIng: b, targetIng: t, deltaIng, pctIng, baseMov, targetMov, pctMov, status });
+    });
+    const order: Record<string, number> = { rojo: 0, perdido: 1, amarillo: 2, verde: 3, nuevo: 4 };
+    rows.sort((a, b) => {
+      const sa = order[a.status], sb = order[b.status];
+      if (sa !== sb) return sa - sb;
+      return b.baseIng - a.baseIng;
+    });
+    return rows;
+  }, [ingByDayDs, monthInCourse, diasMes, diasTranscurridos, dsMonthlyRatios]);
+
+  const semaforoSummary = useMemo(() => {
+    const s = { verde: 0, amarillo: 0, rojo: 0, nuevo: 0, perdido: 0 };
+    semaforoRows.forEach((r) => { s[r.status]++; });
+    return s;
+  }, [semaforoRows]);
+
   // ─── Análisis día por día (target mes) ───
   // Para cada día del mes: # DSs activos ese día, ing/mov del día, promedios
   // por DS activo, y cuánto cada activo tuvo que mover según la brecha al
@@ -497,6 +558,107 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
             )}
           </div>
         </div>
+      </div>
+
+      {/* Semáforo por DS */}
+      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div>
+            <h3 className="text-sm font-bold t-primary">
+              🚦 Semáforo por Dropshipper — {labelTarget} vs {labelBase}
+              {monthInCourse && <span className="text-[10px] text-cyan-300 ml-1">(MTD: días 1–{diasTranscurridos})</span>}
+            </h3>
+            <p className="text-[11px] t-muted">
+              Variación de ingresadas a igualdad de período. {monthInCourse ? `Compara los primeros ${diasTranscurridos} días de ${labelBase} con los primeros ${diasTranscurridos} de ${labelTarget}.` : `Mes completo vs mes completo.`}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <input type="text" placeholder="🔍 Buscar..." value={semaSearch} onChange={(e) => setSemaSearch(e.target.value)}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none focus:border-orange-500 w-40" />
+          </div>
+        </div>
+
+        {/* Resumen + filtros */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
+          {([
+            { key: "rojo" as const, label: "🔴 Bajan", color: "#dc2626", count: semaforoSummary.rojo },
+            { key: "perdido" as const, label: "⚫ Perdidos", color: "#6b7280", count: semaforoSummary.perdido },
+            { key: "amarillo" as const, label: "🟡 Estables", color: "#f59e0b", count: semaforoSummary.amarillo },
+            { key: "verde" as const, label: "🟢 Suben", color: "#10b981", count: semaforoSummary.verde },
+            { key: "nuevo" as const, label: "✨ Nuevos", color: "#0891b2", count: semaforoSummary.nuevo },
+          ]).map((s) => (
+            <button key={s.key} type="button" onClick={() => setSemaFilter(semaFilter === s.key ? "all" : s.key)}
+              className={`rounded-lg p-2 border text-left transition-all ${semaFilter === s.key ? "ring-2 ring-offset-1 ring-offset-transparent" : ""}`}
+              style={{ background: "var(--bg-input)", borderColor: s.color + "40" }}>
+              <p className="text-[10px] t-muted">{s.label}</p>
+              <p className="text-xl font-bold" style={{ color: s.color }}>{s.count}</p>
+            </button>
+          ))}
+        </div>
+
+        {semaforoSummary.rojo > 0 && semaFilter !== "rojo" && (
+          <div className="mb-3 p-2 rounded-lg border border-red-500/40 text-[11px] text-red-300 flex items-center justify-between"
+            style={{ background: "rgba(220,38,38,0.06)" }}>
+            <span>🚨 Tenés <strong>{semaforoSummary.rojo}</strong> DSs bajando (umbral: −10% vs {labelBase}).</span>
+            <button onClick={() => setSemaFilter("rojo")} className="text-[10px] underline">Ver solo los que bajan</button>
+          </div>
+        )}
+
+        <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
+              <tr className="border-b border-gray-700 text-[10px] t-muted">
+                <th className="text-left py-2 px-2">#</th>
+                <th className="text-left py-2 px-2">Dropshipper</th>
+                <th className="text-center py-2 px-2">Estado</th>
+                <th className="text-right py-2 px-2">{labelBase} ing</th>
+                <th className="text-right py-2 px-2">{labelTarget} ing</th>
+                <th className="text-right py-2 px-2">Δ ing</th>
+                <th className="text-right py-2 px-2">% ing</th>
+                <th className="text-right py-2 px-2">{labelBase} mov</th>
+                <th className="text-right py-2 px-2">{labelTarget} mov</th>
+                <th className="text-right py-2 px-2">% mov</th>
+              </tr>
+            </thead>
+            <tbody>
+              {semaforoRows
+                .filter((r) => semaFilter === "all" || r.status === semaFilter)
+                .filter((r) => !semaSearch.trim() || r.ds.toLowerCase().includes(semaSearch.toLowerCase()))
+                .slice(0, 200)
+                .map((r, i) => {
+                  const colors: Record<string, string> = { verde: "#10b981", amarillo: "#f59e0b", rojo: "#dc2626", nuevo: "#0891b2", perdido: "#6b7280" };
+                  const labels: Record<string, string> = { verde: "🟢 Subió", amarillo: "🟡 Estable", rojo: "🔴 Baja", nuevo: "✨ Nuevo", perdido: "⚫ Perdido" };
+                  return (
+                    <tr key={r.ds} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                      <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
+                      <td className="py-2 px-2 t-primary max-w-[220px] truncate" title={r.ds}>{r.ds}</td>
+                      <td className="py-2 px-2 text-center">
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: colors[r.status] + "20", color: colors[r.status] }}>
+                          {labels[r.status]}
+                        </span>
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono t-muted">{r.baseIng.toLocaleString("es-AR")}</td>
+                      <td className="py-2 px-2 text-right font-mono text-cyan-300">{r.targetIng.toLocaleString("es-AR")}</td>
+                      <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: r.deltaIng > 0 ? "#10b981" : r.deltaIng < 0 ? "#dc2626" : "#6b7280" }}>
+                        {r.deltaIng > 0 ? "+" : ""}{r.deltaIng.toLocaleString("es-AR")}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: colors[r.status] }}>
+                        {r.status === "nuevo" ? "Nuevo" : r.status === "perdido" ? "−100%" : (r.pctIng > 0 ? "+" : "") + r.pctIng.toFixed(0) + "%"}
+                      </td>
+                      <td className="py-2 px-2 text-right font-mono t-muted">{r.baseMov.toLocaleString("es-AR")}</td>
+                      <td className="py-2 px-2 text-right font-mono text-orange-300">{r.targetMov.toLocaleString("es-AR")}</td>
+                      <td className="py-2 px-2 text-right font-mono" style={{ color: r.pctMov > 0 ? "#10b981" : r.pctMov < 0 ? "#dc2626" : "#6b7280" }}>
+                        {r.targetMov > 0 || r.baseMov > 0 ? (r.pctMov > 0 ? "+" : "") + r.pctMov.toFixed(0) + "%" : "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[10px] t-muted mt-3">
+          Umbrales: <strong style={{ color: "#10b981" }}>≥ +10%</strong> verde · <strong style={{ color: "#f59e0b" }}>entre −10% y +10%</strong> amarillo · <strong style={{ color: "#dc2626" }}>≤ −10%</strong> rojo. Movilizadas se estiman por ratio mensual del DS.
+        </p>
       </div>
 
       {/* Escenarios */}
