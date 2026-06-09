@@ -75,6 +75,8 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   const [dailyBase, setDailyBase] = useState<ByDSDaily[]>([]);
   const [dailyTarget, setDailyTarget] = useState<ByDSDaily[]>([]);
   const [byDateTarget, setByDateTarget] = useState<ByDate[]>([]);
+  const [byDateBase, setByDateBase] = useState<ByDate[]>([]);
+  const [compDs, setCompDs] = useState<string>("__all__");
   const [metaInfo, setMetaInfo] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -95,6 +97,7 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
       setDailyBase(Array.isArray(opBase?.data?.by_ds_daily) ? opBase.data.by_ds_daily : []);
       setDailyTarget(Array.isArray(opTar?.data?.by_ds_daily) ? opTar.data.by_ds_daily : []);
       setByDateTarget(Array.isArray(opTar?.data?.by_date) ? opTar.data.by_date : []);
+      setByDateBase(Array.isArray(opBase?.data?.by_date) ? opBase.data.by_date : []);
       setMetaInfo(dash?.meta_info || {});
     } finally {
       setLoading(false);
@@ -266,6 +269,100 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
     return data;
   }, [activosBase, simDsValue, metaMov, diasMes, totalsBase, mesBase, metaInfo]);
 
+  // ─── Comparativo diario base vs target ───
+  // Permite ver, por ejemplo, "Mayo 7" vs "Junio 7" para un DS específico
+  // (o todos agregados).
+  const dsListUnion = useMemo(() => {
+    const set = new Set<string>();
+    dailyBase.forEach((r) => r.ds && set.add(String(r.ds).replace(/\s*\(\d+\)\s*$/, "").trim()));
+    dailyTarget.forEach((r) => r.ds && set.add(String(r.ds).replace(/\s*\(\d+\)\s*$/, "").trim()));
+    return Array.from(set).sort();
+  }, [dailyBase, dailyTarget]);
+
+  // Total mensual ing/mov por DS (para estimar mov/día desde su ratio)
+  const dsMonthlyRatios = useMemo(() => {
+    const out = { base: new Map<string, { ing: number; mov: number; ratio: number }>(), target: new Map<string, { ing: number; mov: number; ratio: number }>() };
+    dsBase.forEach((v, k) => out.base.set(k, { ing: v.ing, mov: v.mov, ratio: v.ing > 0 ? v.mov / v.ing : 0 }));
+    dsTarget.forEach((v, k) => out.target.set(k, { ing: v.ing, mov: v.mov, ratio: v.ing > 0 ? v.mov / v.ing : 0 }));
+    return out;
+  }, [dsBase, dsTarget]);
+
+  // Country mov por día (para vista agregada)
+  const movByDayCountry = useMemo(() => {
+    const base = new Map<number, number>();
+    const target = new Map<number, number>();
+    for (const row of byDateBase) {
+      const d = dayOfMonth(row.fecha);
+      if (d) base.set(d, movFromEstados(row.estados || {}));
+    }
+    for (const row of byDateTarget) {
+      const d = dayOfMonth(row.fecha);
+      if (d) target.set(d, movFromEstados(row.estados || {}));
+    }
+    return { base, target };
+  }, [byDateBase, byDateTarget]);
+
+  // Ing por día por DS
+  const ingByDayDs = useMemo(() => {
+    const base = new Map<number, Map<string, number>>();
+    const target = new Map<number, Map<string, number>>();
+    const add = (map: Map<number, Map<string, number>>, row: ByDSDaily) => {
+      const d = dayOfMonth(row.fecha);
+      if (!d) return;
+      const clean = String(row.ds).replace(/\s*\(\d+\)\s*$/, "").trim();
+      if (!map.has(d)) map.set(d, new Map());
+      const dmap = map.get(d)!;
+      dmap.set(clean, (dmap.get(clean) || 0) + (row.ordenes || 0));
+    };
+    dailyBase.forEach((r) => add(base, r));
+    dailyTarget.forEach((r) => add(target, r));
+    return { base, target };
+  }, [dailyBase, dailyTarget]);
+
+  const diasBase = (metaInfo[`dias_${mesBase}`] as number) ?? MES_DIAS_DEFAULT[mesBase];
+  const maxDias = Math.max(diasMes, diasBase);
+
+  const dailyCompRows = useMemo(() => {
+    const out: {
+      dia: number;
+      baseIng: number; baseMov: number;
+      targetIng: number; targetMov: number;
+      deltaIng: number; deltaMov: number;
+      pctIng: number; pctMov: number;
+    }[] = [];
+    const isAll = compDs === "__all__";
+    for (let d = 1; d <= maxDias; d++) {
+      let baseIng = 0, baseMov = 0, targetIng = 0, targetMov = 0;
+      if (isAll) {
+        // Ing: sumar todos los DSs del día (base y target)
+        ingByDayDs.base.get(d)?.forEach((v) => { baseIng += v; });
+        ingByDayDs.target.get(d)?.forEach((v) => { targetIng += v; });
+        baseMov = movByDayCountry.base.get(d) || 0;
+        targetMov = movByDayCountry.target.get(d) || 0;
+      } else {
+        baseIng = ingByDayDs.base.get(d)?.get(compDs) || 0;
+        targetIng = ingByDayDs.target.get(d)?.get(compDs) || 0;
+        // Mov estimado para el DS usando su ratio mensual de mov/ing
+        const rb = dsMonthlyRatios.base.get(compDs)?.ratio || 0;
+        const rt = dsMonthlyRatios.target.get(compDs)?.ratio || 0;
+        baseMov = Math.round(baseIng * rb);
+        targetMov = Math.round(targetIng * rt);
+      }
+      const deltaIng = targetIng - baseIng;
+      const deltaMov = targetMov - baseMov;
+      const pctIng = baseIng > 0 ? (deltaIng / baseIng) * 100 : (targetIng > 0 ? 100 : 0);
+      const pctMov = baseMov > 0 ? (deltaMov / baseMov) * 100 : (targetMov > 0 ? 100 : 0);
+      out.push({ dia: d, baseIng, baseMov, targetIng, targetMov, deltaIng, deltaMov, pctIng, pctMov });
+    }
+    return out;
+  }, [compDs, maxDias, ingByDayDs, movByDayCountry, dsMonthlyRatios]);
+
+  const compTotals = useMemo(() => {
+    let baseIng = 0, baseMov = 0, targetIng = 0, targetMov = 0;
+    dailyCompRows.forEach((r) => { baseIng += r.baseIng; baseMov += r.baseMov; targetIng += r.targetIng; targetMov += r.targetMov; });
+    return { baseIng, baseMov, targetIng, targetMov };
+  }, [dailyCompRows]);
+
   // ─── Análisis día por día (target mes) ───
   // Para cada día del mes: # DSs activos ese día, ing/mov del día, promedios
   // por DS activo, y cuánto cada activo tuvo que mover según la brecha al
@@ -425,6 +522,78 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
             </div>
           ))}
         </div>
+      </div>
+
+      {/* Comparativo diario base vs target */}
+      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div>
+            <h3 className="text-sm font-bold t-primary">📊 Comparativo diario {labelBase} vs {labelTarget}</h3>
+            <p className="text-[11px] t-muted">Ej.: cómo estuvo el día 7 de {labelBase} vs el día 7 de {labelTarget}. Podés elegir un DS específico o ver todo agregado.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[10px] t-muted uppercase tracking-wider">DS</label>
+            <select value={compDs} onChange={(e) => setCompDs(e.target.value)}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none focus:border-orange-500 max-w-[280px]">
+              <option value="__all__">Todos (agregado país)</option>
+              {dsListUnion.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3 text-xs">
+          <Kpi label={`Total ${labelBase} ing`} value={compTotals.baseIng.toLocaleString("es-AR")} color="#94a3b8" />
+          <Kpi label={`Total ${labelTarget} ing`} value={compTotals.targetIng.toLocaleString("es-AR")} color="#0891b2" />
+          <Kpi label={`Total ${labelBase} mov`} value={compTotals.baseMov.toLocaleString("es-AR")} color="#94a3b8" />
+          <Kpi label={`Total ${labelTarget} mov`} value={compTotals.targetMov.toLocaleString("es-AR")} color="#10b981" />
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-700 text-[10px] t-muted">
+                <th className="text-left py-2 px-2">Día</th>
+                <th className="text-right py-2 px-2">{labelBase} ing</th>
+                <th className="text-right py-2 px-2">{labelTarget} ing</th>
+                <th className="text-right py-2 px-2">Δ ing</th>
+                <th className="text-right py-2 px-2">% ing</th>
+                <th className="text-right py-2 px-2">{labelBase} mov</th>
+                <th className="text-right py-2 px-2">{labelTarget} mov</th>
+                <th className="text-right py-2 px-2">Δ mov</th>
+                <th className="text-right py-2 px-2">% mov</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyCompRows.map((r) => {
+                const noData = r.baseIng === 0 && r.targetIng === 0 && r.baseMov === 0 && r.targetMov === 0;
+                return (
+                  <tr key={r.dia} className={`border-b border-gray-800/40 ${noData ? "opacity-40" : ""}`}>
+                    <td className="py-2 px-2 t-primary font-medium">{r.dia}</td>
+                    <td className="py-2 px-2 text-right font-mono t-muted">{r.baseIng > 0 ? r.baseIng.toLocaleString("es-AR") : "—"}</td>
+                    <td className="py-2 px-2 text-right font-mono text-cyan-300">{r.targetIng > 0 ? r.targetIng.toLocaleString("es-AR") : "—"}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: r.deltaIng > 0 ? "#10b981" : r.deltaIng < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseIng > 0 || r.targetIng > 0) ? (r.deltaIng > 0 ? "+" : "") + r.deltaIng.toLocaleString("es-AR") : "—"}
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-[10px]" style={{ color: r.pctIng > 0 ? "#10b981" : r.pctIng < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseIng > 0 || r.targetIng > 0) ? (r.pctIng > 0 ? "+" : "") + r.pctIng.toFixed(0) + "%" : "—"}
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono t-muted">{r.baseMov > 0 ? r.baseMov.toLocaleString("es-AR") : "—"}</td>
+                    <td className="py-2 px-2 text-right font-mono text-orange-300">{r.targetMov > 0 ? r.targetMov.toLocaleString("es-AR") : "—"}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: r.deltaMov > 0 ? "#10b981" : r.deltaMov < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseMov > 0 || r.targetMov > 0) ? (r.deltaMov > 0 ? "+" : "") + r.deltaMov.toLocaleString("es-AR") : "—"}
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-[10px]" style={{ color: r.pctMov > 0 ? "#10b981" : r.pctMov < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseMov > 0 || r.targetMov > 0) ? (r.pctMov > 0 ? "+" : "") + r.pctMov.toFixed(0) + "%" : "—"}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        {compDs !== "__all__" && (
+          <p className="text-[10px] t-muted mt-3">
+            ⓘ Movilizadas por DS por día se estiman aplicando el ratio mov/ing mensual del DS a su ingresadas del día (no tenemos mov per DS per día crudo).
+          </p>
+        )}
       </div>
 
       {/* Análisis día por día */}
