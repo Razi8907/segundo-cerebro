@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useDashboardData } from "../lib/useDashboardData";
 import KPICards from "../components/KPICards";
 import CRMCentroGestion from "../components/CRMCentroGestion";
+import MinimoDiario from "../components/MinimoDiario";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -70,7 +71,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
 }
 
 type Sector = "comercial" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
-type ComercialSub = "general" | "dropshippers" | "proveedores" | "crm";
+type ComercialSub = "general" | "minimo" | "dropshippers" | "proveedores" | "crm";
 
 export default function ParaguayDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
@@ -210,6 +211,7 @@ export default function ParaguayDashboard() {
             <div className="flex flex-wrap gap-2">
               {([
                 { key: "general" as ComercialSub, label: "📊 General" },
+                { key: "minimo" as ComercialSub, label: "📐 Mínimo Diario" },
                 { key: "dropshippers" as ComercialSub, label: "👥 Dropshippers" },
                 { key: "proveedores" as ComercialSub, label: "📦 Proveedores" },
                 { key: "crm" as ComercialSub, label: "🎯 CRM" },
@@ -264,6 +266,10 @@ export default function ParaguayDashboard() {
                   </>
                 )}
               </>
+            )}
+
+            {comercialSub === "minimo" && (
+              <MinimoDiario country="py" />
             )}
 
             {comercialSub === "crm" && (
