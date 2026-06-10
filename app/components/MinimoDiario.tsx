@@ -87,9 +87,9 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   const [semaFilter, setSemaFilter] = useState<"all" | "rojo" | "amarillo" | "verde" | "nuevo" | "perdido">("all");
   const [semaSearch, setSemaSearch] = useState("");
   // Modo de comparación temporal del semáforo
-  const [semaMode, setSemaMode] = useState<"mtd" | "single" | "range">("mtd");
-  const [semaFrom, setSemaFrom] = useState<number>(1);
-  const [semaTo, setSemaTo] = useState<number>(7);
+  const [filterMode, setFilterMode] = useState<"mtd" | "single" | "range">("mtd");
+  const [filterFrom, setFilterFrom] = useState<number>(1);
+  const [filterTo, setFilterTo] = useState<number>(7);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -137,23 +137,65 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   const activosBase = Array.from(dsBase.values()).filter(v => v.ing > 0).length;
   const activosTarget = Array.from(dsTarget.values()).filter(v => v.ing > 0).length;
 
-  // Metas del mes target (con fallback al mes base)
-  const metaMov = metaInfo[`meta_movilizadas_${mes}`]
+  // Metas del mes target completas (sin filtro)
+  const metaMovFull = metaInfo[`meta_movilizadas_${mes}`]
     ?? metaInfo[`meta_movilizadas_${mesBase}`] ?? 0;
-  const metaIng = metaInfo[`meta_ingresadas_${mes}`]
-    ?? (totalsBase.pctMov > 0 ? Math.round(metaMov / totalsBase.pctMov) : (metaInfo[`meta_ingresadas_${mesBase}`] ?? 0));
+  const metaIngFull = metaInfo[`meta_ingresadas_${mes}`]
+    ?? (totalsBase.pctMov > 0 ? Math.round(metaMovFull / totalsBase.pctMov) : (metaInfo[`meta_ingresadas_${mesBase}`] ?? 0));
 
-  // Real del target (a la fecha si está en curso, o total si está cerrado)
+  // ─── Filtro temporal aplicado: escalado de metas + filtrado de real ───
+  const isFiltered = filterMode !== "mtd";
+  const filterRangeFrom = filterMode === "single" ? filterFrom : filterMode === "range" ? Math.min(filterFrom, filterTo) : 1;
+  const filterRangeTo = filterMode === "single" ? filterFrom : filterMode === "range" ? Math.max(filterFrom, filterTo) : (monthInCourse ? diasTranscurridos : diasMes);
+  const daysInFilter = isFiltered ? (filterRangeTo - filterRangeFrom + 1) : (monthInCourse ? diasTranscurridos : diasMes);
+  const metaMov = isFiltered ? Math.round(metaMovFull * daysInFilter / diasMes) : metaMovFull;
+  const metaIng = isFiltered ? Math.round(metaIngFull * daysInFilter / diasMes) : metaIngFull;
+
+  // Helpers para extraer día de "DD-MM-YYYY"
+  const dayFromFecha = (s: string): number | null => {
+    const m = s.match(/^(\d{1,2})[-/]/);
+    return m ? parseInt(m[1], 10) : null;
+  };
+  const movFromEstadosLocal = (estados: Record<string, number>): number => {
+    let total = 0, noMov = 0;
+    const NO_MOV_SET = new Set(["PENDIENTE","PENDIENTE CONFIRMACION","GUIA_GENERADA","PREPARADO PARA TRANSPORTADORA","CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA"]);
+    for (const k in estados) {
+      total += estados[k] || 0;
+      if (NO_MOV_SET.has(k)) noMov += estados[k] || 0;
+    }
+    return Math.max(total - noMov, 0);
+  };
+
+  // Real del target — sin filtro: monthly totals; con filtro: suma del rango
   const movRealTarget = useMemo(() => {
+    if (isFiltered) {
+      let sum = 0;
+      for (const r of byDateTarget) {
+        const d = dayFromFecha(r.fecha);
+        if (d !== null && d >= filterRangeFrom && d <= filterRangeTo) {
+          sum += movFromEstadosLocal(r.estados || {});
+        }
+      }
+      return sum;
+    }
     let mov = 0;
     dsTarget.forEach((v) => { mov += v.mov; });
     return mov;
-  }, [dsTarget]);
+  }, [dsTarget, isFiltered, byDateTarget, filterRangeFrom, filterRangeTo]);
+
   const ingRealTarget = useMemo(() => {
+    if (isFiltered) {
+      let sum = 0;
+      for (const r of dailyTarget) {
+        const d = dayFromFecha(r.fecha);
+        if (d !== null && d >= filterRangeFrom && d <= filterRangeTo) sum += r.ordenes || 0;
+      }
+      return sum;
+    }
     let ing = 0;
     dsTarget.forEach((v) => { ing += v.ing; });
     return ing;
-  }, [dsTarget]);
+  }, [dsTarget, isFiltered, dailyTarget, filterRangeFrom, filterRangeTo]);
 
   const movPendiente = Math.max(metaMov - movRealTarget, 0);
   // La brecha de ingresadas debe ser al menos la brecha de movilizadas / % de
@@ -373,20 +415,20 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
   // ─── Semáforo por DS — variación base vs target ───
   // Filtros temporales:
   // - mtd: días 1..diasTranscurridos (cerrado: 1..diasMes)
-  // - single: solo el día semaFrom (en ambos meses)
-  // - range: días semaFrom..semaTo (en ambos meses)
-  const semaRangeFrom = semaMode === "mtd" ? 1 : Math.max(1, Math.min(semaFrom, maxDias));
-  const semaRangeTo = semaMode === "mtd"
+  // - single: solo el día filterFrom (en ambos meses)
+  // - range: días filterFrom..filterTo (en ambos meses)
+  const globalRangeFrom = filterMode === "mtd" ? 1 : Math.max(1, Math.min(filterFrom, maxDias));
+  const globalRangeTo = filterMode === "mtd"
     ? (monthInCourse ? diasTranscurridos : diasMes)
-    : semaMode === "single"
-    ? Math.max(1, Math.min(semaFrom, maxDias))
-    : Math.max(semaRangeFrom, Math.min(semaTo, maxDias));
+    : filterMode === "single"
+    ? Math.max(1, Math.min(filterFrom, maxDias))
+    : Math.max(globalRangeFrom, Math.min(filterTo, maxDias));
   const semaforoRows = useMemo(() => {
     const baseByDs = new Map<string, number>();
     const targetByDs = new Map<string, number>();
     const acumular = (src: Map<number, Map<string, number>>, dest: Map<string, number>) => {
       src.forEach((dsMap, day) => {
-        if (day < semaRangeFrom || day > semaRangeTo) return;
+        if (day < globalRangeFrom || day > globalRangeTo) return;
         dsMap.forEach((v, ds) => { dest.set(ds, (dest.get(ds) || 0) + v); });
       });
     };
@@ -427,7 +469,7 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
       return b.baseIng - a.baseIng;
     });
     return rows;
-  }, [ingByDayDs, dsMonthlyRatios, semaRangeFrom, semaRangeTo]);
+  }, [ingByDayDs, dsMonthlyRatios, globalRangeFrom, globalRangeTo]);
 
   const semaforoSummary = useMemo(() => {
     const s = { verde: 0, amarillo: 0, rojo: 0, nuevo: 0, perdido: 0 };
@@ -510,8 +552,10 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
       {/* Encabezado */}
       <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
         <h2 className="text-base font-bold t-primary mb-1">
-          📐 Mínimo Diario — {labelTarget} 2026 {monthInCourse && <span className="text-[11px] text-green-400 ml-1">(EN CURSO)</span>}
-          {!monthInCourse && <span className="text-[11px] text-gray-400 ml-1">(cerrado)</span>}
+          📐 Mínimo Diario — {labelTarget} 2026
+          {isFiltered && <span className="text-[11px] text-purple-300 ml-1">{filterMode === "single" ? `(día ${filterRangeFrom})` : `(días ${filterRangeFrom}–${filterRangeTo})`}</span>}
+          {!isFiltered && monthInCourse && <span className="text-[11px] text-green-400 ml-1">(EN CURSO)</span>}
+          {!isFiltered && !monthInCourse && <span className="text-[11px] text-gray-400 ml-1">(cerrado)</span>}
         </h2>
         <p className="text-[11px] t-muted">
           {monthInCourse
@@ -521,12 +565,60 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
         {isSameBase && (
           <p className="text-[10px] mt-1 text-amber-300">⚠️ Para {labelTarget} no hay snapshot Comercial del mes anterior — el "base" usa los mismos datos de {labelTarget}.</p>
         )}
+
+        {/* Filtro temporal GLOBAL — aplica a todas las secciones */}
+        <div className="flex flex-wrap items-end gap-3 mt-3 pt-3 border-t border-gray-700/40">
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Período</label>
+            <select value={filterMode} onChange={(e) => setFilterMode(e.target.value as "mtd" | "single" | "range")}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none">
+              <option value="mtd">{monthInCourse ? `MTD (1–${diasTranscurridos})` : "Mes completo"}</option>
+              <option value="single">Día único</option>
+              <option value="range">Rango de días</option>
+            </select>
+          </div>
+          {filterMode === "single" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] t-muted uppercase tracking-wider">Día (1–{maxDias})</label>
+              <input type="number" min={1} max={maxDias} value={filterFrom}
+                onChange={(e) => setFilterFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              <span className="text-[9px] t-muted">Día {filterFrom} de {labelBase} vs {filterFrom} de {labelTarget}</span>
+            </div>
+          )}
+          {filterMode === "range" && (
+            <>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Desde</label>
+                <input type="number" min={1} max={maxDias} value={filterFrom}
+                  onChange={(e) => setFilterFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Hasta</label>
+                <input type="number" min={1} max={maxDias} value={filterTo}
+                  onChange={(e) => setFilterTo(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+              <span className="text-[10px] t-muted self-end pb-1">
+                {globalRangeFrom > globalRangeTo ? <span className="text-red-400">⚠️ rango inválido</span>
+                  : `${globalRangeTo - globalRangeFrom + 1} días: ${globalRangeFrom}–${globalRangeTo}`}
+              </span>
+            </>
+          )}
+          {filterMode !== "mtd" && (
+            <button type="button" onClick={() => { setFilterMode("mtd"); setFilterFrom(1); setFilterTo(7); }}
+              className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40 self-end">
+              ↺ Reset a MTD
+            </button>
+          )}
+        </div>
       </div>
 
       {/* KPIs */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Kpi label={`Meta Movilizadas ${labelTarget}`} value={metaMov.toLocaleString("es-AR")} color="#f97316" />
-        <Kpi label={`Meta Ingresadas ${labelTarget}`} value={metaIng.toLocaleString("es-AR")} color="#0891b2" />
+        <Kpi label={isFiltered ? `Meta Mov (${daysInFilter}d)` : `Meta Movilizadas ${labelTarget}`} value={metaMov.toLocaleString("es-AR")} color="#f97316" sub={isFiltered ? `${(daysInFilter / diasMes * 100).toFixed(0)}% de ${metaMovFull.toLocaleString("es-AR")}` : undefined} />
+        <Kpi label={isFiltered ? `Meta Ing (${daysInFilter}d)` : `Meta Ingresadas ${labelTarget}`} value={metaIng.toLocaleString("es-AR")} color="#0891b2" sub={isFiltered ? `${(daysInFilter / diasMes * 100).toFixed(0)}% de ${metaIngFull.toLocaleString("es-AR")}` : undefined} />
         <Kpi label={`% Movilización país (${labelBase})`} value={`${(totalsBase.pctMov * 100).toFixed(1)}%`} color="#10b981" sub={`${totalsBase.mov.toLocaleString("es-AR")} / ${totalsBase.ing.toLocaleString("es-AR")}`} />
         <Kpi label={`DSs activos ${labelBase}`} value={activosBase.toLocaleString("es-AR")} color="#a78bfa" />
         <Kpi label={`DSs activos ${labelTarget}`} value={activosTarget.toLocaleString("es-AR")} color="#a78bfa" sub={monthInCourse ? `hasta día ${diasTranscurridos}` : "mes cerrado"} />
@@ -534,8 +626,8 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-        <ProgressCard label={`Movilizadas ${labelTarget} (real vs meta)`} actual={movRealTarget} target={metaMov} color="#10b981" />
-        <ProgressCard label={`Ingresadas ${labelTarget} (real vs meta)`} actual={ingRealTarget} target={metaIng} color="#0891b2" />
+        <ProgressCard label={isFiltered ? `Movilizadas ${labelTarget} en período (real vs meta)` : `Movilizadas ${labelTarget} (real vs meta)`} actual={movRealTarget} target={metaMov} color="#10b981" />
+        <ProgressCard label={isFiltered ? `Ingresadas ${labelTarget} en período (real vs meta)` : `Ingresadas ${labelTarget} (real vs meta)`} actual={ingRealTarget} target={metaIng} color="#0891b2" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
@@ -578,11 +670,11 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
             <h3 className="text-sm font-bold t-primary">
               🚦 Semáforo por Dropshipper — {labelTarget} vs {labelBase}
               <span className="text-[10px] text-cyan-300 ml-1">
-                {semaMode === "mtd"
+                {filterMode === "mtd"
                   ? (monthInCourse ? `(MTD: días 1–${diasTranscurridos})` : "(mes completo)")
-                  : semaMode === "single"
-                  ? `(día ${semaRangeFrom})`
-                  : `(días ${semaRangeFrom}–${semaRangeTo})`}
+                  : filterMode === "single"
+                  ? `(día ${globalRangeFrom})`
+                  : `(días ${globalRangeFrom}–${globalRangeTo})`}
               </span>
             </h3>
             <p className="text-[11px] t-muted">
@@ -593,54 +685,7 @@ export default function MinimoDiario({ country, mes }: { country: "ar" | "py"; m
             className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none focus:border-orange-500 w-40" />
         </div>
 
-        {/* Filtro temporal */}
-        <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg mb-3" style={{ background: "var(--bg-input)" }}>
-          <div className="flex flex-col gap-1">
-            <label className="text-[10px] t-muted uppercase tracking-wider">Modo</label>
-            <select value={semaMode} onChange={(e) => setSemaMode(e.target.value as "mtd" | "single" | "range")}
-              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none">
-              <option value="mtd">{monthInCourse ? `MTD (1–${diasTranscurridos})` : "Mes completo"}</option>
-              <option value="single">Día único</option>
-              <option value="range">Rango de días</option>
-            </select>
-          </div>
-          {semaMode === "single" && (
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] t-muted uppercase tracking-wider">Día (1–{maxDias})</label>
-              <input type="number" min={1} max={maxDias} value={semaFrom}
-                onChange={(e) => setSemaFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
-                className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
-              <span className="text-[9px] t-muted">Compara día {semaFrom} de {labelBase} vs día {semaFrom} de {labelTarget}</span>
-            </div>
-          )}
-          {semaMode === "range" && (
-            <>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] t-muted uppercase tracking-wider">Desde día</label>
-                <input type="number" min={1} max={maxDias} value={semaFrom}
-                  onChange={(e) => setSemaFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
-                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-[10px] t-muted uppercase tracking-wider">Hasta día</label>
-                <input type="number" min={1} max={maxDias} value={semaTo}
-                  onChange={(e) => setSemaTo(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
-                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
-              </div>
-              <span className="text-[10px] t-muted self-end pb-1">
-                {semaRangeFrom > semaRangeTo
-                  ? <span className="text-red-400">⚠️ rango inválido</span>
-                  : `${semaRangeTo - semaRangeFrom + 1} días: ${semaRangeFrom}–${semaRangeTo} de ${labelBase} vs ${semaRangeFrom}–${semaRangeTo} de ${labelTarget}`}
-              </span>
-            </>
-          )}
-          {semaMode !== "mtd" && (
-            <button type="button" onClick={() => { setSemaMode("mtd"); setSemaFrom(1); setSemaTo(7); }}
-              className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40 self-end">
-              ↺ Volver a MTD
-            </button>
-          )}
-        </div>
+        <p className="text-[10px] t-muted mb-3">Usa el filtro de período global (arriba) para acotar el rango de días. Por defecto se muestra MTD ({monthInCourse ? `días 1–${diasTranscurridos}` : "mes completo"}).</p>
 
         {/* Resumen + filtros */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-3">
