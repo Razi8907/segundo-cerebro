@@ -267,23 +267,32 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
   }, [tabla]);
 
   // Top 20 DSs por cuota — incluye avance % vs cuota y delta vs base
+  // tanto para ingresadas como movilizadas.
   const top20 = useMemo(() => {
     return [...tabla]
       .sort((a, b) => b.cuotaMov - a.cuotaMov)
       .slice(0, 20)
       .map((r) => ({
         nombre: r.nombre,
-        cuota: Math.max(Math.round(r.cuotaMov), 0),
-        target: Math.max(Math.round(r.targetMov), 0),
-        base: Math.max(Math.round(r.baseMov), 0),
-        pctCuota: r.cuotaMov > 0 ? (r.targetMov / r.cuotaMov) * 100 : (r.targetMov > 0 ? 100 : 0),
-        deltaVsBase: r.targetMov - r.baseMov,
-        pctVsBase: r.baseMov > 0 ? ((r.targetMov - r.baseMov) / r.baseMov) * 100 : (r.targetMov > 0 ? 100 : 0),
+        // Movilizadas
+        cuotaMov: Math.max(Math.round(r.cuotaMov), 0),
+        targetMov: Math.max(Math.round(r.targetMov), 0),
+        baseMov: Math.max(Math.round(r.baseMov), 0),
+        pctCuotaMov: r.cuotaMov > 0 ? (r.targetMov / r.cuotaMov) * 100 : (r.targetMov > 0 ? 100 : 0),
+        pctVsBaseMov: r.baseMov > 0 ? ((r.targetMov - r.baseMov) / r.baseMov) * 100 : (r.targetMov > 0 ? 100 : 0),
+        // Ingresadas
+        cuotaIng: Math.max(Math.round(r.cuotaIng), 0),
+        targetIng: Math.max(Math.round(r.targetIng), 0),
+        baseIng: Math.max(Math.round(r.baseIng), 0),
+        pctCuotaIng: r.cuotaIng > 0 ? (r.targetIng / r.cuotaIng) * 100 : (r.targetIng > 0 ? 100 : 0),
+        pctVsBaseIng: r.baseIng > 0 ? ((r.targetIng - r.baseIng) / r.baseIng) * 100 : (r.targetIng > 0 ? 100 : 0),
         status: r.status,
       }));
   }, [tabla]);
 
-  const maxCuotaTop = useMemo(() => Math.max(1, ...top20.map((r) => Math.max(r.cuota, r.target))), [top20]);
+  // Escalas separadas para ing y mov (tienen magnitudes distintas)
+  const maxIngTop = useMemo(() => Math.max(1, ...top20.map((r) => Math.max(r.cuotaIng, r.targetIng))), [top20]);
+  const maxMovTop = useMemo(() => Math.max(1, ...top20.map((r) => Math.max(r.cuotaMov, r.targetMov))), [top20]);
 
   if (loading) {
     return <div className="glass-card p-6 t-muted text-sm">Cargando análisis de mínimo mensual…</div>;
@@ -437,61 +446,137 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
         </div>
       </div>
 
-      {/* Top 20 — Avance de cuota */}
+      {/* Top 20 — Avance de cuota (ing + mov) */}
       <div className="rounded-xl p-5 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
         <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
-          <h3 className="text-sm font-bold t-primary">📊 Top 20 DSs — Avance de cuota {labelTarget}</h3>
+          <h3 className="text-sm font-bold t-primary">
+            📊 Top 20 DSs — Avance de cuota {labelTarget}
+            {isFiltered && <span className="text-[10px] text-purple-300 ml-1">{filterMode === "single" ? `· día ${rangeFrom}` : `· días ${rangeFrom}–${rangeTo}`}</span>}
+          </h3>
           <div className="flex items-center gap-3 text-[10px] t-muted">
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: "#10b981" }} /> ≥ 100%</span>
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: "#f59e0b" }} /> 75–99%</span>
-            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: "#dc2626" }} /> &lt; 75%</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#0891b2" }} /> Ingresadas</span>
+            <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm" style={{ background: "#10b981" }} /> Movilizadas</span>
+            <span className="t-muted">·</span>
+            <span className="t-secondary">▼ cuota</span>
           </div>
         </div>
-        <p className="text-[11px] t-muted mb-4">% de cumplimiento de la cuota mensual y crecimiento vs {labelBase}.</p>
-        <div className="space-y-2.5">
+        <p className="text-[11px] t-muted mb-3">Avance de ingresadas y movilizadas vs cuota mensual del DS y comparado con el mismo período de {labelBase}.</p>
+
+        {/* Filtro temporal */}
+        <div className="flex flex-wrap items-end gap-3 mb-4 p-3 rounded-lg" style={{ background: "var(--bg-input)" }}>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Período</label>
+            <select value={filterMode} onChange={(e) => setFilterMode(e.target.value as "full" | "single" | "range")}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none">
+              <option value="full">Mes completo</option>
+              <option value="single">Día único</option>
+              <option value="range">Rango de días</option>
+            </select>
+          </div>
+          {filterMode === "single" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] t-muted uppercase tracking-wider">Día</label>
+              <input type="number" min={1} max={maxDias} value={filterFrom}
+                onChange={(e) => setFilterFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+            </div>
+          )}
+          {filterMode === "range" && (
+            <>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Desde</label>
+                <input type="number" min={1} max={maxDias} value={filterFrom}
+                  onChange={(e) => setFilterFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Hasta</label>
+                <input type="number" min={1} max={maxDias} value={filterTo}
+                  onChange={(e) => setFilterTo(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+            </>
+          )}
+          {isFiltered && (
+            <button type="button" onClick={() => { setFilterMode("full"); setFilterFrom(1); setFilterTo(10); }}
+              className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40 self-end">
+              ↺ Reset
+            </button>
+          )}
+          <span className="text-[10px] t-muted self-end pb-1">
+            {!isFiltered ? "Comparando todo el mes" : `Comparando ${filterMode === "single" ? `el día ${rangeFrom}` : `los días ${rangeFrom}–${rangeTo}`} de ${labelBase} con los mismos días de ${labelTarget}`}
+          </span>
+        </div>
+
+        <div className="space-y-4">
           {top20.map((r, i) => {
-            const pct = r.pctCuota;
-            const fillColor = pct >= 100 ? "#10b981" : pct >= 75 ? "#f59e0b" : "#dc2626";
-            const widthPct = Math.min((r.target / maxCuotaTop) * 100, 100);
-            const cuotaPct = Math.min((r.cuota / maxCuotaTop) * 100, 100);
-            const pctVsBaseColor = r.pctVsBase > 0 ? "#10b981" : r.pctVsBase < 0 ? "#dc2626" : "#6b7280";
+            // ── INGRESADAS ──
+            const ingFillColor = r.pctCuotaIng >= 100 ? "#0891b2" : r.pctCuotaIng >= 75 ? "#0284c7" : "#1e40af";
+            const ingWidth = Math.min((r.targetIng / maxIngTop) * 100, 100);
+            const ingCuotaPos = Math.min((r.cuotaIng / maxIngTop) * 100, 100);
+            const ingDeltaColor = r.pctVsBaseIng > 0 ? "#10b981" : r.pctVsBaseIng < 0 ? "#dc2626" : "#6b7280";
+
+            // ── MOVILIZADAS ──
+            const movFillColor = r.pctCuotaMov >= 100 ? "#10b981" : r.pctCuotaMov >= 75 ? "#f59e0b" : "#dc2626";
+            const movWidth = Math.min((r.targetMov / maxMovTop) * 100, 100);
+            const movCuotaPos = Math.min((r.cuotaMov / maxMovTop) * 100, 100);
+            const movDeltaColor = r.pctVsBaseMov > 0 ? "#10b981" : r.pctVsBaseMov < 0 ? "#dc2626" : "#6b7280";
+
             return (
-              <div key={r.nombre} className="grid grid-cols-12 gap-3 items-center text-xs">
-                {/* Rank + nombre */}
-                <div className="col-span-12 sm:col-span-4 flex items-baseline gap-2 min-w-0">
-                  <span className="t-muted text-[10px] font-mono tabular-nums w-6 text-right">{i + 1}.</span>
-                  <span className="t-primary truncate font-medium" title={r.nombre}>{r.nombre}</span>
-                </div>
-                {/* Barra + marker de cuota */}
-                <div className="col-span-8 sm:col-span-5 relative h-6 rounded-md overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
-                  {/* Marker de la cuota */}
-                  <div className="absolute top-0 bottom-0 w-px"
-                    style={{ left: `${cuotaPct}%`, background: "rgba(255,255,255,0.35)" }} />
-                  <div className="absolute -top-0.5 text-[8px] t-muted whitespace-nowrap"
-                    style={{ left: `${cuotaPct}%`, transform: "translateX(-50%)" }}>▼</div>
-                  {/* Fill real */}
-                  <div className="h-full rounded-md transition-all"
-                    style={{ width: `${widthPct}%`, background: `linear-gradient(90deg, ${fillColor}cc, ${fillColor})` }} />
-                  {/* Cifras dentro de la barra */}
-                  <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
-                    <span className="text-[10px] font-bold text-white drop-shadow">{r.target.toLocaleString("es-AR")}</span>
-                    <span className="text-[10px] t-muted font-mono">/ {r.cuota.toLocaleString("es-AR")}</span>
+              <div key={r.nombre} className="border-b border-gray-800/30 pb-3 last:border-b-0 last:pb-0">
+                {/* Nombre + métricas */}
+                <div className="flex items-baseline justify-between gap-2 mb-2">
+                  <div className="flex items-baseline gap-2 min-w-0">
+                    <span className="t-muted text-[10px] font-mono tabular-nums w-6 text-right shrink-0">{i + 1}.</span>
+                    <span className="t-primary truncate font-medium text-xs" title={r.nombre}>{r.nombre}</span>
+                  </div>
+                  <div className="flex items-baseline gap-3 shrink-0 text-[10px]">
+                    <span className="tabular-nums">
+                      <span className="t-muted">Ing</span>{" "}
+                      <span className="font-bold" style={{ color: ingFillColor }}>{r.pctCuotaIng.toFixed(0)}%</span>
+                      <span className="ml-1" style={{ color: ingDeltaColor }}>{r.pctVsBaseIng > 0 ? "↑" : r.pctVsBaseIng < 0 ? "↓" : "→"}{Math.abs(r.pctVsBaseIng).toFixed(0)}%</span>
+                    </span>
+                    <span className="tabular-nums">
+                      <span className="t-muted">Mov</span>{" "}
+                      <span className="font-bold" style={{ color: movFillColor }}>{r.pctCuotaMov.toFixed(0)}%</span>
+                      <span className="ml-1" style={{ color: movDeltaColor }}>{r.pctVsBaseMov > 0 ? "↑" : r.pctVsBaseMov < 0 ? "↓" : "→"}{Math.abs(r.pctVsBaseMov).toFixed(0)}%</span>
+                    </span>
                   </div>
                 </div>
-                {/* % cuota + delta vs base */}
-                <div className="col-span-4 sm:col-span-3 flex items-baseline justify-end gap-2">
-                  <span className="text-sm font-bold tabular-nums" style={{ color: fillColor }}>{pct.toFixed(0)}%</span>
-                  <span className="text-[10px] tabular-nums" style={{ color: pctVsBaseColor }}>
-                    {r.pctVsBase > 0 ? "↑" : r.pctVsBase < 0 ? "↓" : "→"}{Math.abs(r.pctVsBase).toFixed(0)}%
-                  </span>
+
+                {/* Barra Ingresadas */}
+                <div className="relative h-5 rounded-md overflow-hidden mb-1.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="absolute top-0 bottom-0 w-px" style={{ left: `${ingCuotaPos}%`, background: "rgba(255,255,255,0.35)" }} />
+                  <div className="absolute -top-0.5 text-[8px] t-muted whitespace-nowrap" style={{ left: `${ingCuotaPos}%`, transform: "translateX(-50%)" }}>▼</div>
+                  <div className="h-full rounded-md transition-all" style={{ width: `${ingWidth}%`, background: `linear-gradient(90deg, ${ingFillColor}cc, ${ingFillColor})` }} />
+                  <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
+                    <span className="text-[10px] font-bold text-white drop-shadow flex items-center gap-1.5">
+                      <span className="text-cyan-300">ING</span> {r.targetIng.toLocaleString("es-AR")}
+                    </span>
+                    <span className="text-[10px] t-muted font-mono">/ {r.cuotaIng.toLocaleString("es-AR")} · {labelBase}: {r.baseIng.toLocaleString("es-AR")}</span>
+                  </div>
+                </div>
+
+                {/* Barra Movilizadas */}
+                <div className="relative h-5 rounded-md overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  <div className="absolute top-0 bottom-0 w-px" style={{ left: `${movCuotaPos}%`, background: "rgba(255,255,255,0.35)" }} />
+                  <div className="absolute -top-0.5 text-[8px] t-muted whitespace-nowrap" style={{ left: `${movCuotaPos}%`, transform: "translateX(-50%)" }}>▼</div>
+                  <div className="h-full rounded-md transition-all" style={{ width: `${movWidth}%`, background: `linear-gradient(90deg, ${movFillColor}cc, ${movFillColor})` }} />
+                  <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
+                    <span className="text-[10px] font-bold text-white drop-shadow flex items-center gap-1.5">
+                      <span className="text-green-300">MOV</span> {r.targetMov.toLocaleString("es-AR")}
+                    </span>
+                    <span className="text-[10px] t-muted font-mono">/ {r.cuotaMov.toLocaleString("es-AR")} · {labelBase}: {r.baseMov.toLocaleString("es-AR")}</span>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
         <p className="text-[10px] t-muted mt-4">
-          La barra muestra lo movilizado en {labelTarget}. El marcador <span className="t-secondary">▼</span> indica la cuota mensual del DS.
-          El segundo número (gris pequeño a la derecha) es la flecha de cambio vs {labelBase}.
+          Cada DS tiene dos barras: <strong className="text-cyan-300">ING</strong> (ingresadas) y <strong className="text-green-300">MOV</strong> (movilizadas).
+          El número grande blanco es lo que va en {labelTarget}, el gris es la cuota del período. Después: ritmo histórico en {labelBase}.
+          Las flechas ↑/↓ comparan {labelTarget} vs {labelBase} para el mismo rango.
         </p>
       </div>
 
