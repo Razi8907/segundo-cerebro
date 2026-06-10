@@ -1,9 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
-} from "recharts";
 
 const NO_MOV = new Set([
   "PENDIENTE","PENDIENTE CONFIRMACION","GUIA_GENERADA","PREPARADO PARA TRANSPORTADORA",
@@ -269,18 +266,24 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
     return c;
   }, [tabla]);
 
-  // Chart: top 20 DSs por cuota mensual + comparativa baseMov y targetMov
-  const topChartData = useMemo(() => {
+  // Top 20 DSs por cuota — incluye avance % vs cuota y delta vs base
+  const top20 = useMemo(() => {
     return [...tabla]
       .sort((a, b) => b.cuotaMov - a.cuotaMov)
       .slice(0, 20)
       .map((r) => ({
-        nombre: r.nombre.slice(0, 18) + (r.nombre.length > 18 ? "…" : ""),
-        Base: Math.round(r.baseMov),
-        Target: Math.round(r.targetMov),
-        Cuota: Math.round(r.cuotaMov),
+        nombre: r.nombre,
+        cuota: Math.max(Math.round(r.cuotaMov), 0),
+        target: Math.max(Math.round(r.targetMov), 0),
+        base: Math.max(Math.round(r.baseMov), 0),
+        pctCuota: r.cuotaMov > 0 ? (r.targetMov / r.cuotaMov) * 100 : (r.targetMov > 0 ? 100 : 0),
+        deltaVsBase: r.targetMov - r.baseMov,
+        pctVsBase: r.baseMov > 0 ? ((r.targetMov - r.baseMov) / r.baseMov) * 100 : (r.targetMov > 0 ? 100 : 0),
+        status: r.status,
       }));
   }, [tabla]);
+
+  const maxCuotaTop = useMemo(() => Math.max(1, ...top20.map((r) => Math.max(r.cuota, r.target))), [top20]);
 
   if (loading) {
     return <div className="glass-card p-6 t-muted text-sm">Cargando análisis de mínimo mensual…</div>;
@@ -434,24 +437,62 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
         </div>
       </div>
 
-      {/* Top 20 chart */}
-      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
-        <h3 className="text-sm font-bold t-primary mb-1">📊 Top 20 DSs — Cuota mensual de {labelTarget} vs real</h3>
-        <p className="text-[11px] t-muted mb-3">Cuánto debe aportar cada uno al mes vs lo que hizo en {labelBase} y lo que va en {labelTarget}.</p>
-        <div className="h-80">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={topChartData} layout="vertical" margin={{ left: 100, right: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} />
-              <YAxis type="category" dataKey="nombre" tick={{ fontSize: 9, fill: "#94a3b8" }} width={90} />
-              <Tooltip contentStyle={{ background: "rgba(22,33,62,0.95)", border: "1px solid rgba(6,182,212,0.2)", borderRadius: 8, fontSize: 11 }} />
-              <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="Base" name={`${labelBase} mov real`} fill="#6b7280" />
-              <Bar dataKey="Target" name={`${labelTarget} mov real`} fill="#f97316" />
-              <Bar dataKey="Cuota" name={`${labelTarget} cuota mensual`} fill="#10b981" />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Top 20 — Avance de cuota */}
+      <div className="rounded-xl p-5 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-1">
+          <h3 className="text-sm font-bold t-primary">📊 Top 20 DSs — Avance de cuota {labelTarget}</h3>
+          <div className="flex items-center gap-3 text-[10px] t-muted">
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: "#10b981" }} /> ≥ 100%</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: "#f59e0b" }} /> 75–99%</span>
+            <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-sm" style={{ background: "#dc2626" }} /> &lt; 75%</span>
+          </div>
         </div>
+        <p className="text-[11px] t-muted mb-4">% de cumplimiento de la cuota mensual y crecimiento vs {labelBase}.</p>
+        <div className="space-y-2.5">
+          {top20.map((r, i) => {
+            const pct = r.pctCuota;
+            const fillColor = pct >= 100 ? "#10b981" : pct >= 75 ? "#f59e0b" : "#dc2626";
+            const widthPct = Math.min((r.target / maxCuotaTop) * 100, 100);
+            const cuotaPct = Math.min((r.cuota / maxCuotaTop) * 100, 100);
+            const pctVsBaseColor = r.pctVsBase > 0 ? "#10b981" : r.pctVsBase < 0 ? "#dc2626" : "#6b7280";
+            return (
+              <div key={r.nombre} className="grid grid-cols-12 gap-3 items-center text-xs">
+                {/* Rank + nombre */}
+                <div className="col-span-12 sm:col-span-4 flex items-baseline gap-2 min-w-0">
+                  <span className="t-muted text-[10px] font-mono tabular-nums w-6 text-right">{i + 1}.</span>
+                  <span className="t-primary truncate font-medium" title={r.nombre}>{r.nombre}</span>
+                </div>
+                {/* Barra + marker de cuota */}
+                <div className="col-span-8 sm:col-span-5 relative h-6 rounded-md overflow-hidden" style={{ background: "rgba(255,255,255,0.04)" }}>
+                  {/* Marker de la cuota */}
+                  <div className="absolute top-0 bottom-0 w-px"
+                    style={{ left: `${cuotaPct}%`, background: "rgba(255,255,255,0.35)" }} />
+                  <div className="absolute -top-0.5 text-[8px] t-muted whitespace-nowrap"
+                    style={{ left: `${cuotaPct}%`, transform: "translateX(-50%)" }}>▼</div>
+                  {/* Fill real */}
+                  <div className="h-full rounded-md transition-all"
+                    style={{ width: `${widthPct}%`, background: `linear-gradient(90deg, ${fillColor}cc, ${fillColor})` }} />
+                  {/* Cifras dentro de la barra */}
+                  <div className="absolute inset-0 flex items-center justify-between px-2 pointer-events-none">
+                    <span className="text-[10px] font-bold text-white drop-shadow">{r.target.toLocaleString("es-AR")}</span>
+                    <span className="text-[10px] t-muted font-mono">/ {r.cuota.toLocaleString("es-AR")}</span>
+                  </div>
+                </div>
+                {/* % cuota + delta vs base */}
+                <div className="col-span-4 sm:col-span-3 flex items-baseline justify-end gap-2">
+                  <span className="text-sm font-bold tabular-nums" style={{ color: fillColor }}>{pct.toFixed(0)}%</span>
+                  <span className="text-[10px] tabular-nums" style={{ color: pctVsBaseColor }}>
+                    {r.pctVsBase > 0 ? "↑" : r.pctVsBase < 0 ? "↓" : "→"}{Math.abs(r.pctVsBase).toFixed(0)}%
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[10px] t-muted mt-4">
+          La barra muestra lo movilizado en {labelTarget}. El marcador <span className="t-secondary">▼</span> indica la cuota mensual del DS.
+          El segundo número (gris pequeño a la derecha) es la flecha de cambio vs {labelBase}.
+        </p>
       </div>
 
       {/* Tabla por DS */}
