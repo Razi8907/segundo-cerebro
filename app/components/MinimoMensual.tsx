@@ -200,6 +200,9 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
       cuotaMov: number; cuotaIng: number;
       share: number; growthReq: number;
       gap: number;
+      // Comparativa directa base vs target en el rango (Δ y %)
+      deltaIng: number; deltaMov: number;
+      pctIng: number; pctMov: number;
       status: "verde" | "amarillo" | "rojo" | "nuevo" | "perdido";
     }[] = [];
     allKeys.forEach((nombre) => {
@@ -225,6 +228,10 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
       else if (cumplimiento >= 75) status = "amarillo";
       else status = "rojo";
 
+      const deltaIng = t.ing - b.ing;
+      const deltaMov = t.mov - b.mov;
+      const pctIng = b.ing > 0 ? (deltaIng / b.ing) * 100 : (t.ing > 0 ? 100 : 0);
+      const pctMov = b.mov > 0 ? (deltaMov / b.mov) * 100 : (t.mov > 0 ? 100 : 0);
       rows.push({
         nombre,
         histMov: h.mov, histIng: h.ing,
@@ -234,6 +241,7 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
         share: share * 100,
         growthReq,
         gap,
+        deltaIng, deltaMov, pctIng, pctMov,
         status,
       });
     });
@@ -448,8 +456,11 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
 
       {/* Tabla por DS */}
       <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h3 className="text-sm font-bold t-primary">📋 Cuota mensual por Dropshipper ({tabla.length})</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h3 className="text-sm font-bold t-primary">
+            📋 Cuota mensual por Dropshipper ({tabla.length})
+            {isFiltered && <span className="text-[10px] text-purple-300 ml-1">{filterMode === "single" ? `· día ${rangeFrom}` : `· días ${rangeFrom}–${rangeTo}`}</span>}
+          </h3>
           <div className="flex items-center gap-2">
             <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}
               className="text-xs px-2 py-1.5 rounded border border-gray-700 bg-transparent t-primary outline-none">
@@ -461,6 +472,54 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
               className="text-xs px-2 py-1.5 rounded border border-gray-700 bg-transparent t-primary outline-none w-40" />
           </div>
         </div>
+
+        {/* Filtro temporal (igual al de arriba, accesible desde el card) */}
+        <div className="flex flex-wrap items-end gap-3 mb-3 p-3 rounded-lg" style={{ background: "var(--bg-input)" }}>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] t-muted uppercase tracking-wider">Período de comparación</label>
+            <select value={filterMode} onChange={(e) => setFilterMode(e.target.value as "full" | "single" | "range")}
+              className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none">
+              <option value="full">Mes completo</option>
+              <option value="single">Día único</option>
+              <option value="range">Rango de días</option>
+            </select>
+          </div>
+          {filterMode === "single" && (
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] t-muted uppercase tracking-wider">Día</label>
+              <input type="number" min={1} max={maxDias} value={filterFrom}
+                onChange={(e) => setFilterFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              <span className="text-[9px] t-muted">{rangeFrom} {labelBase} vs {rangeFrom} {labelTarget}</span>
+            </div>
+          )}
+          {filterMode === "range" && (
+            <>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Desde</label>
+                <input type="number" min={1} max={maxDias} value={filterFrom}
+                  onChange={(e) => setFilterFrom(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-[10px] t-muted uppercase tracking-wider">Hasta</label>
+                <input type="number" min={1} max={maxDias} value={filterTo}
+                  onChange={(e) => setFilterTo(Math.max(1, Math.min(maxDias, parseInt(e.target.value) || 1)))}
+                  className="text-xs px-2 py-1.5 rounded-lg border border-gray-700 bg-transparent t-primary outline-none w-20" />
+              </div>
+              <span className="text-[10px] t-muted self-end pb-1">
+                {rangeFrom > rangeTo ? <span className="text-red-400">⚠️ rango inválido</span> : `${daysInFilter} días: ${rangeFrom}–${rangeTo} de ${labelBase} vs ${rangeFrom}–${rangeTo} de ${labelTarget}`}
+              </span>
+            </>
+          )}
+          {isFiltered && (
+            <button type="button" onClick={() => { setFilterMode("full"); setFilterFrom(1); setFilterTo(10); }}
+              className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40 self-end">
+              ↺ Reset
+            </button>
+          )}
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
@@ -468,12 +527,17 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
                 <th className="text-left py-2 px-2">#</th>
                 <th className="text-left py-2 px-2">Dropshipper</th>
                 <th className="text-center py-2 px-2">Status</th>
-                {labelHist && <th className="text-right py-2 px-2">{labelHist} mov</th>}
+                <th className="text-right py-2 px-2">{labelBase} ing</th>
+                <th className="text-right py-2 px-2">{labelTarget} ing</th>
+                <th className="text-right py-2 px-2">Δ ing</th>
+                <th className="text-right py-2 px-2">% ing</th>
                 <th className="text-right py-2 px-2">{labelBase} mov</th>
                 <th className="text-right py-2 px-2">{labelTarget} mov</th>
-                <th className="text-right py-2 px-2 text-orange-300">Cuota mensual</th>
+                <th className="text-right py-2 px-2">Δ mov</th>
+                <th className="text-right py-2 px-2">% mov</th>
+                <th className="text-right py-2 px-2 text-orange-300">Cuota mov</th>
                 <th className="text-right py-2 px-2 text-cyan-300">Cuota ing</th>
-                <th className="text-right py-2 px-2">Share %</th>
+                <th className="text-right py-2 px-2">Share</th>
                 <th className="text-right py-2 px-2">Crec. req</th>
                 <th className="text-right py-2 px-2">Gap</th>
               </tr>
@@ -485,11 +549,24 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
                 return (
                   <tr key={r.nombre} className="border-b border-gray-800/40 hover:bg-orange-500/5">
                     <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
-                    <td className="py-2 px-2 t-primary max-w-[220px] truncate" title={r.nombre}>{r.nombre}</td>
+                    <td className="py-2 px-2 t-primary max-w-[200px] truncate" title={r.nombre}>{r.nombre}</td>
                     <td className="py-2 px-2 text-center"><span style={{ color: colors[r.status] }}>{lbl[r.status]}</span></td>
-                    {labelHist && <td className="py-2 px-2 text-right font-mono t-muted">{r.histMov.toLocaleString("es-AR")}</td>}
-                    <td className="py-2 px-2 text-right font-mono">{r.baseMov.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono t-muted">{r.baseIng.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono text-cyan-300">{r.targetIng.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: r.deltaIng > 0 ? "#10b981" : r.deltaIng < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseIng > 0 || r.targetIng > 0) ? (r.deltaIng > 0 ? "+" : "") + r.deltaIng.toLocaleString("es-AR") : "—"}
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-[10px]" style={{ color: r.pctIng > 0 ? "#10b981" : r.pctIng < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseIng > 0 || r.targetIng > 0) ? (r.pctIng > 0 ? "+" : "") + r.pctIng.toFixed(0) + "%" : "—"}
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono t-muted">{r.baseMov.toLocaleString("es-AR")}</td>
                     <td className="py-2 px-2 text-right font-mono text-orange-400">{r.targetMov.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: r.deltaMov > 0 ? "#10b981" : r.deltaMov < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseMov > 0 || r.targetMov > 0) ? (r.deltaMov > 0 ? "+" : "") + r.deltaMov.toLocaleString("es-AR") : "—"}
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono text-[10px]" style={{ color: r.pctMov > 0 ? "#10b981" : r.pctMov < 0 ? "#dc2626" : "#6b7280" }}>
+                      {(r.baseMov > 0 || r.targetMov > 0) ? (r.pctMov > 0 ? "+" : "") + r.pctMov.toFixed(0) + "%" : "—"}
+                    </td>
                     <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{Math.round(r.cuotaMov).toLocaleString("es-AR")}</td>
                     <td className="py-2 px-2 text-right font-mono font-bold text-cyan-300">{Math.round(r.cuotaIng).toLocaleString("es-AR")}</td>
                     <td className="py-2 px-2 text-right font-mono">{r.share.toFixed(1)}%</td>
@@ -511,9 +588,10 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
           )}
         </div>
         <p className="text-[10px] t-muted mt-3">
-          <strong>Cuota mensual</strong> = share del DS en {labelBase} aplicado a la meta de {labelTarget}.
-          <strong> Gap</strong> = cuánto le falta para llegar a su cuota (positivo = falta movilizar).
-          <strong> Crec. req</strong> = % de crecimiento sobre {labelBase} para hit cuota.
+          <strong>{labelBase} ing/mov</strong> y <strong>{labelTarget} ing/mov</strong> son los acumulados de cada mes en el período seleccionado (o mes completo si no hay filtro).
+          <strong> Δ y %</strong> = diferencia y crecimiento de {labelTarget} vs {labelBase} para el mismo rango.
+          <strong> Cuota mensual</strong> = share del DS en {labelBase} aplicado a la meta de {labelTarget} (escalada al período).
+          <strong> Gap</strong> = cuánto le falta para llegar a su cuota.
         </p>
       </div>
     </div>
