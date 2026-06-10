@@ -1,0 +1,409 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend,
+} from "recharts";
+
+const NO_MOV = new Set([
+  "PENDIENTE","PENDIENTE CONFIRMACION","GUIA_GENERADA","PREPARADO PARA TRANSPORTADORA",
+  "CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA",
+]);
+
+type Mes = "abril" | "mayo" | "junio";
+type ByDS = { nombre: string; total: number; estados: Record<string, number> };
+
+const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio" };
+const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30 };
+
+function aggregateDS(rows: ByDS[]): Map<string, { ing: number; mov: number; nombre: string }> {
+  const map = new Map<string, { ing: number; mov: number; nombre: string }>();
+  for (const r of rows) {
+    const e = r.estados || {};
+    let noMov = 0;
+    for (const k in e) if (NO_MOV.has(k)) noMov += e[k] || 0;
+    const total = r.total || 0;
+    const mov = total - noMov;
+    const clean = String(r.nombre).replace(/\s*\(\d+\)\s*$/, "").trim();
+    map.set(clean, { ing: total, mov, nombre: r.nombre });
+  }
+  return map;
+}
+
+export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; mes: Mes }) {
+  const mesAnterior: Mes | null = mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
+  const mesAntAnt: Mes | null = mes === "junio" ? "abril" : null;
+
+  const [opsTarget, setOpsTarget] = useState<ByDS[]>([]);
+  const [opsBase, setOpsBase] = useState<ByDS[]>([]);
+  const [opsHist, setOpsHist] = useState<ByDS[]>([]); // mes anterior al base, opcional
+  const [metaInfo, setMetaInfo] = useState<any>({});
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const [sortBy, setSortBy] = useState<"share" | "gap" | "growth">("share");
+
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const meses: Mes[] = ["abril", "mayo", "junio"];
+      const results = await Promise.all(
+        meses.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}`).then(r => r.json()).catch(() => null))
+      );
+      const dash = await fetch(`/api/data/${country}`).then(r => r.json()).catch(() => null);
+      const map: Record<Mes, ByDS[]> = { abril: [], mayo: [], junio: [] };
+      meses.forEach((m, i) => {
+        map[m] = Array.isArray(results[i]?.data?.by_dropshipper) ? results[i].data.by_dropshipper : [];
+      });
+      setOpsTarget(map[mes]);
+      if (mesAnterior) setOpsBase(map[mesAnterior]); else setOpsBase([]);
+      if (mesAntAnt) setOpsHist(map[mesAntAnt]); else setOpsHist([]);
+      setMetaInfo(dash?.meta_info || {});
+    } finally {
+      setLoading(false);
+    }
+  }, [country, mes, mesAnterior, mesAntAnt]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  // Determinar mes en curso
+  const today = new Date();
+  const isCurrent = today.getFullYear() === 2026 && (today.getMonth() + 1) === ({ abril: 4, mayo: 5, junio: 6 }[mes]);
+  const diasMes = (metaInfo[`dias_${mes}`] as number) ?? MES_DIAS[mes];
+  const diasTranscurridos = isCurrent ? today.getDate() : diasMes;
+
+  const dsTarget = useMemo(() => aggregateDS(opsTarget), [opsTarget]);
+  const dsBase = useMemo(() => aggregateDS(opsBase), [opsBase]);
+  const dsHist = useMemo(() => aggregateDS(opsHist), [opsHist]);
+
+  // Totales mensuales país
+  const totals = useMemo(() => {
+    const sum = (m: Map<string, any>) => {
+      let ing = 0, mov = 0;
+      m.forEach((v) => { ing += v.ing; mov += v.mov; });
+      return { ing, mov, pctMov: ing > 0 ? mov / ing : 0 };
+    };
+    return { target: sum(dsTarget), base: sum(dsBase), hist: sum(dsHist) };
+  }, [dsTarget, dsBase, dsHist]);
+
+  // Metas mensuales
+  const metaMov = metaInfo[`meta_movilizadas_${mes}`] ?? metaInfo[`meta_movilizadas_${mesAnterior ?? mes}`] ?? 0;
+  const metaIng = metaInfo[`meta_ingresadas_${mes}`]
+    ?? (totals.base.pctMov > 0 ? Math.round(metaMov / totals.base.pctMov) : metaInfo[`meta_ingresadas_${mesAnterior ?? mes}`] ?? 0);
+
+  // DSs activos por mes (con ≥1 ingresada)
+  const activos = {
+    target: Array.from(dsTarget.values()).filter(v => v.ing > 0).length,
+    base: Array.from(dsBase.values()).filter(v => v.ing > 0).length,
+    hist: Array.from(dsHist.values()).filter(v => v.ing > 0).length,
+  };
+
+  // Brecha
+  const movGap = Math.max(metaMov - totals.target.mov, 0);
+  const ingGapRaw = Math.max(metaIng - totals.target.ing, 0);
+  const ingGapFromMov = totals.base.pctMov > 0 ? movGap / totals.base.pctMov : ingGapRaw;
+  const ingGap = Math.max(ingGapRaw, ingGapFromMov);
+
+  // Cuota mensual por DS (proporcional al share del DS en el mes base)
+  const tabla = useMemo(() => {
+    let totalMovBase = 0;
+    dsBase.forEach((v) => { totalMovBase += v.mov; });
+    const allKeys = new Set<string>([...dsBase.keys(), ...dsTarget.keys(), ...dsHist.keys()]);
+    const rows: {
+      nombre: string;
+      histMov: number; histIng: number;
+      baseMov: number; baseIng: number;
+      targetMov: number; targetIng: number;
+      cuotaMov: number; cuotaIng: number;
+      share: number; growthReq: number;
+      gap: number;
+      status: "verde" | "amarillo" | "rojo" | "nuevo" | "perdido";
+    }[] = [];
+    allKeys.forEach((nombre) => {
+      const h = dsHist.get(nombre) || { ing: 0, mov: 0, nombre };
+      const b = dsBase.get(nombre) || { ing: 0, mov: 0, nombre };
+      const t = dsTarget.get(nombre) || { ing: 0, mov: 0, nombre };
+      const share = totalMovBase > 0 ? b.mov / totalMovBase : 1 / Math.max(allKeys.size, 1);
+      const cuotaMov = metaMov * share;
+      const cuotaIng = totals.base.pctMov > 0 ? cuotaMov / totals.base.pctMov : 0;
+      const growthReq = b.mov > 0 ? ((cuotaMov - b.mov) / b.mov) * 100 : (cuotaMov > 0 ? 100 : 0);
+      const gap = cuotaMov - t.mov;
+
+      // Status para mes EN CURSO: comparamos progreso proporcional al avance del mes
+      // (cuota_pro_rated = cuotaMov * dias_transcurridos/diasMes) vs target real.
+      // Para mes CERRADO: cuota completa vs total real.
+      let status: "verde" | "amarillo" | "rojo" | "nuevo" | "perdido";
+      const cuotaActual = isCurrent ? cuotaMov * (diasTranscurridos / diasMes) : cuotaMov;
+      const cumplimiento = cuotaActual > 0 ? (t.mov / cuotaActual) * 100 : (t.mov > 0 ? 200 : 100);
+      if (b.mov === 0 && t.mov > 0) status = "nuevo";
+      else if (b.mov > 0 && t.mov === 0) status = "perdido";
+      else if (cumplimiento >= 100) status = "verde";
+      else if (cumplimiento >= 75) status = "amarillo";
+      else status = "rojo";
+
+      rows.push({
+        nombre,
+        histMov: h.mov, histIng: h.ing,
+        baseMov: b.mov, baseIng: b.ing,
+        targetMov: t.mov, targetIng: t.ing,
+        cuotaMov, cuotaIng,
+        share: share * 100,
+        growthReq,
+        gap,
+        status,
+      });
+    });
+    return rows;
+  }, [dsBase, dsTarget, dsHist, metaMov, totals.base.pctMov, isCurrent, diasTranscurridos, diasMes]);
+
+  const tablaOrdenada = useMemo(() => {
+    const r = [...tabla];
+    if (sortBy === "share") r.sort((a, b) => b.share - a.share);
+    else if (sortBy === "gap") r.sort((a, b) => b.gap - a.gap);
+    else if (sortBy === "growth") r.sort((a, b) => b.growthReq - a.growthReq);
+    return r;
+  }, [tabla, sortBy]);
+
+  const tablaFiltrada = useMemo(() => {
+    if (!search.trim()) return tablaOrdenada;
+    const s = search.toLowerCase();
+    return tablaOrdenada.filter((r) => r.nombre.toLowerCase().includes(s));
+  }, [tablaOrdenada, search]);
+
+  // Summary de status mensual
+  const statusCount = useMemo(() => {
+    const c = { verde: 0, amarillo: 0, rojo: 0, nuevo: 0, perdido: 0 };
+    tabla.forEach((r) => { c[r.status]++; });
+    return c;
+  }, [tabla]);
+
+  // Chart: top 20 DSs por cuota mensual + comparativa baseMov y targetMov
+  const topChartData = useMemo(() => {
+    return [...tabla]
+      .sort((a, b) => b.cuotaMov - a.cuotaMov)
+      .slice(0, 20)
+      .map((r) => ({
+        nombre: r.nombre.slice(0, 18) + (r.nombre.length > 18 ? "…" : ""),
+        Base: Math.round(r.baseMov),
+        Target: Math.round(r.targetMov),
+        Cuota: Math.round(r.cuotaMov),
+      }));
+  }, [tabla]);
+
+  if (loading) {
+    return <div className="glass-card p-6 t-muted text-sm">Cargando análisis de mínimo mensual…</div>;
+  }
+
+  const labelTarget = MES_LABEL[mes];
+  const labelBase = mesAnterior ? MES_LABEL[mesAnterior] : labelTarget;
+  const labelHist = mesAntAnt ? MES_LABEL[mesAntAnt] : null;
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <h2 className="text-base font-bold t-primary mb-1">
+          📆 Mínimo Mensual — {labelTarget} 2026
+          {isCurrent && <span className="text-[11px] text-green-400 ml-1">(EN CURSO)</span>}
+          {!isCurrent && <span className="text-[11px] text-gray-400 ml-1">(cerrado)</span>}
+        </h2>
+        <p className="text-[11px] t-muted">
+          {isCurrent
+            ? `Total mensual que cada Dropshipper tiene que aportar a la meta de ${labelTarget}, basado en su share de ${labelBase}. Status proporcional al avance del mes (día ${diasTranscurridos}/${diasMes}).`
+            : `Análisis retrospectivo del aporte mensual de cada DS a la meta de ${labelTarget}. Base: ${labelBase}.`}
+        </p>
+      </div>
+
+      {/* KPIs mensuales */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Kpi label={`Meta ${labelTarget} mov`} value={metaMov.toLocaleString("es-AR")} color="#f97316" />
+        <Kpi label={`Meta ${labelTarget} ing`} value={metaIng.toLocaleString("es-AR")} color="#0891b2" />
+        <Kpi label={`Real ${labelTarget} mov`} value={totals.target.mov.toLocaleString("es-AR")} color="#10b981" sub={metaMov > 0 ? `${((totals.target.mov / metaMov) * 100).toFixed(0)}% de meta` : ""} />
+        <Kpi label={`Brecha mensual mov`} value={movGap.toLocaleString("es-AR")} color="#dc2626" />
+        <Kpi label={`Brecha mensual ing`} value={ingGap.toLocaleString("es-AR")} color="#dc2626" />
+        <Kpi label={`DSs activos ${labelTarget}`} value={activos.target.toLocaleString("es-AR")} color="#a78bfa" sub={`vs ${activos.base} en ${labelBase}`} />
+      </div>
+
+      {/* Avance proporcional + comparativa con mes base */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+          <h3 className="text-sm font-bold t-primary mb-2">📊 Promedio mensual por DS — {labelTarget}</h3>
+          <p className="text-[11px] t-muted mb-3">Con {Math.max(activos.base, 1)} DSs activos (base de {labelBase}).</p>
+          <Row label="Movilizadas / DS / mes (meta)" value={metaMov / Math.max(activos.base, 1)} color="#10b981" />
+          <Row label="Ingresadas / DS / mes (meta)" value={metaIng / Math.max(activos.base, 1)} color="#0891b2" />
+          <Row label="Movilizadas / DS / mes (real)" value={totals.target.mov / Math.max(activos.target, 1)} color="#f59e0b" />
+          <Row label="Ingresadas / DS / mes (real)" value={totals.target.ing / Math.max(activos.target, 1)} color="#f59e0b" />
+        </div>
+        <div className="rounded-xl p-4 border border-orange-500/30" style={{ background: "rgba(249,115,22,0.05)" }}>
+          <h3 className="text-sm font-bold t-primary mb-2">🎯 Crecimiento promedio requerido</h3>
+          <p className="text-[11px] t-muted mb-3">¿Cuánto más por DS vs lo que hicieron en {labelBase}?</p>
+          {(() => {
+            const baseMovPorDs = activos.base > 0 ? totals.base.mov / activos.base : 0;
+            const baseIngPorDs = activos.base > 0 ? totals.base.ing / activos.base : 0;
+            const metaMovPorDs = activos.base > 0 ? metaMov / activos.base : 0;
+            const metaIngPorDs = activos.base > 0 ? metaIng / activos.base : 0;
+            const growthMov = baseMovPorDs > 0 ? ((metaMovPorDs - baseMovPorDs) / baseMovPorDs) * 100 : 0;
+            const growthIng = baseIngPorDs > 0 ? ((metaIngPorDs - baseIngPorDs) / baseIngPorDs) * 100 : 0;
+            return (
+              <>
+                <div className="space-y-1 text-xs">
+                  <p className="t-secondary">Real {labelBase}: <strong>{baseMovPorDs.toFixed(0)}</strong> mov · <strong>{baseIngPorDs.toFixed(0)}</strong> ing por DS/mes</p>
+                  <p className="t-secondary">Necesario {labelTarget}: <strong style={{ color: "#10b981" }}>{metaMovPorDs.toFixed(0)}</strong> mov · <strong style={{ color: "#0891b2" }}>{metaIngPorDs.toFixed(0)}</strong> ing por DS/mes</p>
+                </div>
+                <div className="mt-3 flex gap-3">
+                  <div className="rounded-lg p-2 border border-gray-700 flex-1" style={{ background: "var(--bg-input)" }}>
+                    <p className="text-[10px] t-muted">Crecimiento mov</p>
+                    <p className="text-xl font-bold" style={{ color: growthMov > 0 ? "#dc2626" : "#10b981" }}>{growthMov > 0 ? "+" : ""}{growthMov.toFixed(0)}%</p>
+                  </div>
+                  <div className="rounded-lg p-2 border border-gray-700 flex-1" style={{ background: "var(--bg-input)" }}>
+                    <p className="text-[10px] t-muted">Crecimiento ing</p>
+                    <p className="text-xl font-bold" style={{ color: growthIng > 0 ? "#dc2626" : "#10b981" }}>{growthIng > 0 ? "+" : ""}{growthIng.toFixed(0)}%</p>
+                  </div>
+                </div>
+                <p className="text-[10px] t-muted mt-2">
+                  {growthMov > 50 ? "🚨 Crecimiento muy agresivo — considera activar más DSs" :
+                   growthMov > 20 ? "⚠️ Crecimiento fuerte por DS" :
+                   growthMov > 0 ? "✓ Crecimiento alcanzable" : "✅ Por debajo del ritmo base"}
+                </p>
+              </>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* Status mensual semáforo */}
+      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <h3 className="text-sm font-bold t-primary mb-2">🚦 Cumplimiento mensual por DS</h3>
+        <p className="text-[11px] t-muted mb-3">
+          Verde: cumpliendo cuota (≥100%) · Amarillo: 75-99% · Rojo: &lt;75% · Nuevo / Perdido.
+          {isCurrent && ` Como el mes está en curso, la cuota se compara proporcional al día ${diasTranscurridos}/${diasMes}.`}
+        </p>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          <StatusCard label="🔴 Rojo (<75%)" count={statusCount.rojo} color="#dc2626" />
+          <StatusCard label="⚫ Perdidos" count={statusCount.perdido} color="#6b7280" />
+          <StatusCard label="🟡 Amarillo" count={statusCount.amarillo} color="#f59e0b" />
+          <StatusCard label="🟢 Verde (≥100%)" count={statusCount.verde} color="#10b981" />
+          <StatusCard label="✨ Nuevos" count={statusCount.nuevo} color="#0891b2" />
+        </div>
+      </div>
+
+      {/* Top 20 chart */}
+      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <h3 className="text-sm font-bold t-primary mb-1">📊 Top 20 DSs — Cuota mensual de {labelTarget} vs real</h3>
+        <p className="text-[11px] t-muted mb-3">Cuánto debe aportar cada uno al mes vs lo que hizo en {labelBase} y lo que va en {labelTarget}.</p>
+        <div className="h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={topChartData} layout="vertical" margin={{ left: 100, right: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+              <YAxis type="category" dataKey="nombre" tick={{ fontSize: 9, fill: "#94a3b8" }} width={90} />
+              <Tooltip contentStyle={{ background: "rgba(22,33,62,0.95)", border: "1px solid rgba(6,182,212,0.2)", borderRadius: 8, fontSize: 11 }} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="Base" name={`${labelBase} mov real`} fill="#6b7280" />
+              <Bar dataKey="Target" name={`${labelTarget} mov real`} fill="#f97316" />
+              <Bar dataKey="Cuota" name={`${labelTarget} cuota mensual`} fill="#10b981" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Tabla por DS */}
+      <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 className="text-sm font-bold t-primary">📋 Cuota mensual por Dropshipper ({tabla.length})</h3>
+          <div className="flex items-center gap-2">
+            <select value={sortBy} onChange={(e) => setSortBy(e.target.value as any)}
+              className="text-xs px-2 py-1.5 rounded border border-gray-700 bg-transparent t-primary outline-none">
+              <option value="share">Por share (volumen)</option>
+              <option value="gap">Por gap (más atrasados)</option>
+              <option value="growth">Por crecimiento requerido</option>
+            </select>
+            <input type="text" placeholder="🔍 Buscar..." value={search} onChange={(e) => setSearch(e.target.value)}
+              className="text-xs px-2 py-1.5 rounded border border-gray-700 bg-transparent t-primary outline-none w-40" />
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-700 text-[10px] t-muted">
+                <th className="text-left py-2 px-2">#</th>
+                <th className="text-left py-2 px-2">Dropshipper</th>
+                <th className="text-center py-2 px-2">Status</th>
+                {labelHist && <th className="text-right py-2 px-2">{labelHist} mov</th>}
+                <th className="text-right py-2 px-2">{labelBase} mov</th>
+                <th className="text-right py-2 px-2">{labelTarget} mov</th>
+                <th className="text-right py-2 px-2 text-orange-300">Cuota mensual</th>
+                <th className="text-right py-2 px-2 text-cyan-300">Cuota ing</th>
+                <th className="text-right py-2 px-2">Share %</th>
+                <th className="text-right py-2 px-2">Crec. req</th>
+                <th className="text-right py-2 px-2">Gap</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(showAll ? tablaFiltrada : tablaFiltrada.slice(0, 50)).map((r, i) => {
+                const colors: Record<string, string> = { verde: "#10b981", amarillo: "#f59e0b", rojo: "#dc2626", nuevo: "#0891b2", perdido: "#6b7280" };
+                const lbl: Record<string, string> = { verde: "🟢", amarillo: "🟡", rojo: "🔴", nuevo: "✨", perdido: "⚫" };
+                return (
+                  <tr key={r.nombre} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                    <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
+                    <td className="py-2 px-2 t-primary max-w-[220px] truncate" title={r.nombre}>{r.nombre}</td>
+                    <td className="py-2 px-2 text-center"><span style={{ color: colors[r.status] }}>{lbl[r.status]}</span></td>
+                    {labelHist && <td className="py-2 px-2 text-right font-mono t-muted">{r.histMov.toLocaleString("es-AR")}</td>}
+                    <td className="py-2 px-2 text-right font-mono">{r.baseMov.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono text-orange-400">{r.targetMov.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{Math.round(r.cuotaMov).toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold text-cyan-300">{Math.round(r.cuotaIng).toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono">{r.share.toFixed(1)}%</td>
+                    <td className="py-2 px-2 text-right font-mono" style={{ color: r.growthReq > 50 ? "#dc2626" : r.growthReq > 20 ? "#f59e0b" : "#10b981" }}>
+                      {r.growthReq > 0 ? "+" : ""}{r.growthReq.toFixed(0)}%
+                    </td>
+                    <td className="py-2 px-2 text-right font-mono font-bold" style={{ color: r.gap > 0 ? "#dc2626" : "#10b981" }}>
+                      {r.gap > 0 ? "+" : ""}{Math.round(r.gap).toLocaleString("es-AR")}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {tablaFiltrada.length > 50 && !showAll && (
+            <button onClick={() => setShowAll(true)} className="mt-3 text-[11px] text-orange-400 hover:underline">
+              Ver todos los {tablaFiltrada.length.toLocaleString("es-AR")} DSs
+            </button>
+          )}
+        </div>
+        <p className="text-[10px] t-muted mt-3">
+          <strong>Cuota mensual</strong> = share del DS en {labelBase} aplicado a la meta de {labelTarget}.
+          <strong> Gap</strong> = cuánto le falta para llegar a su cuota (positivo = falta movilizar).
+          <strong> Crec. req</strong> = % de crecimiento sobre {labelBase} para hit cuota.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Kpi({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
+  return (
+    <div className="rounded-lg p-3 border border-cyan-500/10" style={{ background: "var(--bg-card)" }}>
+      <p className="text-[10px] t-muted uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-xl font-bold" style={{ color }}>{value}</p>
+      {sub && <p className="text-[10px] t-muted mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function Row({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="flex items-center justify-between gap-2 text-xs py-1">
+      <span className="t-secondary">{label}</span>
+      <span className="font-bold font-mono" style={{ color }}>{Math.round(value).toLocaleString("es-AR")}</span>
+    </div>
+  );
+}
+
+function StatusCard({ label, count, color }: { label: string; count: number; color: string }) {
+  return (
+    <div className="rounded-lg p-2 border" style={{ background: "var(--bg-input)", borderColor: color + "40" }}>
+      <p className="text-[10px] t-muted">{label}</p>
+      <p className="text-xl font-bold" style={{ color }}>{count}</p>
+    </div>
+  );
+}
