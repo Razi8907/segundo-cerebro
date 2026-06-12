@@ -15,21 +15,26 @@ interface Segment2Bin {
   usuarios: UserDetail[];
 }
 
+interface ComunidadEntry { comunidad: string; registrados: number; activos: number; pct_activacion: number }
+
 interface CohortData {
   total_registrados: number;
   total_ordenes: number;
   activos_total: number;
   inactivos_total: number;
+  windows_note?: string;
   segmento_1_pareto75: { count: number; ordenes_acumuladas: number; pct_ordenes: number; usuarios: UserDetail[] };
   segmento_2_bins: Record<string, Segment2Bin>;
   segmento_3_1_a_19: { count: number; usuarios: UserDetail[] };
   segmento_4_cero: { count: number; usuarios: UserDetail[] };
+  comunidades?: ComunidadEntry[];
 }
 
 interface Payload {
   updated_at?: string;
   data_window?: string;
   cohorts?: Record<string, CohortData>;
+  comunidades_globales?: ComunidadEntry[];
 }
 
 const MESES_ORDER = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
@@ -176,10 +181,14 @@ export default function UsuariosRegistrados({ country }: { country: "ar" | "py" 
       {/* Resumen del cohort seleccionado */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Kpi label={`Registrados ${MES_LABEL[selectedMes]}`} value={cohort.total_registrados.toLocaleString("es-AR")} color="#a78bfa" />
-        <Kpi label="Total órdenes (cohort)" value={cohort.total_ordenes.toLocaleString("es-AR")} color="#f97316" />
+        <Kpi label={`Órdenes en ${MES_LABEL[selectedMes]}`} value={cohort.total_ordenes.toLocaleString("es-AR")} color="#f97316" />
         <Kpi label="Activos reales" value={cohort.activos_total.toLocaleString("es-AR")} color="#10b981" sub={`${(cohort.activos_total / cohort.total_registrados * 100).toFixed(1)}%`} />
         <Kpi label="Sin órdenes" value={cohort.inactivos_total.toLocaleString("es-AR")} color="#dc2626" sub={`${(cohort.inactivos_total / cohort.total_registrados * 100).toFixed(1)}%`} />
       </div>
+
+      {cohort.windows_note && (
+        <p className="text-[10px] text-amber-300 px-2">ⓘ {cohort.windows_note}</p>
+      )}
 
       {/* SEGMENTO 1 — Pareto 75% */}
       <SegmentCard
@@ -267,8 +276,106 @@ export default function UsuariosRegistrados({ country }: { country: "ar" | "py" 
         )}
       </SegmentCard>
 
+      {/* Comunidades del cohort seleccionado */}
+      {cohort.comunidades && cohort.comunidades.length > 0 && (
+        <ComunidadesCard
+          title={`🏘️ Comunidades — registrados en ${MES_LABEL[selectedMes]}`}
+          subtitle={`De los usuarios registrados en ${MES_LABEL[selectedMes]}, qué comunidad los trajo y cuántos activaron.`}
+          comunidades={cohort.comunidades}
+        />
+      )}
+
+      {/* Comunidades globales (todo el año) */}
+      {payload.comunidades_globales && payload.comunidades_globales.length > 0 && (
+        <ComunidadesCard
+          title="🌐 Comunidades — Global 2026"
+          subtitle="Ranking acumulado de todas las cohortes. Activación = al menos una orden en la ventana observada."
+          comunidades={payload.comunidades_globales}
+        />
+      )}
+
       {payload.updated_at && (
         <p className="text-[10px] t-muted text-center">Actualizado: {new Date(payload.updated_at).toLocaleString("es-AR")}</p>
+      )}
+    </div>
+  );
+}
+
+function ComunidadesCard({ title, subtitle, comunidades }: { title: string; subtitle: string; comunidades: ComunidadEntry[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    if (!search.trim()) return comunidades;
+    const s = search.toLowerCase();
+    return comunidades.filter((c) => c.comunidad.toLowerCase().includes(s));
+  }, [comunidades, search]);
+  const visible = showAll ? filtered : filtered.slice(0, 10);
+
+  const exportCsv = () => {
+    const header = "Comunidad,Registrados,Activos,% Activación\n";
+    const lines = comunidades.map((c) => {
+      const safe = (s: string) => `"${String(s || "").replace(/"/g, '""')}"`;
+      return [safe(c.comunidad), c.registrados, c.activos, `${c.pct_activacion}%`].join(",");
+    }).join("\n");
+    const blob = new Blob(["﻿" + header + lines], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = title.replace(/[^a-z0-9]+/gi, "_") + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="rounded-xl p-4 border border-purple-500/20" style={{ background: "var(--bg-card)" }}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h3 className="text-sm font-bold t-primary mb-1">{title}</h3>
+          <p className="text-[11px] t-muted">{subtitle}</p>
+        </div>
+        <button onClick={exportCsv} className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40 shrink-0">⬇️ CSV</button>
+      </div>
+      <input type="text" placeholder="🔍 Buscar comunidad…" value={search} onChange={(e) => setSearch(e.target.value)}
+        className="w-full text-xs px-3 py-2 rounded-lg border border-gray-700 bg-transparent t-primary outline-none focus:border-purple-500 mb-3" />
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-gray-700 text-[10px] t-muted">
+              <th className="text-left py-2 px-2">#</th>
+              <th className="text-left py-2 px-2">Comunidad (referidor)</th>
+              <th className="text-right py-2 px-2">Registrados</th>
+              <th className="text-right py-2 px-2">Activos</th>
+              <th className="text-right py-2 px-2">% Activación</th>
+              <th className="text-left py-2 px-2 w-32">Barra</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((c, i) => {
+              const color = c.pct_activacion >= 40 ? "#10b981" : c.pct_activacion >= 20 ? "#f59e0b" : "#dc2626";
+              return (
+                <tr key={c.comunidad + i} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                  <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
+                  <td className="py-2 px-2 t-primary font-mono text-[11px] max-w-[280px] truncate" title={c.comunidad}>{c.comunidad}</td>
+                  <td className="py-2 px-2 text-right font-mono">{c.registrados.toLocaleString("es-AR")}</td>
+                  <td className="py-2 px-2 text-right font-mono font-bold" style={{ color }}>{c.activos.toLocaleString("es-AR")}</td>
+                  <td className="py-2 px-2 text-right font-mono font-bold" style={{ color }}>{c.pct_activacion}%</td>
+                  <td className="py-2 px-2">
+                    <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
+                      <div className="h-full" style={{ width: `${Math.min(c.pct_activacion, 100)}%`, background: color }} />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+            {visible.length === 0 && (
+              <tr><td colSpan={6} className="py-4 px-3 text-center t-muted text-xs">Sin comunidades que coincidan.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {filtered.length > 10 && !showAll && (
+        <button onClick={() => setShowAll(true)} className="mt-2 text-[11px] text-orange-400 hover:underline">
+          Ver todas ({filtered.length.toLocaleString("es-AR")})
+        </button>
       )}
     </div>
   );
