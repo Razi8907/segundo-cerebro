@@ -303,7 +303,7 @@ export default function ParaguayDashboard() {
             )}
 
             {comercialSub === "usuarios" && (
-              <UsuariosRegistrados country="py" />
+              <UsuariosRegistrados country="py" mesContexto={mesFilter} />
             )}
 
             {comercialSub === "crm" && (

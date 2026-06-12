@@ -304,7 +304,7 @@ export default function ArgentinaDashboard() {
             )}
 
             {comercialSub === "usuarios" && (
-              <UsuariosRegistrados country="ar" />
+              <UsuariosRegistrados country="ar" mesContexto={mesFilter} />
             )}
 
             {comercialSub === "crm" && (

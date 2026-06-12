@@ -48,7 +48,27 @@ const MES_LABEL: Record<string, string> = {
 
 type SegmentKey = "seg1" | "seg2" | "seg3" | "seg4";
 
-export default function UsuariosRegistrados({ country }: { country: "ar" | "py" }) {
+// Restringe qué cohortes mostrar según el mes activo en el header.
+// - junio  → ['junio', 'q2']
+// - mayo   → ['mayo', 'q2']
+// - abril  → ['abril', 'q2']
+// - enero  → ['enero']  (q1 todavía no tiene cohort agregado)
+// - febrero/marzo análogo
+// - q1     → meses de Q1
+// - q2/undefined → mostrar todo
+const Q2_MESES = new Set(["abril", "mayo", "junio"]);
+const Q1_MESES = new Set(["enero", "febrero", "marzo"]);
+
+function allowedCohorts(mes?: string | null): string[] | null {
+  if (!mes) return null;
+  if (mes === "q1") return ["enero", "febrero", "marzo", "q1"];
+  if (mes === "q2") return ["abril", "mayo", "junio", "q2"];
+  if (Q2_MESES.has(mes)) return [mes, "q2"];
+  if (Q1_MESES.has(mes)) return [mes];
+  return null;
+}
+
+export default function UsuariosRegistrados({ country, mesContexto }: { country: "ar" | "py"; mesContexto?: string | null }) {
   const [payload, setPayload] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -79,13 +99,28 @@ export default function UsuariosRegistrados({ country }: { country: "ar" | "py" 
 
   const meses = useMemo(() => {
     if (!payload?.cohorts) return [];
-    return MESES_ORDER.filter((m) => payload.cohorts && m in payload.cohorts);
-  }, [payload]);
+    const allowed = allowedCohorts(mesContexto);
+    return MESES_ORDER.filter((m) => {
+      if (!payload.cohorts || !(m in payload.cohorts)) return false;
+      if (allowed && !allowed.includes(m)) return false;
+      return true;
+    });
+  }, [payload, mesContexto]);
 
-  // Default month: most recent available
+  // Reset selectedMes cuando cambia el contexto del header
+  useEffect(() => { setSelectedMes(null); }, [mesContexto]);
+
+  // Default month: si hay contexto específico, ese mes. Si no, el más reciente.
   useEffect(() => {
-    if (!selectedMes && meses.length > 0) setSelectedMes(meses[meses.length - 1]);
-  }, [meses, selectedMes]);
+    if (!selectedMes && meses.length > 0) {
+      // Si el contexto del header es un mes específico, defaultear a ese
+      if (mesContexto && meses.includes(mesContexto)) {
+        setSelectedMes(mesContexto);
+      } else {
+        setSelectedMes(meses[meses.length - 1]);
+      }
+    }
+  }, [meses, selectedMes, mesContexto]);
 
   const cohort = selectedMes && payload?.cohorts?.[selectedMes];
 
