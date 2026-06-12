@@ -888,6 +888,85 @@ export default function DailyTracker({
         </div>
       )}
 
+      {/* Current week status — above proyección semanal */}
+      {(() => {
+        const totalDaysLoaded = abrilData.length;
+        const ultimoDiaCargado = totalDaysLoaded > 0 ? Math.max(...abrilData.map((d) => d.fecha)) : 0;
+        // Detectar la semana donde está el último día cargado (cae en esa semana)
+        const currentWeek = analysis.weeklyData.find((w) => {
+          // Extract numeric range from "Sx (X-Y)"
+          const m = w.semana.match(/\((\d+)-(\d+)\)/);
+          if (!m) return false;
+          const start = parseInt(m[1], 10);
+          const end = parseInt(m[2], 10);
+          return ultimoDiaCargado >= start && ultimoDiaCargado <= end;
+        }) || analysis.weeklyData[0];
+        if (!currentWeek) return null;
+        const m = currentWeek.semana.match(/\((\d+)-(\d+)\)/);
+        const wStart = m ? parseInt(m[1], 10) : 1;
+        const wEnd = m ? parseInt(m[2], 10) : 7;
+        const diasRestSemana = Math.max(wEnd - ultimoDiaCargado, 0);
+        const ingPendienteSem = Math.max(currentWeek.metaIng - currentWeek.real, 0);
+        const necesarioRestoSem = diasRestSemana > 0 ? Math.round(ingPendienteSem / diasRestSemana) : 0;
+        const pct = currentWeek.metaIng > 0 ? (currentWeek.real / currentWeek.metaIng) * 100 : 0;
+        const statusColor = pct >= 100 ? "#10B981" : pct >= 80 ? "#F59E0B" : pct >= 50 ? "#F97316" : "#EF4444";
+        const statusLabel = pct >= 100 ? "🟢 Cumpliendo" : pct >= 80 ? "🟡 En rango" : pct >= 50 ? "🟠 Atrasados" : "🔴 Muy atrasados";
+        return (
+          <div className="mb-4 p-4 rounded-xl border border-purple-500/30" style={{ background: "rgba(167,139,250,0.05)" }}>
+            <div className="flex items-baseline justify-between gap-2 mb-3 flex-wrap">
+              <div>
+                <h3 className="text-sm font-bold text-black dark:text-white">
+                  🎯 Esta semana — {currentWeek.semana} {ultimoDiaCargado > 0 && <span className="text-[10px] text-gray-500">· último día cargado: {ultimoDiaCargado}</span>}
+                </h3>
+                <p className="text-[10px] text-gray-700 dark:text-gray-400 mt-0.5">
+                  Meta semanal proporcional al mes — cuánto necesitamos esta semana y cómo vamos.
+                </p>
+              </div>
+              <span className="text-xs px-3 py-1.5 rounded-full font-semibold" style={{ background: statusColor + "20", color: statusColor }}>
+                {statusLabel} · {pct.toFixed(0)}%
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+              <div className="rounded-lg p-2 border border-cyan-500/15" style={{ background: "rgba(15,23,42,0.4)" }}>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Meta semanal Ing.</p>
+                <p className="text-base font-bold text-orange-400">{currentWeek.metaIng.toLocaleString()}</p>
+                <p className="text-[9px] text-gray-500">{currentWeek.dias} días</p>
+              </div>
+              <div className="rounded-lg p-2 border border-cyan-500/15" style={{ background: "rgba(15,23,42,0.4)" }}>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Meta semanal Mov.</p>
+                <p className="text-base font-bold text-orange-300">{currentWeek.metaMov.toLocaleString()}</p>
+                <p className="text-[9px] text-gray-500">{currentWeek.dias} días</p>
+              </div>
+              <div className="rounded-lg p-2 border border-cyan-500/15" style={{ background: "rgba(15,23,42,0.4)" }}>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Real esta semana</p>
+                <p className="text-base font-bold" style={{ color: statusColor }}>{currentWeek.real.toLocaleString()}</p>
+                <p className="text-[9px] text-gray-500">{currentWeek.diasCargados}/{currentWeek.dias} días cargados</p>
+              </div>
+              <div className="rounded-lg p-2 border border-cyan-500/15" style={{ background: "rgba(15,23,42,0.4)" }}>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Pendiente semana</p>
+                <p className="text-base font-bold text-red-400">{ingPendienteSem.toLocaleString()}</p>
+                <p className="text-[9px] text-gray-500">{diasRestSemana} día{diasRestSemana !== 1 ? "s" : ""} restantes</p>
+              </div>
+              <div className="rounded-lg p-2 border border-purple-500/30" style={{ background: "rgba(167,139,250,0.08)" }}>
+                <p className="text-[10px] text-gray-400 uppercase tracking-wider">Necesario / día</p>
+                <p className="text-base font-bold text-purple-400">{necesarioRestoSem > 0 ? necesarioRestoSem.toLocaleString() : "—"}</p>
+                <p className="text-[9px] text-gray-500">para cerrar la semana</p>
+              </div>
+            </div>
+            {/* Progress bar */}
+            <div className="mt-3">
+              <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.25)" }}>
+                <div className="h-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, background: statusColor }} />
+              </div>
+              <div className="flex justify-between text-[10px] text-gray-500 mt-1">
+                <span>0</span>
+                <span>{currentWeek.metaIng.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Weekly projection chart */}
       <div className="mb-6 p-4 rounded-xl border border-cyan-500/20" style={{ background: "rgba(6,182,212,0.03)" }}>
         <h3 className="text-sm font-bold mb-1 text-black dark:text-white">
