@@ -9,6 +9,7 @@ import MinimoDiario from "../components/MinimoDiario";
 import MinimoSemanal from "../components/MinimoSemanal";
 import MinimoMensual from "../components/MinimoMensual";
 import UsuariosRegistrados from "../components/UsuariosRegistrados";
+import Q2Resumen from "../components/Q2Resumen";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -42,6 +43,15 @@ function getResumenByMes(mes: MesFilter, allData: any) {
       movilizadas: r.enero.movilizadas + r.febrero.movilizadas + r.marzo.movilizadas,
       entregados: r.enero.entregados + r.febrero.entregados + r.marzo.entregados,
       devoluciones: r.enero.devoluciones + r.febrero.devoluciones + r.marzo.devoluciones,
+    };
+  }
+  if (mes === "q2") {
+    const a = r.abril || {}, m = r.mayo || {}, j = r.junio || {};
+    return {
+      ingresadas: (a.ingresadas || 0) + (m.ingresadas || 0) + (j.ingresadas || 0),
+      movilizadas: (a.movilizadas || 0) + (m.movilizadas || 0) + (j.movilizadas || 0),
+      entregados: (a.entregados || 0) + (m.entregados || 0) + (j.entregados || 0),
+      devoluciones: (a.devoluciones || 0) + (m.devoluciones || 0) + (j.devoluciones || 0),
     };
   }
   if (mes === "abril") {
@@ -86,6 +96,7 @@ export default function ParaguayDashboard() {
 
   const mesLabels: Record<MesFilter, string> = {
     q1: "Q1 2026 (Ene-Mar)",
+    q2: "Q2 2026 (Abr-Jun)",
     enero: "Enero 2026",
     febrero: "Febrero 2026",
     marzo: "Marzo 2026",
@@ -94,6 +105,7 @@ export default function ParaguayDashboard() {
     junio: "Junio 2026 (Meta)",
   };
 
+  const isQ2 = mesFilter === "q2";
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
@@ -121,7 +133,7 @@ export default function ParaguayDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {(["q1", "enero", "febrero", "marzo", "abril", "mayo", "junio"] as MesFilter[]).map((m) => (
+            {(["q1", "q2", "enero", "febrero", "marzo", "abril", "mayo", "junio"] as MesFilter[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setMesFilter(m)}
@@ -173,7 +185,11 @@ export default function ParaguayDashboard() {
       </div>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {sector === "comercial" && <>
+        {isQ2 && (
+          <Q2Resumen country="py" />
+        )}
+
+        {!isQ2 && sector === "comercial" && <>
         {/* Period indicator */}
         <div className="text-center">
           <span className={`text-sm font-medium ${isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
@@ -332,22 +348,22 @@ export default function ParaguayDashboard() {
         />
         </>}
 
-        {sector === "operaciones" && (
+        {!isQ2 && sector === "operaciones" && (
           <OperationsDashboard country="py" />
         )}
 
-        {sector === "finanzas" && (
+        {!isQ2 && sector === "finanzas" && (
           <div className="space-y-8">
             <FinanzasDashboardPY_Q1 />
             <FinanzasDashboard country="py" />
           </div>
         )}
 
-        {sector === "seguimiento" && (
+        {!isQ2 && sector === "seguimiento" && (
           <SeguimientoComercial country="py" />
         )}
 
-        {sector === "kpis_okr" && (
+        {!isQ2 && sector === "kpis_okr" && (
           <KpisOkrDashboard country="py" />
         )}
 
