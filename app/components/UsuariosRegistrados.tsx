@@ -32,11 +32,23 @@ interface CohortData {
   comunidades_detalle?: Record<string, ComunidadUserDetail[]>;
 }
 
+interface RetentionUser {
+  email: string; nombre: string; telefono: string; comunidad: string | null;
+  mov_cohort: number; ing_cohort: number;
+  mov_post: number; ing_post: number;
+  mov_q2: number; ing_q2: number;
+}
+type RetentionBuckets = Record<string, RetentionUser[]>;
+type RetentionByCohort = Record<string, RetentionBuckets>;
+type Retention = Record<string, RetentionByCohort>;
+
 interface Payload {
   updated_at?: string;
   data_window?: string;
   cohorts?: Record<string, CohortData>;
   comunidades_globales?: ComunidadEntry[];
+  retention?: Retention;
+  retention_summary?: Record<string, Record<string, Record<string, number>>>;
 }
 
 // "q2" se ubica al inicio como vista acumulada de Q2 (Abr+May+Jun).
@@ -325,6 +337,14 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
         />
       )}
 
+      {/* Retención de cohorts previas (solo en Mayo, Junio, Q2) */}
+      {payload.retention && payload.retention[selectedMes] && (
+        <RetentionSection
+          viewMes={selectedMes}
+          retention={payload.retention[selectedMes]}
+        />
+      )}
+
       {payload.updated_at && (
         <p className="text-[10px] t-muted text-center">Actualizado: {new Date(payload.updated_at).toLocaleString("es-AR")}</p>
       )}
@@ -500,6 +520,188 @@ function ComunidadesCard({ title, subtitle, comunidades, comunidadesDetalle }: {
         <button onClick={() => setShowAll(true)} className="mt-2 text-[11px] text-orange-400 hover:underline">
           Ver todas ({filtered.length.toLocaleString("es-AR")})
         </button>
+      )}
+    </div>
+  );
+}
+
+// Configuración de buckets de retención: orden, labels, colores, descripción.
+const BUCKET_META: Record<string, { label: string; icon: string; color: string; tone: "bad" | "warn" | "good"; subtitleFor: (cohort: string, view: string) => string }> = {
+  nunca_operaron: {
+    label: "Nunca operaron",
+    icon: "🔴",
+    color: "#dc2626",
+    tone: "bad",
+    subtitleFor: (cohort) => `Registrados en ${cap(cohort)} que NO operaron en ningún mes de Q2. Candidatos a campaña de despertar.`,
+  },
+  solo_abril: {
+    label: "Solo operaron en Abril",
+    icon: "🟡",
+    color: "#f59e0b",
+    tone: "warn",
+    subtitleFor: () => `Activaron en Abril pero NO volvieron a operar en Mayo ni Junio. Recuperables.`,
+  },
+  solo_mayo: {
+    label: "Solo operaron en Mayo",
+    icon: "🟡",
+    color: "#f59e0b",
+    tone: "warn",
+    subtitleFor: () => `Activaron en Mayo pero NO operaron en Junio. Bajaron — recuperables.`,
+  },
+  activo_post_abril: {
+    label: "Siguen activos post-Abril",
+    icon: "🟢",
+    color: "#10b981",
+    tone: "good",
+    subtitleFor: () => `Registrados en Abril que también operaron en Mayo y/o Junio. Crecer y retener.`,
+  },
+  activo_jun: {
+    label: "Siguen activos en Junio",
+    icon: "🟢",
+    color: "#10b981",
+    tone: "good",
+    subtitleFor: () => `Registrados en Mayo que también operaron en Junio. Sostenidos — crecer.`,
+  },
+};
+
+function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+function RetentionSection({ viewMes, retention }: { viewMes: string; retention: RetentionByCohort }) {
+  return (
+    <div className="rounded-xl p-4 border border-amber-500/20" style={{ background: "var(--bg-card)" }}>
+      <div className="mb-3">
+        <h2 className="text-base font-bold t-primary mb-1">📊 Retención de cohorts previas — vista {MES_LABEL[viewMes]}</h2>
+        <p className="text-[11px] t-muted">
+          Comportamiento de los usuarios que se registraron en meses anteriores: quién bajó, quién dejó de operar y quién sigue activo. Sirve para campañas de recuperación (🔴/🟡) y para potenciar a los que crecen (🟢).
+        </p>
+      </div>
+      <div className="space-y-4">
+        {Object.entries(retention).map(([cohortMes, buckets]) => (
+          <CohortRetentionCard key={cohortMes} cohortMes={cohortMes} viewMes={viewMes} buckets={buckets} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CohortRetentionCard({ cohortMes, viewMes, buckets }: { cohortMes: string; viewMes: string; buckets: RetentionBuckets }) {
+  const total = Object.values(buckets).reduce((s, arr) => s + arr.length, 0);
+  // Orden visual: malo → bueno
+  const order = ["nunca_operaron", "solo_abril", "solo_mayo", "activo_post_abril", "activo_jun"];
+  const bucketKeys = order.filter((k) => k in buckets);
+  return (
+    <div className="rounded-lg border border-amber-500/15" style={{ background: "var(--bg-input)" }}>
+      <div className="px-4 pt-3 pb-2 border-b border-amber-500/10">
+        <h3 className="text-sm font-bold t-primary">Cohort {MES_LABEL[cohortMes]} — {total.toLocaleString("es-AR")} registrados</h3>
+        <p className="text-[11px] t-muted">Comportamiento de estos usuarios visto desde {MES_LABEL[viewMes]}.</p>
+      </div>
+      <div className="p-3 space-y-2">
+        {bucketKeys.map((bk) => {
+          const meta = BUCKET_META[bk];
+          if (!meta) return null;
+          const users = buckets[bk];
+          return (
+            <RetentionBucketCard key={bk}
+              label={meta.label} icon={meta.icon} color={meta.color}
+              subtitle={meta.subtitleFor(cohortMes, viewMes)}
+              users={users} cohortMes={cohortMes} viewMes={viewMes} bucketKey={bk}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function RetentionBucketCard({ label, icon, color, subtitle, users, cohortMes, viewMes, bucketKey }: {
+  label: string; icon: string; color: string; subtitle: string;
+  users: RetentionUser[]; cohortMes: string; viewMes: string; bucketKey: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return users;
+    const s = search.toLowerCase();
+    return users.filter((u) =>
+      u.email.toLowerCase().includes(s) ||
+      u.nombre.toLowerCase().includes(s) ||
+      (u.comunidad || "").toLowerCase().includes(s) ||
+      u.telefono.includes(s)
+    );
+  }, [users, search]);
+
+  const exportCsv = () => {
+    const header = "Email,Nombre,Teléfono,Comunidad,Mov_cohort,Mov_post_cohort,Mov_Q2_total,Ing_cohort,Ing_post_cohort,Ing_Q2_total\n";
+    const lines = users.map((u) => {
+      const safe = (s: string) => `"${String(s || "").replace(/"/g, '""')}"`;
+      return [safe(u.email), safe(u.nombre), safe(u.telefono), safe(u.comunidad || ""), u.mov_cohort, u.mov_post, u.mov_q2, u.ing_cohort, u.ing_post, u.ing_q2].join(",");
+    }).join("\n");
+    const blob = new Blob(["﻿" + header + lines], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `retencion_${viewMes}_cohort_${cohortMes}_${bucketKey}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="rounded-lg border" style={{ borderColor: color + "30", background: "var(--bg-card)" }}>
+      <div className="p-3 flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-bold t-primary">{icon} {label} <span className="text-[11px] t-muted ml-1">({users.length.toLocaleString("es-AR")})</span></p>
+          <p className="text-[11px] t-muted mt-0.5">{subtitle}</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {users.length > 0 && (
+            <button onClick={exportCsv} className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40">⬇️ CSV</button>
+          )}
+          <button onClick={() => setOpen(!open)} className="text-[11px] px-3 py-1.5 rounded-lg border" style={{ borderColor: color + "40", color }}>
+            {open ? "Ocultar" : "Ver usuarios"}
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="px-3 pb-3">
+          <input type="text" placeholder="🔍 Buscar por email, nombre, teléfono o comunidad…" value={search} onChange={(e) => setSearch(e.target.value)}
+            className="w-full text-xs px-3 py-2 rounded-lg border border-gray-700 bg-transparent t-primary outline-none focus:border-orange-500 mb-2" />
+          <div className="overflow-x-auto rounded-lg border border-amber-500/10" style={{ background: "var(--bg-input)" }}>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-gray-700 text-[10px] t-muted">
+                  <th className="text-left py-2 px-2">#</th>
+                  <th className="text-left py-2 px-2">Email</th>
+                  <th className="text-left py-2 px-2">Nombre</th>
+                  <th className="text-left py-2 px-2">Teléfono</th>
+                  <th className="text-left py-2 px-2">Comunidad</th>
+                  <th className="text-right py-2 px-2" title={`Movilizadas en ${MES_LABEL[cohortMes]}`}>Mov {cap(cohortMes).slice(0,3)}.</th>
+                  <th className="text-right py-2 px-2" title="Movilizadas en meses posteriores al de registro">Mov post-{cap(cohortMes).slice(0,3)}.</th>
+                  <th className="text-right py-2 px-2" title="Total Q2 (Abril+Mayo+Junio)">Mov Q2</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.slice(0, 200).map((u, i) => (
+                  <tr key={u.email + i} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                    <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
+                    <td className="py-2 px-2 t-primary font-mono text-[10px]">{u.email}</td>
+                    <td className="py-2 px-2 t-secondary max-w-[160px] truncate" title={u.nombre}>{u.nombre}</td>
+                    <td className="py-2 px-2 t-muted font-mono">{u.telefono}</td>
+                    <td className="py-2 px-2 t-muted text-[10px] max-w-[180px] truncate" title={u.comunidad || ""}>{u.comunidad || "—"}</td>
+                    <td className="py-2 px-2 text-right font-mono text-cyan-300">{u.mov_cohort.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono" style={{ color: u.mov_post > 0 ? "#10b981" : "#6b7280" }}>{u.mov_post.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{u.mov_q2.toLocaleString("es-AR")}</td>
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={8} className="py-4 px-3 text-center t-muted text-xs">Sin resultados.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {filtered.length > 200 && (
+            <p className="text-[10px] t-muted mt-2">Mostrando primeros 200. Usá el CSV para la lista completa ({filtered.length.toLocaleString("es-AR")} usuarios).</p>
+          )}
+        </div>
       )}
     </div>
   );
