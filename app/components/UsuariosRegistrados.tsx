@@ -285,15 +285,6 @@ export default function UsuariosRegistrados({ country }: { country: "ar" | "py" 
         />
       )}
 
-      {/* Comunidades globales (todo el año) */}
-      {payload.comunidades_globales && payload.comunidades_globales.length > 0 && (
-        <ComunidadesCard
-          title="🌐 Comunidades — Global 2026"
-          subtitle="Ranking acumulado de todas las cohortes. Activación = al menos una orden en la ventana observada."
-          comunidades={payload.comunidades_globales}
-        />
-      )}
-
       {payload.updated_at && (
         <p className="text-[10px] t-muted text-center">Actualizado: {new Date(payload.updated_at).toLocaleString("es-AR")}</p>
       )}
