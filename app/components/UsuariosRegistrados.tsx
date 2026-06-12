@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 interface UserDetail {
   email: string;
@@ -15,7 +15,8 @@ interface Segment2Bin {
   usuarios: UserDetail[];
 }
 
-interface ComunidadEntry { comunidad: string; registrados: number; activos: number; pct_activacion: number }
+interface ComunidadEntry { comunidad: string; registrados: number; activos: number; pct_activacion: number; ingresadas?: number; movilizadas?: number }
+interface ComunidadUserDetail { email: string; nombre: string; telefono: string; ing: number; mov: number }
 
 interface CohortData {
   total_registrados: number;
@@ -28,6 +29,7 @@ interface CohortData {
   segmento_3_1_a_19: { count: number; usuarios: UserDetail[] };
   segmento_4_cero: { count: number; usuarios: UserDetail[] };
   comunidades?: ComunidadEntry[];
+  comunidades_detalle?: Record<string, ComunidadUserDetail[]>;
 }
 
 interface Payload {
@@ -317,8 +319,9 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
       {cohort.comunidades && cohort.comunidades.length > 0 && (
         <ComunidadesCard
           title={`🏘️ Comunidades — registrados en ${MES_LABEL[selectedMes]}`}
-          subtitle={`De los usuarios registrados en ${MES_LABEL[selectedMes]}, qué comunidad los trajo y cuántos activaron.`}
+          subtitle={`De los usuarios registrados en ${MES_LABEL[selectedMes]}, qué comunidad los trajo y cuántos activaron. Click en una comunidad para ver el detalle de sus usuarios.`}
           comunidades={cohort.comunidades}
+          comunidadesDetalle={cohort.comunidades_detalle}
         />
       )}
 
@@ -329,9 +332,16 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
   );
 }
 
-function ComunidadesCard({ title, subtitle, comunidades }: { title: string; subtitle: string; comunidades: ComunidadEntry[] }) {
+function ComunidadesCard({ title, subtitle, comunidades, comunidadesDetalle }: {
+  title: string; subtitle: string;
+  comunidades: ComunidadEntry[];
+  comunidadesDetalle?: Record<string, ComunidadUserDetail[]>;
+}) {
   const [showAll, setShowAll] = useState(false);
   const [search, setSearch] = useState("");
+  const [expandedCom, setExpandedCom] = useState<string | null>(null);
+  const [userSearch, setUserSearch] = useState("");
+
   const filtered = useMemo(() => {
     if (!search.trim()) return comunidades;
     const s = search.toLowerCase();
@@ -340,15 +350,29 @@ function ComunidadesCard({ title, subtitle, comunidades }: { title: string; subt
   const visible = showAll ? filtered : filtered.slice(0, 10);
 
   const exportCsv = () => {
-    const header = "Comunidad,Registrados,Activos,% Activación\n";
+    const header = "Comunidad,Registrados,Activos,% Activación,Ingresadas,Movilizadas\n";
     const lines = comunidades.map((c) => {
       const safe = (s: string) => `"${String(s || "").replace(/"/g, '""')}"`;
-      return [safe(c.comunidad), c.registrados, c.activos, `${c.pct_activacion}%`].join(",");
+      return [safe(c.comunidad), c.registrados, c.activos, `${c.pct_activacion}%`, c.ingresadas || 0, c.movilizadas || 0].join(",");
     }).join("\n");
     const blob = new Blob(["﻿" + header + lines], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url; a.download = title.replace(/[^a-z0-9]+/gi, "_") + ".csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportComCsv = (com: string, users: ComunidadUserDetail[]) => {
+    const header = "Email,Nombre,Teléfono,Ingresadas,Movilizadas,Estado\n";
+    const lines = users.map((u) => {
+      const safe = (s: string) => `"${String(s || "").replace(/"/g, '""')}"`;
+      return [safe(u.email), safe(u.nombre), safe(u.telefono), u.ing, u.mov, u.mov > 0 ? "ACTIVO" : "REGISTRADO"].join(",");
+    }).join("\n");
+    const blob = new Blob(["﻿" + header + lines], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `usuarios_${com.replace(/[^a-z0-9]+/gi, "_").slice(0,40)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -373,29 +397,101 @@ function ComunidadesCard({ title, subtitle, comunidades }: { title: string; subt
               <th className="text-right py-2 px-2">Registrados</th>
               <th className="text-right py-2 px-2">Activos</th>
               <th className="text-right py-2 px-2">% Activación</th>
-              <th className="text-left py-2 px-2 w-32">Barra</th>
+              <th className="text-right py-2 px-2">Ingresadas</th>
+              <th className="text-right py-2 px-2">Movilizadas</th>
+              <th className="text-center py-2 px-2">Detalle</th>
             </tr>
           </thead>
           <tbody>
             {visible.map((c, i) => {
               const color = c.pct_activacion >= 40 ? "#10b981" : c.pct_activacion >= 20 ? "#f59e0b" : "#dc2626";
+              const isOpen = expandedCom === c.comunidad;
+              const detalle = comunidadesDetalle?.[c.comunidad];
+              const filteredUsers = detalle && userSearch.trim()
+                ? detalle.filter((u) =>
+                    u.email.toLowerCase().includes(userSearch.toLowerCase()) ||
+                    u.nombre.toLowerCase().includes(userSearch.toLowerCase()) ||
+                    u.telefono.includes(userSearch))
+                : detalle;
               return (
-                <tr key={c.comunidad + i} className="border-b border-gray-800/40 hover:bg-orange-500/5">
-                  <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
-                  <td className="py-2 px-2 t-primary font-mono text-[11px] max-w-[280px] truncate" title={c.comunidad}>{c.comunidad}</td>
-                  <td className="py-2 px-2 text-right font-mono">{c.registrados.toLocaleString("es-AR")}</td>
-                  <td className="py-2 px-2 text-right font-mono font-bold" style={{ color }}>{c.activos.toLocaleString("es-AR")}</td>
-                  <td className="py-2 px-2 text-right font-mono font-bold" style={{ color }}>{c.pct_activacion}%</td>
-                  <td className="py-2 px-2">
-                    <div className="h-2 rounded-full overflow-hidden" style={{ background: "rgba(255,255,255,0.05)" }}>
-                      <div className="h-full" style={{ width: `${Math.min(c.pct_activacion, 100)}%`, background: color }} />
-                    </div>
-                  </td>
-                </tr>
+                <Fragment key={c.comunidad + i}>
+                  <tr className={`border-b border-gray-800/40 hover:bg-orange-500/5 ${isOpen ? "bg-purple-500/5" : ""}`}>
+                    <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
+                    <td className="py-2 px-2 t-primary font-mono text-[11px] max-w-[260px] truncate" title={c.comunidad}>{c.comunidad}</td>
+                    <td className="py-2 px-2 text-right font-mono">{c.registrados.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold" style={{ color }}>{c.activos.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold" style={{ color }}>{c.pct_activacion}%</td>
+                    <td className="py-2 px-2 text-right font-mono text-cyan-300">{(c.ingresadas || 0).toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono text-orange-300 font-bold">{(c.movilizadas || 0).toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-center">
+                      {detalle && detalle.length > 0 ? (
+                        <button onClick={() => { setExpandedCom(isOpen ? null : c.comunidad); setUserSearch(""); }}
+                          className="text-[10px] px-2 py-0.5 rounded border border-purple-500/30 text-purple-300 hover:bg-purple-500/10">
+                          {isOpen ? "▼ Ocultar" : "▶ Ver"}
+                        </button>
+                      ) : <span className="text-[10px] t-muted">—</span>}
+                    </td>
+                  </tr>
+                  {isOpen && filteredUsers && (
+                    <tr>
+                      <td colSpan={8} className="p-3" style={{ background: "rgba(167,139,250,0.04)" }}>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <p className="text-[11px] t-secondary">
+                            <strong>{detalle?.length}</strong> usuarios — primero los activos (mov &gt; 0), después los que no operaron.
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <input type="text" placeholder="Buscar..." value={userSearch} onChange={(e) => setUserSearch(e.target.value)}
+                              className="text-[10px] px-2 py-1 rounded border border-gray-700 bg-transparent t-primary outline-none w-40" />
+                            <button onClick={() => detalle && exportComCsv(c.comunidad, detalle)}
+                              className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40">⬇️ CSV</button>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto rounded-lg border border-purple-500/15" style={{ background: "var(--bg-input)" }}>
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="border-b border-gray-700 text-[10px] t-muted">
+                                <th className="text-left py-2 px-2">#</th>
+                                <th className="text-left py-2 px-2">Email</th>
+                                <th className="text-left py-2 px-2">Nombre</th>
+                                <th className="text-left py-2 px-2">Teléfono</th>
+                                <th className="text-right py-2 px-2">Ingresadas</th>
+                                <th className="text-right py-2 px-2">Movilizadas</th>
+                                <th className="text-center py-2 px-2">Estado</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredUsers.slice(0, 200).map((u, idx) => (
+                                <tr key={u.email + idx} className="border-b border-gray-800/40">
+                                  <td className="py-2 px-2 t-muted text-[10px]">{idx + 1}</td>
+                                  <td className="py-2 px-2 t-primary font-mono text-[10px]">{u.email}</td>
+                                  <td className="py-2 px-2 t-secondary max-w-[160px] truncate" title={u.nombre}>{u.nombre}</td>
+                                  <td className="py-2 px-2 t-muted font-mono">{u.telefono}</td>
+                                  <td className="py-2 px-2 text-right font-mono text-cyan-300">{u.ing.toLocaleString("es-AR")}</td>
+                                  <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{u.mov.toLocaleString("es-AR")}</td>
+                                  <td className="py-2 px-2 text-center">
+                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium" style={{
+                                      background: u.mov > 0 ? "rgba(16,185,129,0.15)" : "rgba(220,38,38,0.10)",
+                                      color: u.mov > 0 ? "#10b981" : "#dc2626",
+                                    }}>
+                                      {u.mov > 0 ? "🟢 ACTIVO" : "⭕ Sin operar"}
+                                    </span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                        {filteredUsers.length > 200 && (
+                          <p className="text-[10px] t-muted mt-2">Mostrando primeros 200. Usa el CSV para la lista completa.</p>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               );
             })}
             {visible.length === 0 && (
-              <tr><td colSpan={6} className="py-4 px-3 text-center t-muted text-xs">Sin comunidades que coincidan.</td></tr>
+              <tr><td colSpan={8} className="py-4 px-3 text-center t-muted text-xs">Sin comunidades que coincidan.</td></tr>
             )}
           </tbody>
         </table>
@@ -424,7 +520,7 @@ function SegmentCard({
 }: {
   title: string; subtitle: string; color: string; count: number;
   isExpanded: boolean; onToggle: () => void; onExport: () => void;
-  children?: React.ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <div className="rounded-xl border" style={{ background: "var(--bg-card)", borderColor: color + "30" }}>
