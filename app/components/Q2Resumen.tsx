@@ -220,6 +220,87 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
         <p className="text-xs t-muted">Acumulado de Abril + Mayo + Junio. Comercial, operaciones y usuarios.</p>
       </div>
 
+      {/* Meta Q2 destacada */}
+      <div className="rounded-2xl p-5 border-2" style={{
+        background: "linear-gradient(135deg, rgba(167,139,250,0.10), rgba(249,115,22,0.08))",
+        borderColor: pctVsMetaMov >= 100 ? "rgba(16,185,129,0.5)" : pctVsMetaMov >= 75 ? "rgba(245,158,11,0.5)" : "rgba(220,38,38,0.5)",
+      }}>
+        <div className="flex flex-wrap items-baseline justify-between gap-2 mb-4">
+          <h3 className="text-base font-bold t-primary">🎯 Meta Q2 — Avance trimestral</h3>
+          <span className="text-[11px] t-muted">Suma de metas mensuales Abr + May + Jun</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Movilizadas */}
+          <div>
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <span className="text-[11px] t-muted uppercase tracking-wider">Movilizadas</span>
+              <span className="text-[10px] t-secondary">{totales.mov.toLocaleString("es-AR")} / {totales.metaMov.toLocaleString("es-AR")}</span>
+            </div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-bold" style={{ color: pctVsMetaMov >= 100 ? "#10b981" : pctVsMetaMov >= 75 ? "#f59e0b" : "#dc2626" }}>
+                {pctVsMetaMov.toFixed(1)}%
+              </span>
+              <span className="text-xs t-muted">de meta Q2</span>
+            </div>
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.25)" }}>
+              <div className="h-full transition-all" style={{
+                width: `${Math.min(pctVsMetaMov, 100)}%`,
+                background: pctVsMetaMov >= 100 ? "#10b981" : pctVsMetaMov >= 75 ? "#f59e0b" : "#dc2626",
+              }} />
+            </div>
+            <p className="text-[10px] t-muted mt-1">
+              {pctVsMetaMov >= 100 ? "✅ Meta cumplida" : `${(totales.metaMov - totales.mov).toLocaleString("es-AR")} mov por cumplir`}
+            </p>
+          </div>
+
+          {/* Ingresadas */}
+          <div>
+            <div className="flex items-baseline justify-between gap-2 mb-1">
+              <span className="text-[11px] t-muted uppercase tracking-wider">Ingresadas</span>
+              <span className="text-[10px] t-secondary">{totales.ing.toLocaleString("es-AR")} / {totales.metaIng.toLocaleString("es-AR")}</span>
+            </div>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-bold" style={{ color: pctVsMetaIng >= 100 ? "#10b981" : pctVsMetaIng >= 75 ? "#f59e0b" : "#dc2626" }}>
+                {pctVsMetaIng.toFixed(1)}%
+              </span>
+              <span className="text-xs t-muted">de meta Q2</span>
+            </div>
+            <div className="h-3 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.25)" }}>
+              <div className="h-full transition-all" style={{
+                width: `${Math.min(pctVsMetaIng, 100)}%`,
+                background: pctVsMetaIng >= 100 ? "#10b981" : pctVsMetaIng >= 75 ? "#f59e0b" : "#dc2626",
+              }} />
+            </div>
+            <p className="text-[10px] t-muted mt-1">
+              {pctVsMetaIng >= 100 ? "✅ Meta cumplida" : `${(totales.metaIng - totales.ing).toLocaleString("es-AR")} ing por cumplir`}
+            </p>
+          </div>
+        </div>
+
+        {/* Breakdown por mes */}
+        <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-gray-700/40">
+          {MESES.map((m) => {
+            const r = resumen[m] || { ingresadas: 0, movilizadas: 0 } as ResumenMes;
+            const metaM = (metaInfo[`meta_movilizadas_${m}`] as number) || 0;
+            const metaI = (metaInfo[`meta_ingresadas_${m}`] as number) || 0;
+            const pctM = metaM > 0 ? (r.movilizadas / metaM) * 100 : 0;
+            const pctI = metaI > 0 ? (r.ingresadas / metaI) * 100 : 0;
+            const color = pctM >= 100 ? "#10b981" : pctM >= 75 ? "#f59e0b" : "#dc2626";
+            return (
+              <div key={m} className="rounded-lg p-3 border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
+                <p className="text-[10px] t-muted uppercase tracking-wider mb-1">{MES_LABEL[m]}</p>
+                <p className="text-sm font-bold" style={{ color }}>{pctM.toFixed(0)}% mov</p>
+                <p className="text-[10px] t-muted">{r.movilizadas.toLocaleString("es-AR")} / {metaM.toLocaleString("es-AR")}</p>
+                <p className="text-[10px] mt-1" style={{ color: pctI >= 100 ? "#10b981" : pctI >= 75 ? "#f59e0b" : "#dc2626" }}>
+                  {pctI.toFixed(0)}% ing
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* KPIs principales */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
         <Kpi label="Ingresadas Q2" value={totales.ing.toLocaleString("es-AR")} color="#0891b2" sub={totales.metaIng > 0 ? `${pctVsMetaIng.toFixed(0)}% de meta` : undefined} />
