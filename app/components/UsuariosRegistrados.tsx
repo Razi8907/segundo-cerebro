@@ -37,8 +37,10 @@ interface Payload {
   comunidades_globales?: ComunidadEntry[];
 }
 
-const MESES_ORDER = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+// "q2" se ubica al inicio como vista acumulada de Q2 (Abr+May+Jun).
+const MESES_ORDER = ["q1","q2","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const MES_LABEL: Record<string, string> = {
+  q1: "Q1 (acum)", q2: "Q2 (acum)",
   enero:"Enero", febrero:"Febrero", marzo:"Marzo", abril:"Abril",
   mayo:"Mayo", junio:"Junio", julio:"Julio", agosto:"Agosto",
   septiembre:"Septiembre", octubre:"Octubre", noviembre:"Noviembre", diciembre:"Diciembre",
