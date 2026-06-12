@@ -8,6 +8,7 @@ import CRMCentroGestion from "../components/CRMCentroGestion";
 import MinimoDiario from "../components/MinimoDiario";
 import MinimoSemanal from "../components/MinimoSemanal";
 import MinimoMensual from "../components/MinimoMensual";
+import UsuariosRegistrados from "../components/UsuariosRegistrados";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -73,7 +74,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
 }
 
 type Sector = "comercial" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
-type ComercialSub = "general" | "minimo" | "minimo_sem" | "minimo_mes" | "dropshippers" | "proveedores" | "crm";
+type ComercialSub = "general" | "minimo" | "minimo_sem" | "minimo_mes" | "usuarios" | "dropshippers" | "proveedores" | "crm";
 
 export default function ParaguayDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
@@ -216,6 +217,7 @@ export default function ParaguayDashboard() {
                 { key: "minimo" as ComercialSub, label: "📐 Mínimo Diario" },
                 { key: "minimo_sem" as ComercialSub, label: "📅 Mínimo Semanal" },
                 { key: "minimo_mes" as ComercialSub, label: "📆 Mínimo Mensual" },
+                { key: "usuarios" as ComercialSub, label: "🧑‍🤝‍🧑 Usuarios Registrados" },
                 { key: "dropshippers" as ComercialSub, label: "👥 Dropshippers" },
                 { key: "proveedores" as ComercialSub, label: "📦 Proveedores" },
                 { key: "crm" as ComercialSub, label: "🎯 CRM" },
@@ -282,6 +284,10 @@ export default function ParaguayDashboard() {
 
             {comercialSub === "minimo_mes" && (
               <MinimoMensual country="py" mes={isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+            )}
+
+            {comercialSub === "usuarios" && (
+              <UsuariosRegistrados country="py" />
             )}
 
             {comercialSub === "crm" && (
