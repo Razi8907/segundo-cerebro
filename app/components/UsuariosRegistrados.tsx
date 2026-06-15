@@ -37,6 +37,9 @@ interface RetentionUser {
   mov_cohort: number; ing_cohort: number;
   mov_post: number; ing_post: number;
   mov_q2: number; ing_q2: number;
+  // Per-month breakdown (optional — present when source data allows)
+  mov_abril?: number; mov_mayo?: number; mov_junio?: number;
+  ing_abril?: number; ing_mayo?: number; ing_junio?: number;
 }
 type RetentionBuckets = Record<string, RetentionUser[]>;
 type RetentionByCohort = Record<string, RetentionBuckets>;
@@ -535,11 +538,11 @@ const BUCKET_META: Record<string, { label: string; icon: string; color: string; 
     subtitleFor: (cohort) => `Registrados en ${cap(cohort)} que NO operaron en ningún mes de Q2. Candidatos a campaña de despertar.`,
   },
   solo_abril: {
-    label: "Solo operaron en Abril",
+    label: "Operaron en Abril pero no en el mes vista",
     icon: "🟡",
     color: "#f59e0b",
     tone: "warn",
-    subtitleFor: () => `Activaron en Abril pero NO volvieron a operar en Mayo ni Junio. Recuperables.`,
+    subtitleFor: (_, view) => `Activaron en Abril pero NO operaron en ${cap(view)}. Recuperables.`,
   },
   solo_mayo: {
     label: "Solo operaron en Mayo",
@@ -548,6 +551,13 @@ const BUCKET_META: Record<string, { label: string; icon: string; color: string; 
     tone: "warn",
     subtitleFor: () => `Activaron en Mayo pero NO operaron en Junio. Bajaron — recuperables.`,
   },
+  bajaron_jun: {
+    label: "Bajaron en Junio",
+    icon: "🟠",
+    color: "#fb923c",
+    tone: "warn",
+    subtitleFor: () => `Activaron en Junio pero con menos movilizadas que su mejor mes anterior. Atención: están perdiendo velocidad.`,
+  },
   activo_post_abril: {
     label: "Siguen activos post-Abril",
     icon: "🟢",
@@ -555,12 +565,19 @@ const BUCKET_META: Record<string, { label: string; icon: string; color: string; 
     tone: "good",
     subtitleFor: () => `Registrados en Abril que también operaron en Mayo y/o Junio. Crecer y retener.`,
   },
+  activo_mayo: {
+    label: "Activaron en Mayo",
+    icon: "🟢",
+    color: "#10b981",
+    tone: "good",
+    subtitleFor: () => `Registrados en Abril que también operaron en Mayo. Retención positiva — potenciarlos.`,
+  },
   activo_jun: {
     label: "Siguen activos en Junio",
     icon: "🟢",
     color: "#10b981",
     tone: "good",
-    subtitleFor: () => `Registrados en Mayo que también operaron en Junio. Sostenidos — crecer.`,
+    subtitleFor: (cohort) => `Registrados en ${cap(cohort)} que también operaron en Junio (manteniendo o creciendo). Sostenidos — crecer.`,
   },
 };
 
@@ -587,7 +604,7 @@ function RetentionSection({ viewMes, retention }: { viewMes: string; retention: 
 function CohortRetentionCard({ cohortMes, viewMes, buckets }: { cohortMes: string; viewMes: string; buckets: RetentionBuckets }) {
   const total = Object.values(buckets).reduce((s, arr) => s + arr.length, 0);
   // Orden visual: malo → bueno
-  const order = ["nunca_operaron", "solo_abril", "solo_mayo", "activo_post_abril", "activo_jun"];
+  const order = ["nunca_operaron", "solo_abril", "solo_mayo", "bajaron_jun", "activo_post_abril", "activo_mayo", "activo_jun"];
   const bucketKeys = order.filter((k) => k in buckets);
   return (
     <div className="rounded-lg border border-amber-500/15" style={{ background: "var(--bg-input)" }}>
@@ -632,10 +649,12 @@ function RetentionBucketCard({ label, icon, color, subtitle, users, cohortMes, v
   }, [users, search]);
 
   const exportCsv = () => {
-    const header = "Email,Nombre,Teléfono,Comunidad,Mov_cohort,Mov_post_cohort,Mov_Q2_total,Ing_cohort,Ing_post_cohort,Ing_Q2_total\n";
+    const header = "Email,Nombre,Teléfono,Comunidad,Mov_Abril,Mov_Mayo,Mov_Junio,Mov_Q2_total,Ing_Abril,Ing_Mayo,Ing_Junio,Ing_Q2_total\n";
     const lines = users.map((u) => {
       const safe = (s: string) => `"${String(s || "").replace(/"/g, '""')}"`;
-      return [safe(u.email), safe(u.nombre), safe(u.telefono), safe(u.comunidad || ""), u.mov_cohort, u.mov_post, u.mov_q2, u.ing_cohort, u.ing_post, u.ing_q2].join(",");
+      return [safe(u.email), safe(u.nombre), safe(u.telefono), safe(u.comunidad || ""),
+        u.mov_abril ?? "", u.mov_mayo ?? "", u.mov_junio ?? "", u.mov_q2,
+        u.ing_abril ?? "", u.ing_mayo ?? "", u.ing_junio ?? "", u.ing_q2].join(",");
     }).join("\n");
     const blob = new Blob(["﻿" + header + lines], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -674,26 +693,37 @@ function RetentionBucketCard({ label, icon, color, subtitle, users, cohortMes, v
                   <th className="text-left py-2 px-2">Nombre</th>
                   <th className="text-left py-2 px-2">Teléfono</th>
                   <th className="text-left py-2 px-2">Comunidad</th>
-                  <th className="text-right py-2 px-2" title={`Movilizadas en ${MES_LABEL[cohortMes]}`}>Mov {cap(cohortMes).slice(0,3)}.</th>
-                  <th className="text-right py-2 px-2" title="Movilizadas en meses posteriores al de registro">Mov post-{cap(cohortMes).slice(0,3)}.</th>
-                  <th className="text-right py-2 px-2" title="Total Q2 (Abril+Mayo+Junio)">Mov Q2</th>
+                  <th className="text-right py-2 px-2" title="Movilizadas en Abril">Mov Abr</th>
+                  <th className="text-right py-2 px-2" title="Movilizadas en Mayo">Mov May</th>
+                  <th className="text-right py-2 px-2" title="Movilizadas en Junio">Mov Jun</th>
+                  <th className="text-right py-2 px-2" title="Total Q2 (Abril+Mayo+Junio)">Total Q2</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 200).map((u, i) => (
-                  <tr key={u.email + i} className="border-b border-gray-800/40 hover:bg-orange-500/5">
-                    <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
-                    <td className="py-2 px-2 t-primary font-mono text-[10px]">{u.email}</td>
-                    <td className="py-2 px-2 t-secondary max-w-[160px] truncate" title={u.nombre}>{u.nombre}</td>
-                    <td className="py-2 px-2 t-muted font-mono">{u.telefono}</td>
-                    <td className="py-2 px-2 t-muted text-[10px] max-w-[180px] truncate" title={u.comunidad || ""}>{u.comunidad || "—"}</td>
-                    <td className="py-2 px-2 text-right font-mono text-cyan-300">{u.mov_cohort.toLocaleString("es-AR")}</td>
-                    <td className="py-2 px-2 text-right font-mono" style={{ color: u.mov_post > 0 ? "#10b981" : "#6b7280" }}>{u.mov_post.toLocaleString("es-AR")}</td>
-                    <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{u.mov_q2.toLocaleString("es-AR")}</td>
-                  </tr>
-                ))}
+                {filtered.slice(0, 200).map((u, i) => {
+                  const cellStyle = (v?: number, isCohort?: boolean) => ({
+                    color: v && v > 0 ? (isCohort ? "#67e8f9" : "#10b981") : "#6b7280",
+                    fontWeight: isCohort ? 600 : 400,
+                  });
+                  const isApr = cohortMes === "abril";
+                  const isMay = cohortMes === "mayo";
+                  const isJun = cohortMes === "junio";
+                  return (
+                    <tr key={u.email + i} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                      <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
+                      <td className="py-2 px-2 t-primary font-mono text-[10px]">{u.email}</td>
+                      <td className="py-2 px-2 t-secondary max-w-[160px] truncate" title={u.nombre}>{u.nombre}</td>
+                      <td className="py-2 px-2 t-muted font-mono">{u.telefono}</td>
+                      <td className="py-2 px-2 t-muted text-[10px] max-w-[180px] truncate" title={u.comunidad || ""}>{u.comunidad || "—"}</td>
+                      <td className="py-2 px-2 text-right font-mono" style={cellStyle(u.mov_abril, isApr)}>{(u.mov_abril ?? 0).toLocaleString("es-AR")}</td>
+                      <td className="py-2 px-2 text-right font-mono" style={cellStyle(u.mov_mayo, isMay)}>{(u.mov_mayo ?? 0).toLocaleString("es-AR")}</td>
+                      <td className="py-2 px-2 text-right font-mono" style={cellStyle(u.mov_junio, isJun)}>{(u.mov_junio ?? 0).toLocaleString("es-AR")}</td>
+                      <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{u.mov_q2.toLocaleString("es-AR")}</td>
+                    </tr>
+                  );
+                })}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="py-4 px-3 text-center t-muted text-xs">Sin resultados.</td></tr>
+                  <tr><td colSpan={9} className="py-4 px-3 text-center t-muted text-xs">Sin resultados.</td></tr>
                 )}
               </tbody>
             </table>
