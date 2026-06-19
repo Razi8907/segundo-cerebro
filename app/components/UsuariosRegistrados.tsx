@@ -7,11 +7,14 @@ interface UserDetail {
   nombre: string;
   telefono: string;
   comunidad: string | null;
-  orders: number;
+  orders: number;       // movilizadas (métrica primaria del Pareto)
+  ing?: number;         // ingresadas (info secundaria, presente en data nueva)
 }
 
 interface Segment2Bin {
   count: number;
+  ingresadas?: number;
+  movilizadas?: number;
   usuarios: UserDetail[];
 }
 
@@ -20,13 +23,17 @@ interface ComunidadUserDetail { email: string; nombre: string; telefono: string;
 
 interface CohortData {
   total_registrados: number;
-  total_ordenes: number;
-  activos_total: number;
-  inactivos_total: number;
+  total_ordenes: number;          // = total_movilizadas (compatibilidad hacia atrás)
+  total_movilizadas?: number;
+  total_ingresadas?: number;
+  activos_total: number;           // mov > 0
+  intentaron_total?: number;       // mov=0, ing>0 (nuevo segmento)
+  inactivos_total: number;         // mov=0, ing=0 (sin actividad)
   windows_note?: string;
-  segmento_1_pareto75: { count: number; ordenes_acumuladas: number; pct_ordenes: number; usuarios: UserDetail[] };
+  segmento_1_pareto75: { count: number; ordenes_acumuladas: number; ingresadas_acumuladas?: number; pct_ordenes: number; usuarios: UserDetail[] };
   segmento_2_bins: Record<string, Segment2Bin>;
-  segmento_3_1_a_19: { count: number; usuarios: UserDetail[] };
+  segmento_3_1_a_19: { count: number; ingresadas?: number; movilizadas?: number; usuarios: UserDetail[] };
+  segmento_intentaron?: { count: number; ingresadas: number; usuarios: UserDetail[] };
   segmento_4_cero: { count: number; usuarios: UserDetail[] };
   comunidades?: ComunidadEntry[];
   comunidades_detalle?: Record<string, ComunidadUserDetail[]>;
@@ -63,7 +70,7 @@ const MES_LABEL: Record<string, string> = {
   septiembre:"Septiembre", octubre:"Octubre", noviembre:"Noviembre", diciembre:"Diciembre",
 };
 
-type SegmentKey = "seg1" | "seg2" | "seg3" | "seg4";
+type SegmentKey = "seg1" | "seg2" | "seg3" | "segIntent" | "seg4";
 
 // Restringe qué cohortes mostrar según el mes activo en el header.
 // - junio  → ['junio', 'q2']
@@ -171,10 +178,10 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
   }, [search]);
 
   const exportCsv = useCallback((users: UserDetail[], filename: string) => {
-    const header = "Email,Nombre,Teléfono,Comunidad,Órdenes\n";
+    const header = "Email,Nombre,Teléfono,Comunidad,Ingresadas,Movilizadas\n";
     const lines = users.map((u) => {
       const safe = (s: string) => `"${String(s || "").replace(/"/g, '""')}"`;
-      return [safe(u.email), safe(u.nombre), safe(u.telefono), safe(u.comunidad || ""), u.orders].join(",");
+      return [safe(u.email), safe(u.nombre), safe(u.telefono), safe(u.comunidad || ""), u.ing ?? 0, u.orders].join(",");
     }).join("\n");
     const blob = new Blob(["﻿" + header + lines], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -247,10 +254,11 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
       {/* SEGMENTO 1 — Pareto 75% */}
       <SegmentCard
         title={`[1] ⭐ Pareto 75% del movimiento`}
-        subtitle={`${cohort.segmento_1_pareto75.count} usuarios generan el ${cohort.segmento_1_pareto75.pct_ordenes}% del total de órdenes del cohort`}
+        subtitle={`${cohort.segmento_1_pareto75.count} usuarios generan el ${cohort.segmento_1_pareto75.pct_ordenes}% de las movilizadas del cohort`}
         color="#10b981"
         count={cohort.segmento_1_pareto75.count}
-        orders={cohort.segmento_1_pareto75.ordenes_acumuladas}
+        mov={cohort.segmento_1_pareto75.ordenes_acumuladas}
+        ing={cohort.segmento_1_pareto75.ingresadas_acumuladas}
         isExpanded={expandedSegment === "seg1"}
         onToggle={() => { setExpandedSegment(expandedSegment === "seg1" ? null : "seg1"); setExpandedBin(null); setSearch(""); }}
         onExport={() => exportCsv(cohort.segmento_1_pareto75.usuarios, `pareto75_${selectedMes}_${country}.csv`)}
@@ -260,19 +268,23 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
         )}
       </SegmentCard>
 
-      {/* SEGMENTO 2 — 20+ órdenes en bins de 10 */}
+      {/* SEGMENTO 2 — 20+ movilizadas en bins de 10 */}
       {(() => {
         const seg2Users = Object.values(cohort.segmento_2_bins).reduce((s, b) => s + b.count, 0);
-        const seg2Orders = Object.values(cohort.segmento_2_bins).reduce(
-          (s, b) => s + b.usuarios.reduce((ss, u) => ss + u.orders, 0), 0
+        const seg2Mov = Object.values(cohort.segmento_2_bins).reduce(
+          (s, b) => s + (b.movilizadas ?? b.usuarios.reduce((ss, u) => ss + u.orders, 0)), 0
+        );
+        const seg2Ing = Object.values(cohort.segmento_2_bins).reduce(
+          (s, b) => s + (b.ingresadas ?? b.usuarios.reduce((ss, u) => ss + (u.ing ?? 0), 0)), 0
         );
         return (
           <SegmentCard
-            title={`[2] 📊 20+ órdenes (fuera del pareto)`}
+            title={`[2] 📊 20+ movilizadas (fuera del pareto)`}
             subtitle={`Bins de 10.`}
             color="#0891b2"
             count={seg2Users}
-            orders={seg2Orders}
+            mov={seg2Mov}
+            ing={seg2Ing}
             isExpanded={expandedSegment === "seg2"}
             onToggle={() => { setExpandedSegment(expandedSegment === "seg2" ? null : "seg2"); setExpandedBin(null); setSearch(""); }}
             onExport={() => {
@@ -286,7 +298,8 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
                 {Object.entries(cohort.segmento_2_bins)
                   .sort((a, b) => parseInt(a[0].split("-")[0]) - parseInt(b[0].split("-")[0]))
                   .map(([binLabel, binData]) => {
-                    const binOrders = binData.usuarios.reduce((s, u) => s + u.orders, 0);
+                    const binMov = binData.movilizadas ?? binData.usuarios.reduce((s, u) => s + u.orders, 0);
+                    const binIng = binData.ingresadas ?? binData.usuarios.reduce((s, u) => s + (u.ing ?? 0), 0);
                     return (
                       <div key={binLabel} className="rounded-lg border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
                         <button
@@ -294,7 +307,7 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
                           className="w-full flex items-center justify-between p-3 text-left hover:bg-orange-500/5"
                         >
                           <span className="text-xs t-primary font-medium">
-                            Bin {binLabel} órdenes — {binData.count} usuarios <span className="t-muted">· {binOrders.toLocaleString("es-AR")} órdenes</span>
+                            Bin {binLabel} mov — {binData.count} usuarios <span className="text-orange-300">· {binMov.toLocaleString("es-AR")} mov</span> <span className="text-cyan-300">· {binIng.toLocaleString("es-AR")} ing</span>
                           </span>
                           <span className="text-[10px] t-muted">{expandedBin === binLabel ? "▼" : "▶"}</span>
                         </button>
@@ -315,16 +328,18 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
         );
       })()}
 
-      {/* SEGMENTO 3 — 1 a 19 órdenes */}
+      {/* SEGMENTO 3 — 1 a 19 movilizadas */}
       {(() => {
-        const seg3Orders = cohort.segmento_3_1_a_19.usuarios.reduce((s, u) => s + u.orders, 0);
+        const seg3Mov = cohort.segmento_3_1_a_19.movilizadas ?? cohort.segmento_3_1_a_19.usuarios.reduce((s, u) => s + u.orders, 0);
+        const seg3Ing = cohort.segmento_3_1_a_19.ingresadas ?? cohort.segmento_3_1_a_19.usuarios.reduce((s, u) => s + (u.ing ?? 0), 0);
         return (
           <SegmentCard
-            title={`[3] 📉 1 a 19 órdenes`}
+            title={`[3] 📉 1 a 19 movilizadas`}
             subtitle={`Volumen bajo — candidatos a despertar.`}
             color="#f59e0b"
             count={cohort.segmento_3_1_a_19.count}
-            orders={seg3Orders}
+            mov={seg3Mov}
+            ing={seg3Ing}
             isExpanded={expandedSegment === "seg3"}
             onToggle={() => { setExpandedSegment(expandedSegment === "seg3" ? null : "seg3"); setExpandedBin(null); setSearch(""); }}
             onExport={() => exportCsv(cohort.segmento_3_1_a_19.usuarios, `bajos_${selectedMes}_${country}.csv`)}
@@ -336,10 +351,28 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
         );
       })()}
 
-      {/* SEGMENTO 4 — 0 órdenes */}
+      {/* SEGMENTO INTENTARON — ingresaron pero no movilizaron (recuperables) */}
+      {cohort.segmento_intentaron && cohort.segmento_intentaron.count > 0 && (
+        <SegmentCard
+          title={`[3b] ⚠️ Ingresaron pero no movilizaron`}
+          subtitle={`Generaron órdenes pero ninguna se movilizó (canceladas, pendientes o rechazadas). Recuperables — alta prioridad de contacto.`}
+          color="#eab308"
+          count={cohort.segmento_intentaron.count}
+          ing={cohort.segmento_intentaron.ingresadas}
+          isExpanded={expandedSegment === "segIntent"}
+          onToggle={() => { setExpandedSegment(expandedSegment === "segIntent" ? null : "segIntent"); setExpandedBin(null); setSearch(""); }}
+          onExport={() => exportCsv(cohort.segmento_intentaron!.usuarios, `intentaron_${selectedMes}_${country}.csv`)}
+        >
+          {expandedSegment === "segIntent" && (
+            <UserList users={filterUsers(cohort.segmento_intentaron.usuarios)} search={search} setSearch={setSearch} />
+          )}
+        </SegmentCard>
+      )}
+
+      {/* SEGMENTO 4 — sin actividad (mov=0, ing=0) */}
       <SegmentCard
-        title={`[4] 💤 Registrados sin órdenes`}
-        subtitle={`Nunca operaron en la ventana observada.`}
+        title={`[4] 💤 Registrados sin actividad`}
+        subtitle={`Nunca generaron una orden (ni ingresadas ni movilizadas).`}
         color="#dc2626"
         count={cohort.segmento_4_cero.count}
         isExpanded={expandedSegment === "seg4"}
@@ -769,10 +802,11 @@ function Kpi({ label, value, color, sub }: { label: string; value: string; color
 }
 
 function SegmentCard({
-  title, subtitle, color, count, orders, isExpanded, onToggle, onExport, children,
+  title, subtitle, color, count, mov, ing, isExpanded, onToggle, onExport, children,
 }: {
   title: string; subtitle: string; color: string; count: number;
-  orders?: number;
+  mov?: number;   // movilizadas (métrica primaria — naranja, grande)
+  ing?: number;   // ingresadas (métrica secundaria — cyan, debajo)
   isExpanded: boolean; onToggle: () => void; onExport: () => void;
   children?: ReactNode;
 }) {
@@ -789,10 +823,15 @@ function SegmentCard({
               <span className="text-2xl font-bold" style={{ color }}>{count.toLocaleString("es-AR")}</span>
               <span className="text-[9px] t-muted uppercase tracking-wider">usuarios</span>
             </div>
-            {orders !== undefined && (
+            {(mov !== undefined || ing !== undefined) && (
               <div className="flex flex-col items-end leading-tight px-2 border-l" style={{ borderColor: color + "30" }}>
-                <span className="text-2xl font-bold text-orange-300">{orders.toLocaleString("es-AR")}</span>
-                <span className="text-[9px] t-muted uppercase tracking-wider">órdenes</span>
+                {mov !== undefined && (
+                  <span className="text-2xl font-bold text-orange-300">{mov.toLocaleString("es-AR")}</span>
+                )}
+                <span className="text-[9px] t-muted uppercase tracking-wider">{mov !== undefined ? "movilizadas" : "ingresadas"}</span>
+                {mov !== undefined && ing !== undefined && (
+                  <span className="text-[10px] text-cyan-300 mt-0.5">{ing.toLocaleString("es-AR")} ing</span>
+                )}
               </div>
             )}
             {count > 0 && (
@@ -827,7 +866,8 @@ function UserList({ users, search, setSearch }: { users: UserDetail[]; search: s
               <th className="text-left py-2 px-3">Nombre</th>
               <th className="text-left py-2 px-3">Teléfono</th>
               <th className="text-left py-2 px-3">Comunidad</th>
-              <th className="text-right py-2 px-3">Órdenes</th>
+              <th className="text-right py-2 px-3" title="Órdenes ingresadas (todas, incluye canceladas/pendientes)">Ing</th>
+              <th className="text-right py-2 px-3" title="Órdenes movilizadas (efectivamente despachadas)">Mov</th>
             </tr>
           </thead>
           <tbody>
@@ -838,11 +878,12 @@ function UserList({ users, search, setSearch }: { users: UserDetail[]; search: s
                 <td className="py-2 px-3 t-secondary max-w-[180px] truncate" title={u.nombre}>{u.nombre}</td>
                 <td className="py-2 px-3 t-muted font-mono">{u.telefono}</td>
                 <td className="py-2 px-3 t-muted text-[10px] max-w-[200px] truncate" title={u.comunidad || ""}>{u.comunidad || "—"}</td>
+                <td className="py-2 px-3 text-right font-mono text-cyan-300">{(u.ing ?? 0).toLocaleString("es-AR")}</td>
                 <td className="py-2 px-3 text-right font-mono font-bold text-orange-300">{u.orders.toLocaleString("es-AR")}</td>
               </tr>
             ))}
             {visible.length === 0 && (
-              <tr><td colSpan={6} className="py-4 px-3 text-center t-muted text-xs">Sin resultados.</td></tr>
+              <tr><td colSpan={7} className="py-4 px-3 text-center t-muted text-xs">Sin resultados.</td></tr>
             )}
           </tbody>
         </table>
