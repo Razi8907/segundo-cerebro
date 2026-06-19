@@ -247,9 +247,10 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
       {/* SEGMENTO 1 — Pareto 75% */}
       <SegmentCard
         title={`[1] ⭐ Pareto 75% del movimiento`}
-        subtitle={`${cohort.segmento_1_pareto75.count} usuarios generan el ${cohort.segmento_1_pareto75.pct_ordenes}% del total de órdenes del cohort (${cohort.segmento_1_pareto75.ordenes_acumuladas.toLocaleString("es-AR")} órdenes)`}
+        subtitle={`${cohort.segmento_1_pareto75.count} usuarios generan el ${cohort.segmento_1_pareto75.pct_ordenes}% del total de órdenes del cohort`}
         color="#10b981"
         count={cohort.segmento_1_pareto75.count}
+        orders={cohort.segmento_1_pareto75.ordenes_acumuladas}
         isExpanded={expandedSegment === "seg1"}
         onToggle={() => { setExpandedSegment(expandedSegment === "seg1" ? null : "seg1"); setExpandedBin(null); setSearch(""); }}
         onExport={() => exportCsv(cohort.segmento_1_pareto75.usuarios, `pareto75_${selectedMes}_${country}.csv`)}
@@ -268,9 +269,10 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
         return (
           <SegmentCard
             title={`[2] 📊 20+ órdenes (fuera del pareto)`}
-            subtitle={`Bins de 10. ${seg2Users} usuarios — ${seg2Orders.toLocaleString("es-AR")} órdenes generadas.`}
+            subtitle={`Bins de 10.`}
             color="#0891b2"
             count={seg2Users}
+            orders={seg2Orders}
             isExpanded={expandedSegment === "seg2"}
             onToggle={() => { setExpandedSegment(expandedSegment === "seg2" ? null : "seg2"); setExpandedBin(null); setSearch(""); }}
             onExport={() => {
@@ -319,9 +321,10 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
         return (
           <SegmentCard
             title={`[3] 📉 1 a 19 órdenes`}
-            subtitle={`Volumen bajo — candidatos a despertar. ${seg3Orders.toLocaleString("es-AR")} órdenes generadas.`}
+            subtitle={`Volumen bajo — candidatos a despertar.`}
             color="#f59e0b"
             count={cohort.segmento_3_1_a_19.count}
+            orders={seg3Orders}
             isExpanded={expandedSegment === "seg3"}
             onToggle={() => { setExpandedSegment(expandedSegment === "seg3" ? null : "seg3"); setExpandedBin(null); setSearch(""); }}
             onExport={() => exportCsv(cohort.segmento_3_1_a_19.usuarios, `bajos_${selectedMes}_${country}.csv`)}
@@ -766,9 +769,10 @@ function Kpi({ label, value, color, sub }: { label: string; value: string; color
 }
 
 function SegmentCard({
-  title, subtitle, color, count, isExpanded, onToggle, onExport, children,
+  title, subtitle, color, count, orders, isExpanded, onToggle, onExport, children,
 }: {
   title: string; subtitle: string; color: string; count: number;
+  orders?: number;
   isExpanded: boolean; onToggle: () => void; onExport: () => void;
   children?: ReactNode;
 }) {
@@ -781,7 +785,16 @@ function SegmentCard({
             <p className="text-[11px] t-muted">{subtitle}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-2xl font-bold" style={{ color }}>{count.toLocaleString("es-AR")}</span>
+            <div className="flex flex-col items-end leading-tight">
+              <span className="text-2xl font-bold" style={{ color }}>{count.toLocaleString("es-AR")}</span>
+              <span className="text-[9px] t-muted uppercase tracking-wider">usuarios</span>
+            </div>
+            {orders !== undefined && (
+              <div className="flex flex-col items-end leading-tight px-2 border-l" style={{ borderColor: color + "30" }}>
+                <span className="text-2xl font-bold text-orange-300">{orders.toLocaleString("es-AR")}</span>
+                <span className="text-[9px] t-muted uppercase tracking-wider">órdenes</span>
+              </div>
+            )}
             {count > 0 && (
               <button onClick={onExport} className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40">
                 ⬇️ CSV
