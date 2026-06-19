@@ -30,6 +30,7 @@ import ProveedorManager from "../components/ProveedorManager";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboardAR from "../components/FinanzasDashboardAR";
 import SeguimientoComercial from "../components/SeguimientoComercial";
+import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
@@ -83,7 +84,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
   return r[mes];
 }
 
-type Sector = "comercial" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
+type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
 type ComercialSub = "general" | "minimo" | "minimo_sem" | "minimo_mes" | "usuarios" | "dropshippers" | "proveedores" | "crm";
 
 export default function ArgentinaDashboard() {
@@ -164,6 +165,7 @@ export default function ArgentinaDashboard() {
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex gap-0">
           {([
             { key: "comercial" as Sector, label: "📊 Comercial", allowed: canComercial },
+            { key: "estrategia" as Sector, label: "🎯 Estrategia Usuarios", allowed: canComercial },
             { key: "operaciones" as Sector, label: "🏭 Operaciones", allowed: canOperaciones },
             { key: "finanzas" as Sector, label: "💰 Finanzas", allowed: canFinanzas },
             { key: "seguimiento" as Sector, label: "📋 Seg. Comercial", allowed: canComercial },
@@ -348,6 +350,10 @@ export default function ArgentinaDashboard() {
           country="ar"
         />
         </>}
+
+        {!isQ2 && sector === "estrategia" && (
+          <EstrategiaUsuarios country="ar" />
+        )}
 
         {!isQ2 && sector === "operaciones" && (
           <OperationsDashboard country="ar" />
