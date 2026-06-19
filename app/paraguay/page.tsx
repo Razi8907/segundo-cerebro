@@ -187,7 +187,7 @@ export default function ParaguayDashboard() {
       </div>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {isQ2 && (
+        {isQ2 && sector !== "estrategia" && (
           <Q2Resumen country="py" />
         )}
 
@@ -350,8 +350,8 @@ export default function ParaguayDashboard() {
         />
         </>}
 
-        {!isQ2 && sector === "estrategia" && (
-          <EstrategiaUsuarios country="py" />
+        {sector === "estrategia" && (
+          <EstrategiaUsuarios country="py" mesFilter={mesFilter} />
         )}
 
         {!isQ2 && sector === "operaciones" && (

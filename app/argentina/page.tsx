@@ -187,8 +187,8 @@ export default function ArgentinaDashboard() {
       </div>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {/* Q2 ocupa la vista completa: resumen consolidado de Abr+May+Jun */}
-        {isQ2 && (
+        {/* Q2 ocupa la vista completa: resumen consolidado de Abr+May+Jun, salvo estrategia que tiene su propia vista Q2 */}
+        {isQ2 && sector !== "estrategia" && (
           <Q2Resumen country="ar" />
         )}
 
@@ -351,8 +351,8 @@ export default function ArgentinaDashboard() {
         />
         </>}
 
-        {!isQ2 && sector === "estrategia" && (
-          <EstrategiaUsuarios country="ar" />
+        {sector === "estrategia" && (
+          <EstrategiaUsuarios country="ar" mesFilter={mesFilter} />
         )}
 
         {!isQ2 && sector === "operaciones" && (

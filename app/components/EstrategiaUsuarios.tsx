@@ -1,40 +1,45 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MesFilter } from "../types";
 
-interface UsuarioEstrategia {
+interface MesData { ing: number; mov: number; }
+
+interface UsuarioBase {
   email: string;
   nombre: string;
   telefono: string;
   comunidad: string | null;
-  mov: number;
-  ing: number;
-  meses_activos: string[];
-  segmento: string;
-  falta_para_subir: number | null;
-  near_upgrade: boolean;
+  por_mes: Record<string, MesData>;
 }
 
-interface Segmento {
-  key: string;
-  label: string;
-  min: number;
-  max: number | null;
+interface SegmentConfig {
+  key: string; label: string;
+  min: number; max: number | null;
   color: string;
-  next_threshold: number | null;
+  next: number | null;
   near_floor: number | null;
-  count: number;
-  near_count: number;
-  total_mov: number;
-  total_ing: number;
-  usuarios: UsuarioEstrategia[];
 }
 
 interface Payload {
   updated_at?: string;
   window_note?: string;
-  segmentos?: Segmento[];
+  segments_config: SegmentConfig[];
+  meses_disponibles: string[];
+  usuarios: UsuarioBase[];
 }
+
+interface UsuarioComputed extends UsuarioBase {
+  mov: number;          // mov en la ventana seleccionada
+  ing: number;          // ing en la ventana seleccionada
+  mov_lifetime: number; // mov acumulado en toda la base (todos los meses)
+  segmento: string | null;
+  falta_para_subir: number | null;
+  near_upgrade: boolean;
+}
+
+const Q1_MESES = new Set(["enero","febrero","marzo"]);
+const Q2_MESES = new Set(["abril","mayo","junio"]);
 
 const STRATEGIES: Record<string, { icon: string; titulo: string; acciones: string[]; herramientas: string[]; upgrade?: string[] }> = {
   iniciados: {
@@ -129,7 +134,33 @@ const STRATEGIES: Record<string, { icon: string; titulo: string; acciones: strin
   },
 };
 
-export default function EstrategiaUsuarios({ country }: { country: "ar" | "py" }) {
+const MES_LABEL: Record<string, string> = {
+  q1: "Q1 (Ene+Feb+Mar)", q2: "Q2 (Abr+May+Jun)",
+  enero: "Enero", febrero: "Febrero", marzo: "Marzo",
+  abril: "Abril", mayo: "Mayo", junio: "Junio",
+};
+
+function getMesesForWindow(mesFilter?: MesFilter | null): string[] {
+  if (!mesFilter) return ["enero","febrero","marzo","abril","mayo","junio"];
+  if (mesFilter === "q1") return ["enero","febrero","marzo"];
+  if (mesFilter === "q2") return ["abril","mayo","junio"];
+  return [mesFilter];
+}
+
+function classifyUser(mov: number, segments: SegmentConfig[]): { segmento: string | null; falta: number | null; near: boolean } {
+  if (mov < 1) return { segmento: null, falta: null, near: false };
+  for (const s of segments) {
+    const max = s.max ?? Number.POSITIVE_INFINITY;
+    if (mov >= s.min && mov < max) {
+      const falta = s.next ? s.next - mov : null;
+      const near = s.near_floor !== null && mov >= s.near_floor;
+      return { segmento: s.key, falta, near };
+    }
+  }
+  return { segmento: null, falta: null, near: false };
+}
+
+export default function EstrategiaUsuarios({ country, mesFilter }: { country: "ar" | "py"; mesFilter?: MesFilter | null }) {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -146,51 +177,77 @@ export default function EstrategiaUsuarios({ country }: { country: "ar" | "py" }
       setData(await res.json());
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error");
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   }, [country]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const filteredSegments = useMemo(() => {
-    if (!data?.segmentos) return [];
-    return data.segmentos.map((s) => {
-      const users = s.usuarios.filter((u) => {
-        if (filterNear && !u.near_upgrade) return false;
-        if (search.trim()) {
-          const q = search.toLowerCase();
-          if (!u.email.toLowerCase().includes(q) &&
-              !u.nombre.toLowerCase().includes(q) &&
-              !(u.comunidad || "").toLowerCase().includes(q) &&
-              !u.telefono.includes(search)) return false;
+  // Reset estado cuando cambia el mes
+  useEffect(() => { setOpenSegment(null); setShowStrategy(null); setSearch(""); setFilterNear(false); }, [mesFilter]);
+
+  const windowMeses = useMemo(() => getMesesForWindow(mesFilter), [mesFilter]);
+  const ventanaLabel = useMemo(() => {
+    if (!mesFilter) return "Todos los meses";
+    return MES_LABEL[mesFilter] || mesFilter;
+  }, [mesFilter]);
+
+  // Recompute users for current window
+  const usuariosComputed: UsuarioComputed[] = useMemo(() => {
+    if (!data?.usuarios) return [];
+    const segs = data.segments_config;
+    return data.usuarios.map((u) => {
+      let mov = 0, ing = 0, movLife = 0;
+      for (const m in u.por_mes) {
+        movLife += u.por_mes[m].mov;
+        if (windowMeses.includes(m)) {
+          mov += u.por_mes[m].mov;
+          ing += u.por_mes[m].ing;
         }
-        return true;
-      });
-      return { ...s, usuariosFiltered: users };
+      }
+      const c = classifyUser(mov, segs);
+      return { ...u, mov, ing, mov_lifetime: movLife, segmento: c.segmento, falta_para_subir: c.falta, near_upgrade: c.near };
+    }).filter((u) => u.mov >= 1);
+  }, [data, windowMeses]);
+
+  const segmentsWithUsers = useMemo(() => {
+    if (!data?.segments_config) return [];
+    return data.segments_config.map((s) => {
+      const users = usuariosComputed
+        .filter((u) => u.segmento === s.key)
+        .sort((a, b) => b.mov - a.mov);
+      const totalMov = users.reduce((acc, u) => acc + u.mov, 0);
+      const totalIng = users.reduce((acc, u) => acc + u.ing, 0);
+      const nearCount = users.filter((u) => u.near_upgrade).length;
+      return { ...s, users, totalMov, totalIng, count: users.length, nearCount };
     });
-  }, [data, search, filterNear]);
+  }, [data, usuariosComputed]);
 
-  const globalNearCount = useMemo(() => {
-    if (!data?.segmentos) return 0;
-    return data.segmentos.reduce((s, seg) => s + seg.near_count, 0);
-  }, [data]);
+  const totals = useMemo(() => ({
+    users: usuariosComputed.length,
+    mov: usuariosComputed.reduce((s, u) => s + u.mov, 0),
+    near: usuariosComputed.filter((u) => u.near_upgrade).length,
+    sabioCount: usuariosComputed.filter((u) => u.segmento === "sabio_vip").length,
+  }), [usuariosComputed]);
 
-  const totalUsers = useMemo(() => {
-    if (!data?.segmentos) return 0;
-    return data.segmentos.reduce((s, seg) => s + seg.count, 0);
-  }, [data]);
+  const applyFilters = useCallback((users: UsuarioComputed[]) => {
+    return users.filter((u) => {
+      if (filterNear && !u.near_upgrade) return false;
+      if (search.trim()) {
+        const q = search.toLowerCase();
+        if (!u.email.toLowerCase().includes(q) &&
+            !u.nombre.toLowerCase().includes(q) &&
+            !(u.comunidad || "").toLowerCase().includes(q) &&
+            !u.telefono.includes(search)) return false;
+      }
+      return true;
+    });
+  }, [search, filterNear]);
 
-  const totalMov = useMemo(() => {
-    if (!data?.segmentos) return 0;
-    return data.segmentos.reduce((s, seg) => s + seg.total_mov, 0);
-  }, [data]);
-
-  const exportCsv = useCallback((users: UsuarioEstrategia[], filename: string) => {
-    const header = "Email,Nombre,Teléfono,Comunidad,Segmento,Movilizadas,Ingresadas,Falta_para_subir,Meses_activos\n";
+  const exportCsv = useCallback((users: UsuarioComputed[], filename: string) => {
+    const header = "Email,Nombre,Teléfono,Comunidad,Segmento,Movilizadas_ventana,Ingresadas_ventana,Mov_lifetime,Falta_para_subir\n";
     const lines = users.map((u) => {
       const safe = (s: string) => `"${String(s || "").replace(/"/g, '""')}"`;
-      return [safe(u.email), safe(u.nombre), safe(u.telefono), safe(u.comunidad || ""), u.segmento, u.mov, u.ing, u.falta_para_subir ?? "", safe(u.meses_activos.join("|"))].join(",");
+      return [safe(u.email), safe(u.nombre), safe(u.telefono), safe(u.comunidad || ""), u.segmento || "", u.mov, u.ing, u.mov_lifetime, u.falta_para_subir ?? ""].join(",");
     }).join("\n");
     const blob = new Blob(["﻿" + header + lines], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -202,27 +259,26 @@ export default function EstrategiaUsuarios({ country }: { country: "ar" | "py" }
 
   if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando estrategia de usuarios…</div>;
   if (error) return <div className="glass-card p-6 text-red-400 text-sm">⚠️ {error}</div>;
-  if (!data || !data.segmentos) return <div className="glass-card p-6 t-muted">Sin datos cargados.</div>;
+  if (!data) return <div className="glass-card p-6 t-muted">Sin datos cargados.</div>;
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="rounded-xl p-4 border border-purple-500/20" style={{ background: "var(--bg-card)" }}>
-        <h1 className="text-lg font-bold t-primary mb-1">🎯 Estrategia de Usuarios — {country.toUpperCase()}</h1>
+        <h1 className="text-lg font-bold t-primary mb-1">🎯 Estrategia de Usuarios — {country.toUpperCase()} <span className="text-sm t-muted font-normal">· ventana: {ventanaLabel}</span></h1>
         <p className="text-[11px] t-muted">
-          Segmentación por movilizadas lifetime de toda la base activa. Sirve para definir el siguiente paso por nivel
-          y enfocar esfuerzo en los <strong className="text-amber-300">próximos a subir</strong> (los más rentables de empujar).
+          Segmentación de DSs activos por <strong>movilizadas en la ventana seleccionada</strong>. Cambiá el mes/Q en el header
+          para recalcular. Foco en los <strong className="text-amber-300">próximos a subir</strong>.
         </p>
         {data.window_note && <p className="text-[10px] text-amber-300 mt-2">ⓘ {data.window_note}</p>}
       </div>
 
-      {/* KPIs globales */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi label="Usuarios activos totales" value={totalUsers.toLocaleString("es-AR")} color="#a78bfa" />
-        <Kpi label="Movilizadas lifetime" value={totalMov.toLocaleString("es-AR")} color="#f97316" />
-        <Kpi label="🚀 Próximos a subir nivel" value={globalNearCount.toLocaleString("es-AR")} color="#fbbf24"
-          sub="los más rentables de trabajar HOY" />
-        <Kpi label="Sabio VIP" value={(data.segmentos.find((s) => s.key === "sabio_vip")?.count || 0).toLocaleString("es-AR")} color="#f59e0b" sub="top de la base" />
+        <Kpi label={`DSs con mov ≥1 en ${ventanaLabel}`} value={totals.users.toLocaleString("es-AR")} color="#a78bfa" />
+        <Kpi label="Movilizadas en la ventana" value={totals.mov.toLocaleString("es-AR")} color="#f97316" />
+        <Kpi label="🚀 Próximos a subir nivel" value={totals.near.toLocaleString("es-AR")} color="#fbbf24" sub="los más rentables HOY" />
+        <Kpi label="👑 Sabio VIP" value={totals.sabioCount.toLocaleString("es-AR")} color="#f59e0b" sub="≥2000 mov en la ventana" />
       </div>
 
       {/* Filtros */}
@@ -237,9 +293,7 @@ export default function EstrategiaUsuarios({ country }: { country: "ar" | "py" }
         <button
           onClick={() => setFilterNear(!filterNear)}
           className={`text-xs px-3 py-2 rounded-lg border ${
-            filterNear
-              ? "bg-amber-500/20 border-amber-500 text-amber-300"
-              : "border-gray-700 t-secondary hover:border-amber-500/40"
+            filterNear ? "bg-amber-500/20 border-amber-500 text-amber-300" : "border-gray-700 t-secondary hover:border-amber-500/40"
           }`}
         >
           {filterNear ? "🚀 Solo próximos a subir" : "🚀 Filtrar próximos a subir"}
@@ -248,17 +302,17 @@ export default function EstrategiaUsuarios({ country }: { country: "ar" | "py" }
 
       {/* Segmentos */}
       <div className="space-y-3">
-        {filteredSegments.map((seg) => (
+        {segmentsWithUsers.map((seg) => (
           <SegmentBlock
             key={seg.key}
             seg={seg}
-            usuariosFiltered={seg.usuariosFiltered}
+            usuariosFiltered={applyFilters(seg.users)}
             isOpen={openSegment === seg.key}
             onToggle={() => setOpenSegment(openSegment === seg.key ? null : seg.key)}
             showStrategy={showStrategy === seg.key}
             onToggleStrategy={() => setShowStrategy(showStrategy === seg.key ? null : seg.key)}
-            onExport={() => exportCsv(seg.usuarios, `estrategia_${country}_${seg.key}.csv`)}
-            onExportNear={() => exportCsv(seg.usuarios.filter((u) => u.near_upgrade), `estrategia_${country}_${seg.key}_cerca_subir.csv`)}
+            onExport={() => exportCsv(seg.users, `estrategia_${country}_${mesFilter || "all"}_${seg.key}.csv`)}
+            onExportNear={() => exportCsv(seg.users.filter((u) => u.near_upgrade), `estrategia_${country}_${mesFilter || "all"}_${seg.key}_cerca.csv`)}
           />
         ))}
       </div>
@@ -273,14 +327,15 @@ export default function EstrategiaUsuarios({ country }: { country: "ar" | "py" }
 function SegmentBlock({
   seg, usuariosFiltered, isOpen, onToggle, showStrategy, onToggleStrategy, onExport, onExportNear,
 }: {
-  seg: Segmento & { usuariosFiltered: UsuarioEstrategia[] };
-  usuariosFiltered: UsuarioEstrategia[];
+  seg: SegmentConfig & { users: UsuarioComputed[]; totalMov: number; totalIng: number; count: number; nearCount: number };
+  usuariosFiltered: UsuarioComputed[];
   isOpen: boolean; onToggle: () => void;
   showStrategy: boolean; onToggleStrategy: () => void;
   onExport: () => void; onExportNear: () => void;
 }) {
   const strat = STRATEGIES[seg.key];
   const rangoLabel = seg.max ? `${seg.min}-${seg.max - 1}` : `${seg.min}+`;
+  const cercaUsers = seg.users.filter((u) => u.near_upgrade);
   return (
     <div className="rounded-xl border" style={{ background: "var(--bg-card)", borderColor: seg.color + "40" }}>
       <div className="p-4">
@@ -288,18 +343,18 @@ function SegmentBlock({
           <div className="min-w-0 flex-1">
             <h2 className="text-base font-bold t-primary mb-1">
               {strat?.icon || "📊"} {seg.label}{" "}
-              <span className="text-xs t-muted font-normal">({rangoLabel} movilizadas lifetime)</span>
+              <span className="text-xs t-muted font-normal">({rangoLabel} movilizadas)</span>
             </h2>
             <div className="flex flex-wrap gap-3 text-[11px] t-muted">
               <span><strong className="t-primary text-base" style={{ color: seg.color }}>{seg.count.toLocaleString("es-AR")}</strong> usuarios</span>
               <span>·</span>
-              <span><strong className="text-orange-300">{seg.total_mov.toLocaleString("es-AR")}</strong> mov totales</span>
+              <span><strong className="text-orange-300">{seg.totalMov.toLocaleString("es-AR")}</strong> mov</span>
               <span>·</span>
-              <span><strong className="text-cyan-300">{seg.total_ing.toLocaleString("es-AR")}</strong> ing totales</span>
-              {seg.near_count > 0 && (
+              <span><strong className="text-cyan-300">{seg.totalIng.toLocaleString("es-AR")}</strong> ing</span>
+              {seg.nearCount > 0 && (
                 <>
                   <span>·</span>
-                  <span className="text-amber-300">🚀 <strong>{seg.near_count}</strong> próximos a subir</span>
+                  <span className="text-amber-300">🚀 <strong>{seg.nearCount}</strong> próximos a subir</span>
                 </>
               )}
             </div>
@@ -321,7 +376,6 @@ function SegmentBlock({
         </div>
       </div>
 
-      {/* Estrategia */}
       {showStrategy && strat && (
         <div className="px-4 pb-4 space-y-3">
           <div className="rounded-lg p-3 border border-purple-500/20" style={{ background: "var(--bg-input)" }}>
@@ -338,7 +392,7 @@ function SegmentBlock({
           </div>
           {strat.upgrade && (
             <div className="rounded-lg p-3 border border-amber-500/30" style={{ background: "rgba(251,191,36,0.05)" }}>
-              <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">🚀 Para los que están cerca del siguiente nivel</h3>
+              <h3 className="text-xs font-bold text-amber-300 uppercase tracking-wider mb-2">🚀 Para los próximos a subir nivel</h3>
               <ul className="space-y-1 text-[11px] t-secondary">
                 {strat.upgrade.map((u, i) => <li key={i}>• {u}</li>)}
               </ul>
@@ -347,26 +401,24 @@ function SegmentBlock({
         </div>
       )}
 
-      {/* Cerca de subir (mini-cuadro destacado) */}
-      {seg.near_count > 0 && (
+      {seg.nearCount > 0 && (
         <div className="px-4 pb-4">
           <div className="rounded-lg p-3 border border-amber-500/40" style={{ background: "rgba(251,191,36,0.08)" }}>
             <div className="flex items-start justify-between gap-2 mb-2">
               <div>
-                <h3 className="text-sm font-bold text-amber-300">🚀 {seg.near_count} cerca del siguiente nivel</h3>
-                <p className="text-[10px] t-muted">Faltan ≤ {seg.next_threshold ? (seg.next_threshold - (seg.near_floor || 0)) : "?"} órdenes para pasar al siguiente segmento. Foco máximo.</p>
+                <h3 className="text-sm font-bold text-amber-300">🚀 {seg.nearCount} cerca del siguiente nivel</h3>
+                <p className="text-[10px] t-muted">Faltan ≤ {seg.next ? (seg.next - (seg.near_floor || 0)) : "?"} órdenes para pasar al siguiente segmento. Foco máximo.</p>
               </div>
               <button onClick={onExportNear}
                 className="text-[10px] px-2 py-1 rounded border border-amber-500/40 text-amber-300 hover:bg-amber-500/10 shrink-0">
                 ⬇️ CSV cerca de subir
               </button>
             </div>
-            <UserTable users={seg.usuarios.filter((u) => u.near_upgrade)} color={seg.color} highlightNear />
+            <UserTable users={cercaUsers} color={seg.color} highlightNear />
           </div>
         </div>
       )}
 
-      {/* Tabla expandida */}
       {isOpen && (
         <div className="px-4 pb-4">
           <UserTable users={usuariosFiltered} color={seg.color} />
@@ -379,7 +431,7 @@ function SegmentBlock({
   );
 }
 
-function UserTable({ users, color, highlightNear = false }: { users: UsuarioEstrategia[]; color: string; highlightNear?: boolean }) {
+function UserTable({ users, color, highlightNear = false }: { users: UsuarioComputed[]; color: string; highlightNear?: boolean }) {
   const [showAll, setShowAll] = useState(false);
   const visible = showAll ? users : users.slice(0, 50);
   return (
@@ -395,6 +447,7 @@ function UserTable({ users, color, highlightNear = false }: { users: UsuarioEstr
               <th className="text-left py-2 px-2">Comunidad</th>
               <th className="text-right py-2 px-2">Ing</th>
               <th className="text-right py-2 px-2">Mov</th>
+              <th className="text-right py-2 px-2" title="Mov acumulado en TODA la base (todos los meses)">Mov life</th>
               <th className="text-right py-2 px-2">Faltan p/ subir</th>
             </tr>
           </thead>
@@ -408,6 +461,7 @@ function UserTable({ users, color, highlightNear = false }: { users: UsuarioEstr
                 <td className="py-2 px-2 t-muted text-[10px] max-w-[160px] truncate" title={u.comunidad || ""}>{u.comunidad || "—"}</td>
                 <td className="py-2 px-2 text-right font-mono text-cyan-300">{u.ing.toLocaleString("es-AR")}</td>
                 <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{u.mov.toLocaleString("es-AR")}</td>
+                <td className="py-2 px-2 text-right font-mono t-muted text-[10px]">{u.mov_lifetime.toLocaleString("es-AR")}</td>
                 <td className="py-2 px-2 text-right font-mono">
                   {u.falta_para_subir !== null ? (
                     <span className={u.near_upgrade ? "text-amber-300 font-bold" : "t-muted"}>
