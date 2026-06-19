@@ -260,60 +260,78 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
       </SegmentCard>
 
       {/* SEGMENTO 2 — 20+ órdenes en bins de 10 */}
-      <SegmentCard
-        title={`[2] 📊 20+ órdenes (fuera del pareto)`}
-        subtitle={`Bins de 10. Total: ${Object.values(cohort.segmento_2_bins).reduce((s, b) => s + b.count, 0)} usuarios.`}
-        color="#0891b2"
-        count={Object.values(cohort.segmento_2_bins).reduce((s, b) => s + b.count, 0)}
-        isExpanded={expandedSegment === "seg2"}
-        onToggle={() => { setExpandedSegment(expandedSegment === "seg2" ? null : "seg2"); setExpandedBin(null); setSearch(""); }}
-        onExport={() => {
-          const all: UserDetail[] = [];
-          Object.values(cohort.segmento_2_bins).forEach((b) => all.push(...b.usuarios));
-          exportCsv(all, `bins10_${selectedMes}_${country}.csv`);
-        }}
-      >
-        {expandedSegment === "seg2" && (
-          <div className="space-y-2">
-            {Object.entries(cohort.segmento_2_bins)
-              .sort((a, b) => parseInt(a[0].split("-")[0]) - parseInt(b[0].split("-")[0]))
-              .map(([binLabel, binData]) => (
-                <div key={binLabel} className="rounded-lg border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
-                  <button
-                    onClick={() => setExpandedBin(expandedBin === binLabel ? null : binLabel)}
-                    className="w-full flex items-center justify-between p-3 text-left hover:bg-orange-500/5"
-                  >
-                    <span className="text-xs t-primary font-medium">Bin {binLabel} órdenes — {binData.count} usuarios</span>
-                    <span className="text-[10px] t-muted">{expandedBin === binLabel ? "▼" : "▶"}</span>
-                  </button>
-                  {expandedBin === binLabel && (
-                    <div className="p-3 pt-0">
-                      <UserList users={filterUsers(binData.usuarios)} search={search} setSearch={setSearch} />
-                    </div>
-                  )}
-                </div>
-              ))}
-            {Object.keys(cohort.segmento_2_bins).length === 0 && (
-              <p className="text-xs t-muted text-center py-4">Sin usuarios en este segmento para este mes.</p>
+      {(() => {
+        const seg2Users = Object.values(cohort.segmento_2_bins).reduce((s, b) => s + b.count, 0);
+        const seg2Orders = Object.values(cohort.segmento_2_bins).reduce(
+          (s, b) => s + b.usuarios.reduce((ss, u) => ss + u.orders, 0), 0
+        );
+        return (
+          <SegmentCard
+            title={`[2] 📊 20+ órdenes (fuera del pareto)`}
+            subtitle={`Bins de 10. ${seg2Users} usuarios — ${seg2Orders.toLocaleString("es-AR")} órdenes generadas.`}
+            color="#0891b2"
+            count={seg2Users}
+            isExpanded={expandedSegment === "seg2"}
+            onToggle={() => { setExpandedSegment(expandedSegment === "seg2" ? null : "seg2"); setExpandedBin(null); setSearch(""); }}
+            onExport={() => {
+              const all: UserDetail[] = [];
+              Object.values(cohort.segmento_2_bins).forEach((b) => all.push(...b.usuarios));
+              exportCsv(all, `bins10_${selectedMes}_${country}.csv`);
+            }}
+          >
+            {expandedSegment === "seg2" && (
+              <div className="space-y-2">
+                {Object.entries(cohort.segmento_2_bins)
+                  .sort((a, b) => parseInt(a[0].split("-")[0]) - parseInt(b[0].split("-")[0]))
+                  .map(([binLabel, binData]) => {
+                    const binOrders = binData.usuarios.reduce((s, u) => s + u.orders, 0);
+                    return (
+                      <div key={binLabel} className="rounded-lg border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
+                        <button
+                          onClick={() => setExpandedBin(expandedBin === binLabel ? null : binLabel)}
+                          className="w-full flex items-center justify-between p-3 text-left hover:bg-orange-500/5"
+                        >
+                          <span className="text-xs t-primary font-medium">
+                            Bin {binLabel} órdenes — {binData.count} usuarios <span className="t-muted">· {binOrders.toLocaleString("es-AR")} órdenes</span>
+                          </span>
+                          <span className="text-[10px] t-muted">{expandedBin === binLabel ? "▼" : "▶"}</span>
+                        </button>
+                        {expandedBin === binLabel && (
+                          <div className="p-3 pt-0">
+                            <UserList users={filterUsers(binData.usuarios)} search={search} setSearch={setSearch} />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                {Object.keys(cohort.segmento_2_bins).length === 0 && (
+                  <p className="text-xs t-muted text-center py-4">Sin usuarios en este segmento para este mes.</p>
+                )}
+              </div>
             )}
-          </div>
-        )}
-      </SegmentCard>
+          </SegmentCard>
+        );
+      })()}
 
       {/* SEGMENTO 3 — 1 a 19 órdenes */}
-      <SegmentCard
-        title={`[3] 📉 1 a 19 órdenes`}
-        subtitle={`Volumen bajo — candidatos a despertar.`}
-        color="#f59e0b"
-        count={cohort.segmento_3_1_a_19.count}
-        isExpanded={expandedSegment === "seg3"}
-        onToggle={() => { setExpandedSegment(expandedSegment === "seg3" ? null : "seg3"); setExpandedBin(null); setSearch(""); }}
-        onExport={() => exportCsv(cohort.segmento_3_1_a_19.usuarios, `bajos_${selectedMes}_${country}.csv`)}
-      >
-        {expandedSegment === "seg3" && (
-          <UserList users={filterUsers(cohort.segmento_3_1_a_19.usuarios)} search={search} setSearch={setSearch} />
-        )}
-      </SegmentCard>
+      {(() => {
+        const seg3Orders = cohort.segmento_3_1_a_19.usuarios.reduce((s, u) => s + u.orders, 0);
+        return (
+          <SegmentCard
+            title={`[3] 📉 1 a 19 órdenes`}
+            subtitle={`Volumen bajo — candidatos a despertar. ${seg3Orders.toLocaleString("es-AR")} órdenes generadas.`}
+            color="#f59e0b"
+            count={cohort.segmento_3_1_a_19.count}
+            isExpanded={expandedSegment === "seg3"}
+            onToggle={() => { setExpandedSegment(expandedSegment === "seg3" ? null : "seg3"); setExpandedBin(null); setSearch(""); }}
+            onExport={() => exportCsv(cohort.segmento_3_1_a_19.usuarios, `bajos_${selectedMes}_${country}.csv`)}
+          >
+            {expandedSegment === "seg3" && (
+              <UserList users={filterUsers(cohort.segmento_3_1_a_19.usuarios)} search={search} setSearch={setSearch} />
+            )}
+          </SegmentCard>
+        );
+      })()}
 
       {/* SEGMENTO 4 — 0 órdenes */}
       <SegmentCard
