@@ -16,36 +16,24 @@ export async function persistResumenOperacional(input: ResumenInput): Promise<vo
   console.log("[server persistResumen] received", { country: input.country, mes: input.mes });
   try {
     const supabase = getSupabase();
-    const { data: row, error: readErr } = await supabase
-      .from("dashboard_snapshots")
-      .select("data")
-      .eq("country", input.country)
-      .single();
-    if (readErr) {
-      console.warn("[persistResumenOperacional] read failed", readErr);
-      return;
-    }
-    const prevData = (row?.data as Record<string, unknown>) ?? {};
-    const prevResumen = (prevData.resumen as Record<string, unknown> | undefined) ?? {};
-    const newData = {
-      ...prevData,
-      resumen: {
-        ...prevResumen,
-        [input.mes]: {
+    const { error } = await supabase
+      .from("resumen_operacional")
+      .upsert(
+        {
+          country: input.country,
+          mes: input.mes,
           ingresadas: input.ingresadas,
           movilizadas: input.movilizadas,
           entregadas: input.entregadas,
           devueltas: input.devueltas,
           en_proceso: input.en_proceso,
+          updated_at: new Date().toISOString(),
         },
-      },
-    };
-    const { error: writeErr } = await supabase
-      .from("dashboard_snapshots")
-      .update({ data: newData, updated_at: new Date().toISOString() })
-      .eq("country", input.country);
-    if (writeErr) {
-      console.warn("[persistResumenOperacional] write failed", writeErr);
+        { onConflict: "country,mes" }
+      );
+
+    if (error) {
+      console.warn("[persistResumenOperacional] upsert failed", error);
     }
   } catch (e) {
     console.warn("[persistResumenOperacional] unexpected error", e);
