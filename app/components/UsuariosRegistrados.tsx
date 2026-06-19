@@ -206,6 +206,10 @@ export default function UsuariosRegistrados({ country, mesContexto }: { country:
         </p>
       </div>
 
+      {/* Subida de xlsx — actualiza la base de registrados */}
+      <UploadRegistrados country={country} onUploaded={fetchData} />
+
+
       {/* KPIs globales */}
       {globalSummary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
@@ -892,6 +896,105 @@ function UserList({ users, search, setSearch }: { users: UserDetail[]; search: s
         <button onClick={() => setShowAll(true)} className="text-[11px] text-orange-400 hover:underline">
           Ver todos ({users.length.toLocaleString("es-AR")})
         </button>
+      )}
+    </div>
+  );
+}
+
+interface UploadSummary {
+  reg: number; act: number; intent: number; mov: number;
+}
+
+function UploadRegistrados({ country, onUploaded }: { country: "ar" | "py"; onUploaded: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [result, setResult] = useState<{ parsed: number; summary: Record<string, UploadSummary> } | null>(null);
+  const [error, setError] = useState("");
+  const [collapsed, setCollapsed] = useState(true);
+
+  const handleUpload = async () => {
+    if (!file) return;
+    setUploading(true); setError(""); setResult(null);
+    try {
+      const fd = new FormData();
+      fd.append("country", country);
+      fd.append("file", file);
+      const res = await fetch("/api/data/usuarios/upload", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setResult({ parsed: json.parsed_users, summary: json.summary });
+      // refrescar data del componente padre
+      onUploaded();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Error");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-emerald-500/20 p-4" style={{ background: "var(--bg-card)" }}>
+      <div className="flex items-start justify-between gap-2 mb-2">
+        <div>
+          <h3 className="text-sm font-bold t-primary">📤 Actualizar base de registrados</h3>
+          <p className="text-[11px] t-muted">
+            Subí el xlsx de Dropi (mismo formato que <code>Dropshippers Registrados {country.toUpperCase()}.xlsx</code>). El sistema reprocesa cohorts, comunidades y retención automáticamente con los datos operacionales más recientes.
+          </p>
+        </div>
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="text-[11px] px-3 py-1 rounded border border-emerald-500/30 text-emerald-300 hover:bg-emerald-500/10 shrink-0"
+        >
+          {collapsed ? "Mostrar" : "Ocultar"}
+        </button>
+      </div>
+
+      {!collapsed && (
+        <div className="space-y-3 mt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={(e) => { setFile(e.target.files?.[0] || null); setResult(null); setError(""); }}
+              className="text-xs t-secondary file:mr-2 file:px-3 file:py-1.5 file:rounded file:border-0 file:bg-emerald-500/20 file:text-emerald-300 file:cursor-pointer file:hover:bg-emerald-500/30"
+            />
+            <button
+              onClick={handleUpload}
+              disabled={!file || uploading}
+              className="text-xs px-4 py-2 rounded-lg bg-emerald-500 text-white font-medium hover:bg-emerald-600 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {uploading ? "Procesando…" : "Subir y reprocesar"}
+            </button>
+            {file && !uploading && (
+              <span className="text-[10px] t-muted">📄 {file.name} · {(file.size / 1024 / 1024).toFixed(2)} MB</span>
+            )}
+          </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-500/30 p-2 text-[11px] text-red-400" style={{ background: "rgba(220,38,38,0.05)" }}>
+              ⚠️ {error}
+            </div>
+          )}
+
+          {result && (
+            <div className="rounded-lg border border-emerald-500/30 p-3" style={{ background: "rgba(16,185,129,0.05)" }}>
+              <p className="text-xs text-emerald-300 mb-2">
+                ✅ Procesados <strong>{result.parsed.toLocaleString("es-AR")}</strong> usuarios. Cohorts actualizados:
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-[11px]">
+                {Object.entries(result.summary).map(([mes, s]) => (
+                  <div key={mes} className="rounded p-2 border border-emerald-500/10" style={{ background: "var(--bg-input)" }}>
+                    <p className="t-muted uppercase text-[9px] tracking-wider">{mes}</p>
+                    <p className="t-primary">
+                      <strong>{s.reg.toLocaleString("es-AR")}</strong> reg · <span className="text-green-400">{s.act}</span> act · <span className="text-amber-300">{s.intent}</span> int
+                    </p>
+                    <p className="t-muted text-[10px]">{s.mov.toLocaleString("es-AR")} mov</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );
