@@ -42,6 +42,98 @@ const Q1_MESES = new Set(["enero","febrero","marzo"]);
 const Q2_MESES = new Set(["abril","mayo","junio"]);
 
 const STRATEGIES: Record<string, { icon: string; titulo: string; acciones: string[]; herramientas: string[]; upgrade?: string[] }> = {
+  // ===== AR-specific segments =====
+  esporadicos: {
+    icon: "🎯",
+    titulo: "Dropshipper Esporádicos (1-10 movilizadas)",
+    acciones: [
+      "Diagnóstico inicial: por qué movieron tan poco — falta de tráfico, producto débil, falla en checkout, abandono de carrito",
+      "Llamada de bienvenida personalizada en las primeras 48hs de su primera venta",
+      "Reto 'Primera Decena': desafío en 7-14 días de pasar a 11+ órdenes con coaching diario",
+      "Catálogo curado de 5 productos winners de bajo riesgo y alto margen",
+      "Mini-mentoría grupal semanal (15 min) — peer learning con otros Esporádicos",
+    ],
+    herramientas: [
+      "Creativos de Meta/TikTok validados (plug & play)",
+      "Audiencias semilla compartidas de Dropi por nicho",
+      "Plantilla de respuesta automática WhatsApp post-venta",
+      "Calculadora de ROAS y break-even",
+      "WhatsApp group de Esporádicos para compartir aprendizajes",
+    ],
+    upgrade: [
+      "Cuando llegan a 8+ mov: invitación al programa 'En Desarrollo' con menu intensivo",
+      "50% de descuento en fulfillment los siguientes 20 envíos si cruzan el umbral",
+      "Sesión 1:1 de optimización de campaña con un Master",
+      "Acceso a 3 productos premium del catálogo restringido por una semana",
+    ],
+  },
+  master_ar: {
+    icon: "⚡",
+    titulo: "Master AR (66-299 movilizadas)",
+    acciones: [
+      "Capacitación avanzada: scaling de presupuestos, gestión de retención de cliente y LTV",
+      "Acceso anticipado a productos nuevos (48-72hs antes del catálogo público)",
+      "Bonus por volumen: descuento en fletes cada X órdenes/mes",
+      "Cuenta dedicada de Customer Success con QBR (quarterly business review)",
+      "Eventos online quincenales con casos de éxito + Q&A con C-level",
+    ],
+    herramientas: [
+      "Pixel manager + tracking server-side (CAPI)",
+      "Automatizaciones: chatbot WhatsApp + email post-venta",
+      "Reportes semanales personalizados con benchmarking por nicho",
+      "Acceso a la comunidad cerrada Master (peer learning)",
+      "Banco de funnels probados y templates de landing pages",
+    ],
+    upgrade: [
+      "Cuando llegan a 270+: roadmap 'Camino al Sabio VIP' (300+ mov/mes)",
+      "Coaching mensual 1:1 con un Sabio VIP de Dropi",
+      "Acceso a proveedores premium con stock prioritario",
+      "Comisión reducida los primeros 100 envíos si cruzan el umbral",
+    ],
+  },
+  sabio_vip_ar: {
+    icon: "👑",
+    titulo: "Sabio VIP AR (300+ movilizadas)",
+    acciones: [
+      "Programa de embajadores: revenue share por DSs referidos que escalen a Master+",
+      "Mejores condiciones comerciales (fletes, comisiones, plazos)",
+      "Beta de proveedores exclusivos antes que cualquier otro DS",
+      "Invitación a eventos presenciales y cumbres anuales de Dropi",
+      "Acceso directo a C-level via canal privado",
+    ],
+    herramientas: [
+      "API completa + posibilidad de integración white label",
+      "Soporte 24/7 con SLA garantizado (<2hs)",
+      "Fulfillment exclusivo con preparación prioritaria",
+      "Dashboard ejecutivo con métricas en tiempo real",
+      "Acceso a financiamiento de stock (cash advance hasta cierto monto)",
+    ],
+  },
+  en_desarrollo: {
+    icon: "📈",
+    titulo: "Dropshipper en Desarrollo (11-65 movilizadas)",
+    acciones: [
+      "Auditoría mensual de campañas: CTR, CPM, conversion rate, devoluciones",
+      "Capacitación intermedia: optimización de Meta Ads, retargeting básico, mejora de creativos",
+      "Asignación a un Customer Success específico (no cuenta dedicada todavía)",
+      "Acceso a la comunidad cerrada 'En Desarrollo' (Slack o Discord)",
+      "Reto mensual con bonus: pasar a 60+ mov en 30 días = envíos bonificados",
+    ],
+    herramientas: [
+      "Pixel manager con eventos custom (purchase, add_to_cart, lead)",
+      "Plantillas de retargeting + lookalike audiences",
+      "Reporte semanal automatizado con KPIs clave",
+      "Acceso a banco de creativos probados (200+ assets)",
+      "Mini-curso: 'De 10 a 100 órdenes/mes' (5 módulos grabados)",
+    ],
+    upgrade: [
+      "Cuando llegan a 55+: roadmap personalizado para cruzar a Master (66+)",
+      "Coaching mensual 1:1 con un Sabio VIP",
+      "Acceso anticipado a productos nuevos del catálogo",
+      "Comisión reducida los primeros 50 envíos del mes siguiente si suben",
+    ],
+  },
+  // ===== PY-specific (also generic) =====
   iniciados: {
     icon: "🌱",
     titulo: "Iniciados (1-299 movilizadas)",
