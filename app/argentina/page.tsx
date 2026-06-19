@@ -85,7 +85,8 @@ function getResumenByMes(mes: MesFilter, allData: any) {
 }
 
 type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
-type ComercialSub = "general" | "minimo" | "minimo_sem" | "minimo_mes" | "usuarios" | "dropshippers" | "proveedores" | "crm";
+type ComercialSub = "general" | "minimo" | "minimo_sem" | "minimo_mes" | "dropshippers" | "proveedores" | "crm";
+type EstrategiaSub = "segmentos" | "registrados";
 
 export default function ArgentinaDashboard() {
   const [mesFilter, setMesFilter] = useState<MesFilter>("q1");
@@ -112,6 +113,7 @@ export default function ArgentinaDashboard() {
   const isJunio = mesFilter === "junio";
   const isPlanning = isAbril || isMayo || isJunio;
   const [comercialSub, setComercialSub] = useState<ComercialSub>("general");
+  const [estrategiaSub, setEstrategiaSub] = useState<EstrategiaSub>("segmentos");
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg-page)" }}>
@@ -235,7 +237,6 @@ export default function ArgentinaDashboard() {
                 { key: "minimo" as ComercialSub, label: "📐 Mínimo Diario" },
                 { key: "minimo_sem" as ComercialSub, label: "📅 Mínimo Semanal" },
                 { key: "minimo_mes" as ComercialSub, label: "📆 Mínimo Mensual" },
-                { key: "usuarios" as ComercialSub, label: "🧑‍🤝‍🧑 Usuarios Registrados" },
                 { key: "dropshippers" as ComercialSub, label: "👥 Dropshippers" },
                 { key: "proveedores" as ComercialSub, label: "📦 Proveedores" },
                 { key: "crm" as ComercialSub, label: "🎯 CRM" },
@@ -305,10 +306,6 @@ export default function ArgentinaDashboard() {
               <MinimoMensual country="ar" mes={isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
-            {comercialSub === "usuarios" && (
-              <UsuariosRegistrados country="ar" mesContexto={mesFilter} />
-            )}
-
             {comercialSub === "crm" && (
               <CRMCentroGestion country="ar" />
             )}
@@ -352,7 +349,33 @@ export default function ArgentinaDashboard() {
         </>}
 
         {sector === "estrategia" && (
-          <EstrategiaUsuarios country="ar" mesFilter={mesFilter} />
+          <div className="space-y-4">
+            {/* Sub-nav Estrategia */}
+            <div className="flex flex-wrap gap-2 border-b border-gray-700/40 pb-2">
+              {([
+                { key: "segmentos" as EstrategiaSub, label: "🎯 Por Segmentos" },
+                { key: "registrados" as EstrategiaSub, label: "🧑‍🤝‍🧑 Registrados / Activos" },
+              ]).map((s) => (
+                <button
+                  key={s.key}
+                  onClick={() => setEstrategiaSub(s.key)}
+                  className={`text-xs px-3 py-2 rounded-lg border transition-all ${
+                    estrategiaSub === s.key
+                      ? "bg-orange-500 text-white border-orange-500"
+                      : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40"
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            {estrategiaSub === "segmentos" && (
+              <EstrategiaUsuarios country="ar" mesFilter={mesFilter} />
+            )}
+            {estrategiaSub === "registrados" && (
+              <UsuariosRegistrados country="ar" mesContexto={mesFilter} />
+            )}
+          </div>
         )}
 
         {!isQ2 && sector === "operaciones" && (
