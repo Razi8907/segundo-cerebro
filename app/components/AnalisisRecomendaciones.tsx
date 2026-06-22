@@ -524,13 +524,40 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
       });
     }
 
-    // 10. Retención perdidos (registrados que no volvieron)
-    if (analisisUsuarios && analisisUsuarios.retention_perdidos >= 20) {
+    // 10. Retención perdidos (registrados que no volvieron) — con lista detallada
+    if (analisisUsuarios && analisisUsuarios.retention_perdidos >= 5) {
+      // Combinar todos los buckets "solo_*" de las cohorts previas en la vista actual
+      const perdidosUsers: { email?: string; nombre?: string; telefono?: string; comunidad?: string | null; mov_cohort?: number; mov_abril?: number; mov_mayo?: number; mov_junio?: number }[] = [];
+      const retentionView = (usuariosSeg as unknown as { retention?: Record<string, Record<string, Record<string, { email?: string; nombre?: string; telefono?: string; comunidad?: string | null; mov_cohort?: number; mov_abril?: number; mov_mayo?: number; mov_junio?: number }[]>>> } | null)?.retention?.[mesActual];
+      const cohortMap: Record<string, string> = {};
+      if (retentionView) {
+        for (const [cohortKey, buckets] of Object.entries(retentionView)) {
+          for (const [bk, lst] of Object.entries(buckets)) {
+            if (bk.startsWith("solo_") && Array.isArray(lst)) {
+              for (const u of lst) {
+                perdidosUsers.push(u);
+                if (u.email) cohortMap[u.email] = cohortKey;
+              }
+            }
+          }
+        }
+      }
+      // Ordenar por mov_cohort desc (los que más operaron primero)
+      perdidosUsers.sort((a, b) => (b.mov_cohort || 0) - (a.mov_cohort || 0));
       inmediatas.push({
         titulo: `🔁 ${fmt(analisisUsuarios.retention_perdidos)} DSs operaron antes y NO volvieron en ${MES_LABEL[mesActual]}`,
         detalle: `Son la pesca más fácil — ya saben usar la plataforma, ya generaron ventas alguna vez. Recuperarlos cuesta mucho menos que conseguir DSs nuevos.`,
-        cualitativo: `Campaña "te extrañamos" en 3 etapas: 1) WhatsApp automatizado con mensaje personal y bonus de 10 envíos gratis. 2) Si no responde en 48hs, llamada del comercial. 3) Si vuelve a operar, asignación a un programa de fidelización (proveedor preferente, info anticipada de productos nuevos). Lista completa en Estrategia Usuarios > Registrados/Activos > Retención.`,
+        cualitativo: `Campaña "te extrañamos" en 3 etapas: 1) WhatsApp automatizado con mensaje personal y bonus de 10 envíos gratis. 2) Si no responde en 48hs, llamada del comercial. 3) Si vuelve a operar, asignación a un programa de fidelización (proveedor preferente, info anticipada de productos nuevos). La lista está abajo con el email y teléfono — ordenada por los que más operaban antes (priorizar TOP 20).`,
         impacto: "medio",
+        items: perdidosUsers.slice(0, 200).map((u) => {
+          const ck = u.email ? (cohortMap[u.email] || "") : "";
+          return {
+            label: u.nombre || u.email || "(sin nombre)",
+            sub: `${u.email || ""}${u.telefono ? ` · 📞 ${u.telefono}` : ""}${u.comunidad ? ` · ${u.comunidad}` : ""}${ck ? ` · cohort ${MES_LABEL[ck] || ck}` : ""}`,
+            right: `${fmt(u.mov_cohort || 0)} mov antes${(u.mov_abril||u.mov_mayo||u.mov_junio) ? ` · A:${u.mov_abril||0} M:${u.mov_mayo||0} J:${u.mov_junio||0}` : ""}`,
+          };
+        }),
+        itemsLabel: `Ver ${perdidosUsers.length} DSs perdidos`,
       });
     }
 
