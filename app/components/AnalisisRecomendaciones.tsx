@@ -77,26 +77,60 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
 
   const mesPrev: MesQ2 = mesActual === "junio" ? "mayo" : mesActual === "mayo" ? "abril" : "abril";
 
+  const [estrategia, setEstrategia] = useState<{ usuarios?: { por_mes: Record<string, { ing: number; mov: number }> }[] } | null>(null);
+  const [usuariosSeg, setUsuariosSeg] = useState<{ cohorts?: Record<string, { total_registrados?: number; activos_total?: number; intentaron_total?: number }>; retention?: Record<string, Record<string, Record<string, unknown[]>>> } | null>(null);
+
   const fetchAll = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const [curRes, prevRes, mainRes] = await Promise.all([
+      const [curRes, prevRes, mainRes, resOpRes, estRes, usRes] = await Promise.all([
         fetch(`/api/data/operational?country=${country}&mes=${mesActual}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/operational?country=${country}&mes=${mesPrev}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/${country}`).then((r) => r.json()).catch(() => null),
+        fetch(`/api/data/resumen-operacional?country=${country}`).then((r) => r.json()).catch(() => null),
+        fetch(`/api/data/estrategia?country=${country}`).then((r) => r.json()).catch(() => null),
+        fetch(`/api/data/usuarios?country=${country}`).then((r) => r.json()).catch(() => null),
       ]);
       setOpCurr(curRes?.data || null);
       setOpPrev(prevRes?.data || null);
+
+      // Resumen mensual: priorizar resumen_operacional (tabla nueva, fresca)
+      // Fallback al snap si la tabla no responde.
+      const map: Record<string, ResumenMes> = {};
+      if (resOpRes?.rows && Array.isArray(resOpRes.rows)) {
+        for (const r of resOpRes.rows) {
+          map[r.mes] = {
+            mes: r.mes,
+            ingresadas: r.ingresadas || 0,
+            movilizadas: r.movilizadas || 0,
+            entregadas: r.entregadas || 0,
+            devueltas: r.devueltas || 0,
+            en_proceso: r.en_proceso || 0,
+          };
+        }
+      }
       const allData = (mainRes?.data || {}) as { resumen?: Record<string, ResumenMes>; meta_info?: MetaInfo };
       if (allData.resumen) {
-        const map: Record<string, ResumenMes> = {};
         for (const m of MESES_Q2) {
+          if (map[m]) continue; // ya cargado de resumen_operacional
           const r = allData.resumen[m];
           if (r) map[m] = { mes: m, ingresadas: r.ingresadas || 0, movilizadas: r.movilizadas || 0, entregadas: r.entregadas || 0, devueltas: r.devueltas || 0, en_proceso: r.en_proceso || 0 };
         }
-        setResumenes(map);
       }
-      if (allData.meta_info) setMeta(allData.meta_info);
+      setResumenes(map);
+
+      if (allData.meta_info) {
+        const mi = { ...allData.meta_info };
+        // Calcular meta_movilizadas_junio si falta (tasa_mov * meta_ingresadas_junio)
+        if (mi.meta_ingresadas_junio && !mi.meta_movilizadas_junio) {
+          const tasa = mi.tasa_movilizacion || 0.75;
+          mi.meta_movilizadas_junio = Math.round(mi.meta_ingresadas_junio * tasa);
+        }
+        setMeta(mi);
+      }
+
+      if (estRes && !estRes.error) setEstrategia(estRes);
+      if (usRes && !usRes.error) setUsuariosSeg(usRes);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Error");
     } finally {
@@ -250,41 +284,109 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     }).sort((a, b) => b.curr - a.curr);
   }, [opCurr, opPrev]);
 
-  // Recomendaciones (heurísticas)
+  // Análisis usuarios: del mes actual vs anterior — activos, intentaron, retención
+  const analisisUsuarios = useMemo(() => {
+    if (!usuariosSeg?.cohorts) return null;
+    const cohortCurr = usuariosSeg.cohorts[mesActual];
+    const cohortPrev = usuariosSeg.cohorts[mesPrev];
+    const retentionView = usuariosSeg.retention?.[mesActual];
+    // Buckets de retención para vista actual: sumar todos los activos vs perdidos
+    let activos = 0, perdidos = 0, nuncaOperaron = 0, bajaron = 0;
+    if (retentionView) {
+      for (const buckets of Object.values(retentionView)) {
+        for (const [bk, lst] of Object.entries(buckets)) {
+          const n = Array.isArray(lst) ? lst.length : 0;
+          if (bk === "nunca_operaron") nuncaOperaron += n;
+          else if (bk.startsWith("solo_")) perdidos += n;
+          else if (bk.startsWith("bajaron_")) bajaron += n;
+          else if (bk.startsWith("activo_")) activos += n;
+        }
+      }
+    }
+    return {
+      cohort_actual: cohortCurr || null,
+      cohort_prev: cohortPrev || null,
+      retention_activos: activos,
+      retention_perdidos: perdidos,
+      retention_nunca: nuncaOperaron,
+      retention_bajaron: bajaron,
+    };
+  }, [usuariosSeg, mesActual, mesPrev]);
+
+  // Mejor mes histórico (referencia para "lo que sí funcionó")
+  const mejorMes = useMemo(() => {
+    let best: { mes: string; mov: number } | null = null;
+    for (const [mes, r] of Object.entries(resumenes)) {
+      if (!best || r.movilizadas > best.mov) best = { mes, mov: r.movilizadas };
+    }
+    return best;
+  }, [resumenes]);
+
+  // DSs activos del mes (DSs que tienen mov > 0 en este mes según estrategia)
+  const dssActivos = useMemo(() => {
+    if (!estrategia?.usuarios) return null;
+    let curr = 0, prev = 0;
+    for (const u of estrategia.usuarios) {
+      const movC = u.por_mes?.[mesActual]?.mov ?? 0;
+      const movP = u.por_mes?.[mesPrev]?.mov ?? 0;
+      if (movC > 0) curr++;
+      if (movP > 0) prev++;
+    }
+    return { curr, prev, delta: deltaPct(curr, prev) };
+  }, [estrategia, mesActual, mesPrev]);
+
+  // Recomendaciones (heurísticas) — umbrales más bajos + cobertura completa
   const recomendaciones = useMemo(() => {
     const inmediatas: { titulo: string; detalle: string; impacto: "alto" | "medio" | "bajo" }[] = [];
     const inicio_mes: { titulo: string; detalle: string }[] = [];
     if (!kpis || !projeccion) return { inmediatas, inicio_mes };
 
-    // 1. Caída de movilizadas
-    if (kpis.mov.delta < -10) {
+    // === ACCIONES INMEDIATAS ===
+
+    // 1. Comportamiento general de movilizadas
+    if (kpis.mov.delta <= -5) {
+      const sev = kpis.mov.delta <= -15 ? "alto" : "medio";
       inmediatas.push({
-        titulo: `⬇️ Movilizadas cayeron ${Math.abs(kpis.mov.delta)}% vs ${MES_LABEL[mesPrev]}`,
-        detalle: `Estás ${fmt(kpis.mov.prev - kpis.mov.curr)} órdenes por debajo del mes anterior. Identificá los productos/proveedores que más cayeron y reactivá su catálogo o promoción urgente.`,
-        impacto: "alto",
+        titulo: `⬇️ Movilizadas ${kpis.mov.delta < 0 ? "cayeron" : "subieron"} ${Math.abs(kpis.mov.delta)}% vs ${MES_LABEL[mesPrev]}`,
+        detalle: `Estás ${fmt(Math.abs(kpis.mov.curr - kpis.mov.prev))} órdenes por ${kpis.mov.curr < kpis.mov.prev ? "debajo" : "encima"} del mes anterior. Acción: priorizá llamar HOY a los DSs Top 10 (los Pareto 75%), preguntales qué obstáculos tienen y ofreceles incentivos puntuales (envío gratis × N, descuentos en flete, productos winners exclusivos).`,
+        impacto: sev as "alto" | "medio",
       });
-    } else if (kpis.mov.delta > 10) {
+    } else if (kpis.mov.delta >= 5) {
       inmediatas.push({
         titulo: `📈 Movilizadas crecieron ${kpis.mov.delta}% vs ${MES_LABEL[mesPrev]}`,
-        detalle: `Buena tendencia (+${fmt(kpis.mov.curr - kpis.mov.prev)}). Sostené la inversión en los winners y empujá los DSs Top con incentivos.`,
+        detalle: `Buena tendencia (+${fmt(kpis.mov.curr - kpis.mov.prev)} órdenes). Sostené la inversión en los productos y proveedores ganadores. Replicá la estrategia que funcionó: revisá calendario de ${MES_LABEL[mesPrev]} para identificar qué cambió.`,
+        impacto: "medio",
+      });
+    } else {
+      inmediatas.push({
+        titulo: `↔️ Movilizadas estables (${kpis.mov.delta >= 0 ? "+" : ""}${kpis.mov.delta}%)`,
+        detalle: `Vas parejo con ${MES_LABEL[mesPrev]} (${fmt(kpis.mov.curr)} vs ${fmt(kpis.mov.prev)}). Si el objetivo es crecer, hay que cambiar algo: activar campaña con nuevos productos winners, lanzar promo, o atacar la base de DSs intentaron-pero-no-movilizaron.`,
         impacto: "medio",
       });
     }
 
-    // 2. Tasa de entrega bajó
-    if (kpis.pctEnt.curr < kpis.pctEnt.prev - 3) {
+    // 2. Tasa de entrega
+    const dEnt = kpis.pctEnt.curr - kpis.pctEnt.prev;
+    if (dEnt <= -2) {
       inmediatas.push({
-        titulo: `🚚 Tasa de entrega cayó ${(kpis.pctEnt.prev - kpis.pctEnt.curr).toFixed(1)} pp`,
-        detalle: `Pasó de ${kpis.pctEnt.prev.toFixed(1)}% a ${kpis.pctEnt.curr.toFixed(1)}%. Revisá las transportadoras: si alguna bajó el pct_entrega, escalá con su responsable de logística HOY.`,
+        titulo: `🚚 Tasa de entrega cayó ${Math.abs(dEnt).toFixed(1)} pp`,
+        detalle: `Pasó de ${kpis.pctEnt.prev.toFixed(1)}% a ${kpis.pctEnt.curr.toFixed(1)}%. Eso son ${fmt(Math.round(kpis.mov.curr * Math.abs(dEnt) / 100))} entregas perdidas estimadas. Revisá inmediatamente las transportadoras con pctEntrega más bajo en la tabla — si una bajó >5pp, escalá con su responsable de logística HOY.`,
         impacto: "alto",
+      });
+    } else if (dEnt >= 2) {
+      inmediatas.push({
+        titulo: `✅ % Entrega subió ${dEnt.toFixed(1)} pp`,
+        detalle: `Mejora real: ${kpis.pctEnt.prev.toFixed(1)}% → ${kpis.pctEnt.curr.toFixed(1)}%. Identificá qué transportadora explicó el salto y derivá más volumen hacia ella.`,
+        impacto: "medio",
       });
     }
 
-    // 3. Tasa de devolución subió
-    if (kpis.pctDev.curr > kpis.pctDev.prev + 3) {
+    // 3. Tasa de devolución
+    const dDev = kpis.pctDev.curr - kpis.pctDev.prev;
+    if (dDev >= 2) {
       inmediatas.push({
-        titulo: `↩️ Devoluciones crecieron ${(kpis.pctDev.curr - kpis.pctDev.prev).toFixed(1)} pp`,
-        detalle: `Pasó de ${kpis.pctDev.prev.toFixed(1)}% a ${kpis.pctDev.curr.toFixed(1)}%. Auditar los productos con más devoluciones, reforzar confirmación de teléfono y validación de dirección antes del despacho.`,
+        titulo: `↩️ Devoluciones crecieron ${dDev.toFixed(1)} pp`,
+        detalle: `Pasó de ${kpis.pctDev.prev.toFixed(1)}% a ${kpis.pctDev.curr.toFixed(1)}%. Cada punto de devolución cuesta plata (flete + producto + tiempo). Acciones: auditá los productos con más devoluciones, reforzá confirmación telefónica al cliente final, y bloqueá temporalmente los productos con tasa devolución > 30%.`,
         impacto: "alto",
       });
     }
@@ -292,80 +394,144 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     // 4. Proyección vs meta
     if (metaMes.mov > 0) {
       if (!projeccion.onTrack && projeccion.diasRestantes > 0) {
+        const gap = Math.round(((metaMes.mov - projeccion.proyectado) / metaMes.mov) * 100);
         inmediatas.push({
-          titulo: `🎯 No estás llegando a la meta de ${MES_LABEL[mesActual]}`,
-          detalle: `Necesitás ${fmt(projeccion.necesarioDiario)} mov/día en los ${projeccion.diasRestantes} días restantes vs los ${fmt(projeccion.promedioDiarioActual)}/día actuales. Brecha total: ${fmt(projeccion.brechaAMeta)} órdenes. Acciones: contactar a los top 10 DSs con plan de empuje, lanzar promo de envío bonificado.`,
+          titulo: `🎯 Vas ${gap}% por debajo de la meta proyectada`,
+          detalle: `Necesitás ${fmt(projeccion.necesarioDiario)} mov/día en los ${projeccion.diasRestantes} días restantes vs los ${fmt(projeccion.promedioDiarioActual)}/día actuales (${Math.round(projeccion.necesarioDiario / Math.max(projeccion.promedioDiarioActual, 1) * 100 - 100)}% más). Plan de emergencia: 1) llamada hoy a top 10 Master+ con incentivo de envío bonificado, 2) push a "intentaron" (mov=0 ing>0) para destrabarlos, 3) reactivar productos winners del mes anterior con visibilidad extra.`,
           impacto: "alto",
         });
       } else if (projeccion.onTrack) {
         inmediatas.push({
           titulo: `✅ Vas en camino a superar la meta (${projeccion.pctMeta}%)`,
-          detalle: `Manteniendo el ritmo actual proyectás ${fmt(projeccion.proyectado)} vs meta ${fmt(metaMes.mov)}. Foco en sostener el ritmo y empujar hasta cerrar el mes.`,
+          detalle: `Proyectás ${fmt(projeccion.proyectado)} vs meta ${fmt(metaMes.mov)} (+${fmt(projeccion.proyectado - metaMes.mov)} mov sobre objetivo). Sostené el ritmo: no aflojes con los Master/Experto y empujá a los Iniciados para que pasen al siguiente nivel.`,
           impacto: "medio",
         });
       }
     }
 
-    // 5. Top productos en caída
-    const prodCaida = topProductos
-      .filter((p) => p.prev > 50 && p.delta < -25)
-      .slice(0, 5);
+    // 5. Productos en caída
+    const prodCaida = topProductos.filter((p) => p.prev >= 30 && p.delta <= -20).slice(0, 5);
     if (prodCaida.length > 0) {
       inmediatas.push({
-        titulo: `📉 ${prodCaida.length} productos top cayeron >25%`,
-        detalle: `Top en caída: ${prodCaida.slice(0, 3).map((p) => `${p.nombre} (${p.delta}%)`).join(" · ")}. Coordinar con sus proveedores: hay tema de stock, precio o demanda. Recuperar o reemplazar.`,
+        titulo: `📉 ${prodCaida.length} producto${prodCaida.length>1?"s":""} top en caída`,
+        detalle: `Cayeron: ${prodCaida.slice(0, 3).map((p) => `${p.nombre} (${p.delta}%)`).join(" · ")}. Llamá al proveedor: diagnostico si es stock, precio o competencia. Si no recuperable, reemplazá con un winner del mismo segmento.`,
         impacto: "medio",
       });
     }
 
-    // 6. Productos winners — replicar
-    const prodWinner = topProductos
-      .filter((p) => p.prev > 30 && p.delta > 30)
-      .slice(0, 5);
+    // 6. Productos winners
+    const prodWinner = topProductos.filter((p) => p.prev >= 20 && p.delta >= 25 && p.curr >= 50).slice(0, 5);
     if (prodWinner.length > 0) {
       inmediatas.push({
-        titulo: `🚀 ${prodWinner.length} productos crecieron >30%`,
-        detalle: `Top winners: ${prodWinner.slice(0, 3).map((p) => `${p.nombre} (+${p.delta}%)`).join(" · ")}. Pedir al proveedor stock extra, dar visibilidad en el catálogo y a los Sabios VIP.`,
+        titulo: `🚀 ${prodWinner.length} producto${prodWinner.length>1?"s":""} con tracción fuerte`,
+        detalle: `Crecieron: ${prodWinner.slice(0, 3).map((p) => `${p.nombre} (+${p.delta}%)`).join(" · ")}. Acciones: pedir stock al proveedor, ponerlos como "destacados" en el catálogo, ofrecerlos primero a los Sabios VIP y Expertos.`,
         impacto: "medio",
       });
     }
 
-    // 7. Proveedores que cayeron mucho
-    const provCaida = topProveedores
-      .filter((p) => p.prev > 100 && p.delta < -20)
-      .slice(0, 5);
+    // 7. Proveedores con caída
+    const provCaida = topProveedores.filter((p) => p.prev >= 80 && p.delta <= -15).slice(0, 5);
     if (provCaida.length > 0) {
       inmediatas.push({
-        titulo: `⚠️ ${provCaida.length} proveedores con caída >20%`,
-        detalle: `Llamar HOY a: ${provCaida.slice(0, 3).map((p) => `${p.nombre.split("(")[0].trim()} (${p.delta}%)`).join(", ")}. Detectar si es stock, comisiones, problemas operativos.`,
+        titulo: `⚠️ ${provCaida.length} proveedor${provCaida.length>1?"es":""} con caída fuerte`,
+        detalle: `Llamada HOY a: ${provCaida.slice(0, 3).map((p) => `${p.nombre.split("(")[0].trim()} (${p.delta}%)`).join(", ")}. Posibles causas: rotura de stock, problemas operativos, cambio en comisiones. Resolverlo ahora pesa.`,
         impacto: "alto",
       });
     }
 
-    // === Acciones para arranque de mes ===
+    // 8. DSs activos
+    if (dssActivos && dssActivos.delta <= -10) {
+      inmediatas.push({
+        titulo: `👥 DSs activos cayeron ${Math.abs(dssActivos.delta)}% (${fmt(dssActivos.curr)} vs ${fmt(dssActivos.prev)})`,
+        detalle: `Tenés ${fmt(dssActivos.prev - dssActivos.curr)} DSs menos operando este mes. No es tema de promedio por DS, es tema de cuántos están moviendo. Campaña de retención URGENTE: contactar a los Master que dejaron de operar.`,
+        impacto: "alto",
+      });
+    } else if (dssActivos && dssActivos.delta >= 10) {
+      inmediatas.push({
+        titulo: `👥 +${dssActivos.delta}% DSs activos vs ${MES_LABEL[mesPrev]}`,
+        detalle: `${fmt(dssActivos.curr)} DSs operando (+${fmt(dssActivos.curr - dssActivos.prev)}). Base ampliada — el siguiente paso es hacer que los nuevos suban a Master rápido (8+ mov en su primer mes).`,
+        impacto: "medio",
+      });
+    }
+
+    // 9. Retención perdidos (registrados que no volvieron)
+    if (analisisUsuarios && analisisUsuarios.retention_perdidos >= 20) {
+      inmediatas.push({
+        titulo: `🔁 ${fmt(analisisUsuarios.retention_perdidos)} DSs que operaron antes NO volvieron en ${MES_LABEL[mesActual]}`,
+        detalle: `Son recuperables — ya saben usar la plataforma. Plan: lista filtrable en Estrategia Usuarios > Registrados/Activos > Retención. Llamada de "te extrañamos" con incentivo de 10 envíos bonificados para volver a arrancar.`,
+        impacto: "medio",
+      });
+    }
+
+    // 10. Intentaron pero no movilizaron
+    if (analisisUsuarios?.cohort_actual?.intentaron_total && analisisUsuarios.cohort_actual.intentaron_total >= 10) {
+      inmediatas.push({
+        titulo: `⚠️ ${fmt(analisisUsuarios.cohort_actual.intentaron_total)} DSs ingresaron órdenes pero NINGUNA se movilizó`,
+        detalle: `Generaron órdenes que se cancelaron o quedaron pendientes. Es la pesca más rápida: ya tienen tráfico/ventas. Foco: revisar por qué se cancelan (stock, dirección, teléfono) y destrabar caso por caso.`,
+        impacto: "alto",
+      });
+    }
+
+    // 11. Mejor mes histórico
+    if (mejorMes && mejorMes.mes !== mesActual && kpis.mov.curr < mejorMes.mov) {
+      const gap = mejorMes.mov - kpis.mov.curr;
+      inmediatas.push({
+        titulo: `📚 Tu mejor mes fue ${MES_LABEL[mejorMes.mes] || mejorMes.mes}: ${fmt(mejorMes.mov)} mov`,
+        detalle: `Estás ${fmt(gap)} órdenes por debajo de ese pico (${Math.round((1 - kpis.mov.curr / mejorMes.mov) * 100)}% menos). Revisá qué se hizo en ${MES_LABEL[mejorMes.mes] || mejorMes.mes}: catálogo de productos, base de DSs activos, transportadoras usadas, campañas. Replicá lo que se pueda.`,
+        impacto: "medio",
+      });
+    }
+
+    // === ACCIONES PARA INICIO DE MES ===
+    // Siempre se muestran (5 fijas) + extras según contexto
+
     inicio_mes.push({
-      titulo: "🎯 Definir y comunicar la meta del mes el día 1",
-      detalle: `Compartir la meta con todo el equipo desde el primer día — visibilidad genera urgencia. Para ${MES_LABEL[mesActual]} la meta fue ${fmt(metaMes.mov)} mov.`,
+      titulo: "🎯 Definir meta del mes y comunicarla el día 1",
+      detalle: `Compartir con todo el equipo desde el primer día — visibilidad genera urgencia y compromiso. Mostrar también el progreso diario en una pantalla pública o canal de Slack/WhatsApp.`,
     });
-    inicio_mes.push({
-      titulo: "🚀 Reactivar dormidos en la primera semana",
-      detalle: `Los registrados de los últimos 90 días que NO operaron son la pesca fácil. Lanzar campaña de bienvenida con bonus en envíos los primeros 7 días.`,
-    });
+
     inicio_mes.push({
       titulo: "📦 Curar el catálogo con los winners del mes anterior",
-      detalle: `Tomar los TOP 20 productos que mejor movieron en ${MES_LABEL[mesPrev]} y promocionarlos como "ganadores comprobados" a los nuevos DSs.`,
+      detalle: `Tomar el Top 20 productos del mes que cierra y promocionarlos como "ganadores comprobados" a los DSs nuevos e Iniciados. Reduce el riesgo de prueba y acelera tiempo a primera venta.`,
     });
+
     inicio_mes.push({
-      titulo: "👥 Asignación de comerciales a los DSs Master+",
-      detalle: `Los DSs con 300+ mov merecen un punto de contacto fijo. Asignar comercial por cartera y agendar 1 llamada quincenal en la primera semana.`,
+      titulo: "🚀 Reactivar dormidos en la primera semana",
+      detalle: `Filtrar los registrados de los últimos 90 días que NO operaron ni una vez (segmento 4_cero). Campaña de bienvenida con bonus en envíos los primeros 7 días, con seguimiento por WhatsApp.`,
     });
+
     inicio_mes.push({
-      titulo: "📊 Setup del reporte semanal con los KPIs del mes",
-      detalle: `Cada lunes: ingresadas vs meta, % entrega por transportadora, productos en caída/winners. Discusión 30 min con el equipo comercial y operaciones.`,
+      titulo: "👥 Asignar comerciales a los Master+",
+      detalle: `Los DSs con 300+ mov merecen punto de contacto fijo. Asignar comercial por cartera y agendar 1 llamada quincenal en la primera semana del mes. Ellos sostienen el 70% del volumen.`,
+    });
+
+    inicio_mes.push({
+      titulo: "📊 Setup del reporte semanal del mes",
+      detalle: `Cada lunes: ingresadas vs meta, % entrega por transportadora, productos en caída/winners, DSs próximos a subir nivel. Reunión 30 min con el equipo comercial y operaciones.`,
+    });
+
+    // Extras contextuales
+    if (mejorMes) {
+      inicio_mes.push({
+        titulo: `📚 Estudiar el playbook de ${MES_LABEL[mejorMes.mes] || mejorMes.mes} (mejor mes histórico)`,
+        detalle: `Ese mes movió ${fmt(mejorMes.mov)} órdenes. Repasar: ¿qué productos lideraban? ¿qué proveedores empujaban? ¿qué transportadoras tenían más volumen y mejor pct_entrega? Replicar la fórmula del mes ganador.`,
+      });
+    }
+
+    if (analisisUsuarios && analisisUsuarios.retention_perdidos >= 10) {
+      inicio_mes.push({
+        titulo: `🔁 Lanzar campaña de winback los primeros 14 días`,
+        detalle: `Hay ${fmt(analisisUsuarios.retention_perdidos)} DSs que operaron antes y dejaron de hacerlo. Mensaje personalizado por WhatsApp + bonus para incentivar primer pedido del mes. Llamada al final si no responden.`,
+      });
+    }
+
+    inicio_mes.push({
+      titulo: "🎁 Programa de incentivos por nivel",
+      detalle: `Iniciados → bonus por llegar a 10 mov (subir a En Desarrollo). En Desarrollo → bonus por superar 66 (Master). Master → comisión preferencial los primeros 100 envíos al subir a Sabio VIP. Estos micro-objetivos aceleran upgrades.`,
     });
 
     return { inmediatas, inicio_mes };
-  }, [kpis, projeccion, metaMes, mesActual, mesPrev, topProductos, topProveedores]);
+  }, [kpis, projeccion, metaMes, mesActual, mesPrev, topProductos, topProveedores, dssActivos, analisisUsuarios, mejorMes]);
 
   if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando análisis…</div>;
   if (error) return <div className="glass-card p-6 text-red-400 text-sm">⚠️ {error}</div>;
@@ -485,6 +651,76 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Panel usuarios */}
+      {(analisisUsuarios || dssActivos) && (
+        <div className="rounded-xl p-4 border border-purple-500/30" style={{ background: "var(--bg-card)" }}>
+          <h2 className="text-base font-bold t-primary mb-1">👥 Usuarios — {MES_LABEL[mesActual]} vs {MES_LABEL[mesPrev]}</h2>
+          <p className="text-[11px] t-muted mb-3">Activación de la base, retención y recuperables.</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {dssActivos && (
+              <KpiDelta label="DSs operando" curr={dssActivos.curr} prev={dssActivos.prev} delta={dssActivos.delta} primary />
+            )}
+            {analisisUsuarios?.cohort_actual && (
+              <>
+                <KpiDelta
+                  label="Nuevos registrados"
+                  curr={analisisUsuarios.cohort_actual?.total_registrados || 0}
+                  prev={analisisUsuarios.cohort_prev?.total_registrados || 0}
+                  delta={deltaPct(analisisUsuarios.cohort_actual?.total_registrados || 0, analisisUsuarios.cohort_prev?.total_registrados || 0)}
+                />
+                <KpiDelta
+                  label="Activos del cohort"
+                  curr={analisisUsuarios.cohort_actual?.activos_total || 0}
+                  prev={analisisUsuarios.cohort_prev?.activos_total || 0}
+                  delta={deltaPct(analisisUsuarios.cohort_actual?.activos_total || 0, analisisUsuarios.cohort_prev?.activos_total || 0)}
+                />
+                <KpiDelta
+                  label="Intentaron sin mov"
+                  curr={analisisUsuarios.cohort_actual?.intentaron_total || 0}
+                  prev={analisisUsuarios.cohort_prev?.intentaron_total || 0}
+                  delta={deltaPct(analisisUsuarios.cohort_actual?.intentaron_total || 0, analisisUsuarios.cohort_prev?.intentaron_total || 0)}
+                  invertColor
+                />
+              </>
+            )}
+          </div>
+          {analisisUsuarios && (analisisUsuarios.retention_activos + analisisUsuarios.retention_perdidos + analisisUsuarios.retention_bajaron) > 0 && (
+            <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
+              <div className="rounded p-2 border border-emerald-500/30" style={{ background: "var(--bg-input)" }}>
+                <p className="t-muted text-[10px] uppercase tracking-wider">🟢 Activos retenidos</p>
+                <p className="text-lg font-bold text-emerald-400">{fmt(analisisUsuarios.retention_activos)}</p>
+              </div>
+              <div className="rounded p-2 border border-orange-500/30" style={{ background: "var(--bg-input)" }}>
+                <p className="t-muted text-[10px] uppercase tracking-wider">🟠 Bajaron</p>
+                <p className="text-lg font-bold text-orange-400">{fmt(analisisUsuarios.retention_bajaron)}</p>
+              </div>
+              <div className="rounded p-2 border border-amber-500/30" style={{ background: "var(--bg-input)" }}>
+                <p className="t-muted text-[10px] uppercase tracking-wider">🟡 Perdidos (recuperables)</p>
+                <p className="text-lg font-bold text-amber-400">{fmt(analisisUsuarios.retention_perdidos)}</p>
+              </div>
+              <div className="rounded p-2 border border-red-500/30" style={{ background: "var(--bg-input)" }}>
+                <p className="t-muted text-[10px] uppercase tracking-wider">🔴 Nunca operaron</p>
+                <p className="text-lg font-bold text-red-400">{fmt(analisisUsuarios.retention_nunca)}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Mejor mes histórico */}
+      {mejorMes && mejorMes.mes !== mesActual && (
+        <div className="rounded-xl p-4 border border-cyan-500/30" style={{ background: "var(--bg-card)" }}>
+          <h2 className="text-base font-bold t-primary mb-1">📚 Mejor mes histórico — {MES_LABEL[mejorMes.mes] || mejorMes.mes}</h2>
+          <p className="text-[11px] t-muted">
+            En {MES_LABEL[mejorMes.mes] || mejorMes.mes} movilizaron <strong className="t-primary">{fmt(mejorMes.mov)}</strong> órdenes
+            {kpis && kpis.mov.curr < mejorMes.mov && (
+              <> — estás <strong className="text-amber-300">{fmt(mejorMes.mov - kpis.mov.curr)} órdenes ({Math.round((1 - kpis.mov.curr / mejorMes.mov) * 100)}%) por debajo</strong> de ese pico</>
+            )}.
+            Mirá las tablas debajo y revisá: ¿qué productos lideraban entonces? ¿qué proveedores empujaban? ¿qué transportadoras tenían mejor pct_entrega? Replicá lo que se pueda — la fórmula ya está probada.
+          </p>
+        </div>
+      )}
 
       {/* Recomendaciones */}
       <div className="rounded-xl p-4 border border-amber-500/40" style={{ background: "var(--bg-card)" }}>
