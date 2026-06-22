@@ -63,11 +63,32 @@ export interface EstrategiaUsuariosOut {
   usuarios: UsuarioBase[];
 }
 
+const MES_NAMES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+
+// Devuelve el mes actual en español (basado en la fecha del servidor).
+// 2026-06-22 → "junio"
+export function getMesCorriente(now: Date = new Date()): string {
+  return MES_NAMES[now.getMonth()];
+}
+
+/**
+ * Reconstruye estrategia_usuarios mergeando con la versión existente:
+ * - Para meses cerrados (≠ currentMes): mantiene la data previa intacta.
+ * - Para mes corriente: recalcula desde operational_snapshots[currentMes].
+ * - Si no hay estrategia previa (primer build), hace rebuild completo de todos los meses.
+ *
+ * Esto protege los datos de meses anteriores aunque por error se suba data nueva
+ * a operational_snapshots de meses cerrados.
+ */
 export function buildEstrategia(
   country: "ar" | "py",
   dashboardData: DashboardSnapshotData,
   q2Snapshots: { mes: string; data: OperationalSnapshotData }[],
+  options?: { currentMes?: string; existing?: EstrategiaUsuariosOut | null },
 ): EstrategiaUsuariosOut {
+  const currentMes = options?.currentMes ?? getMesCorriente();
+  const existing = options?.existing ?? null;
+  const onlyCurrentMonth = !!existing; // si hay estrategia previa, solo tocamos el mes corriente
   const ds = new Map<string, { nombre: string; telefono: string; comunidad: string | null; por_mes: Record<string, MesData> }>();
   const ensure = (em: string) => {
     let cur = ds.get(em);
@@ -78,19 +99,39 @@ export function buildEstrategia(
     return cur;
   };
 
-  // Q1 from dashboard_snapshots.dropshippers
-  for (const d of dashboardData.dropshippers || []) {
-    const em = (d.email || "").trim().toLowerCase();
-    if (!em) continue;
-    const u = ensure(em);
-    if (d.ene) u.por_mes.enero = { ing: d.ene.ing ?? 0, mov: d.ene.mov ?? 0 };
-    if (d.feb) u.por_mes.febrero = { ing: d.feb.ing ?? 0, mov: d.feb.mov ?? 0 };
-    if (d.mar) u.por_mes.marzo = { ing: d.mar.ing ?? 0, mov: d.mar.mov ?? 0 };
+  // Si hay estrategia previa: pre-cargar TODOS los meses EXCEPTO el corriente.
+  // Para meses cerrados, mantenemos exactamente la data que ya estaba.
+  if (existing) {
+    for (const u of existing.usuarios || []) {
+      const em = (u.email || "").trim().toLowerCase();
+      if (!em) continue;
+      const cur = ensure(em);
+      cur.nombre = u.nombre || cur.nombre;
+      cur.telefono = u.telefono || cur.telefono;
+      cur.comunidad = u.comunidad ?? cur.comunidad;
+      for (const [m, data] of Object.entries(u.por_mes || {})) {
+        if (m === currentMes) continue; // el corriente lo recalculamos
+        cur.por_mes[m] = data;
+      }
+    }
   }
 
-  // Q2 from operational_snapshots
+  // Q1 from dashboard_snapshots.dropshippers — solo si NO estamos en modo "solo mes corriente"
+  if (!onlyCurrentMonth) {
+    for (const d of dashboardData.dropshippers || []) {
+      const em = (d.email || "").trim().toLowerCase();
+      if (!em) continue;
+      const u = ensure(em);
+      if (d.ene) u.por_mes.enero = { ing: d.ene.ing ?? 0, mov: d.ene.mov ?? 0 };
+      if (d.feb) u.por_mes.febrero = { ing: d.feb.ing ?? 0, mov: d.feb.mov ?? 0 };
+      if (d.mar) u.por_mes.marzo = { ing: d.mar.ing ?? 0, mov: d.mar.mov ?? 0 };
+    }
+  }
+
+  // Q2 from operational_snapshots — si onlyCurrentMonth, filtramos solo el mes corriente
   for (const snap of q2Snapshots) {
     if (!Q2.includes(snap.mes as typeof Q2[number])) continue;
+    if (onlyCurrentMonth && snap.mes !== currentMes) continue;
     const nameToEmail = new Map<string, string>();
     const nameToPhone = new Map<string, string>();
     for (const r of snap.data.by_ds_daily || []) {
@@ -161,7 +202,9 @@ export function buildEstrategia(
 
   return {
     updated_at: new Date().toISOString(),
-    window_note: "mov/ing por mes — segmentos se calculan en cliente según el filtro del header.",
+    window_note: onlyCurrentMonth
+      ? `Solo el mes corriente (${currentMes}) se recalcula. Meses cerrados quedan congelados.`
+      : "mov/ing por mes — segmentos se calculan en cliente según el filtro del header.",
     segments_config: SEGMENTS_BY_COUNTRY[country],
     meses_disponibles: ["enero","febrero","marzo","abril","mayo","junio"],
     usuarios,

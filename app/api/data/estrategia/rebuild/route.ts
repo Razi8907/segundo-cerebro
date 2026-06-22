@@ -28,8 +28,9 @@ export async function rebuildEstrategia(country: "ar" | "py") {
 
   const snap = (snapRes.data?.data as Record<string, unknown>) || {};
   const q2 = (opsRes.data || []).map((r) => ({ mes: r.mes as string, data: r.data as Parameters<typeof buildEstrategia>[2][number]["data"] }));
+  const existing = (snap.estrategia_usuarios as Parameters<typeof buildEstrategia>[3] extends { existing?: infer E } ? E : null) || null;
 
-  const estrategia = buildEstrategia(country, snap as Parameters<typeof buildEstrategia>[1], q2);
+  const estrategia = buildEstrategia(country, snap as Parameters<typeof buildEstrategia>[1], q2, { existing });
   snap.estrategia_usuarios = estrategia;
 
   const { error: writeErr } = await supabase

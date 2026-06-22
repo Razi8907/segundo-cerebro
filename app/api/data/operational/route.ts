@@ -104,7 +104,8 @@ export async function POST(req: NextRequest) {
         if (!snapRes.error && !opsRes.error) {
           const snap = (snapRes.data?.data as Record<string, unknown>) || {};
           const q2 = (opsRes.data || []).map((r) => ({ mes: r.mes as string, data: r.data as Parameters<typeof buildEstrategia>[2][number]["data"] }));
-          const estrategia = buildEstrategia(country as "ar" | "py", snap as Parameters<typeof buildEstrategia>[1], q2);
+          const existing = (snap.estrategia_usuarios as Parameters<typeof buildEstrategia>[3] extends { existing?: infer E } ? E : null) || null;
+          const estrategia = buildEstrategia(country as "ar" | "py", snap as Parameters<typeof buildEstrategia>[1], q2, { existing });
           snap.estrategia_usuarios = estrategia;
           await supabase.from("dashboard_snapshots").update({ data: snap, updated_at: new Date().toISOString() }).eq("country", country);
           estrategia_users = estrategia.usuarios.length;
