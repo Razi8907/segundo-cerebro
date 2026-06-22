@@ -79,18 +79,32 @@ export async function POST(req: NextRequest) {
   let country = "py";
   let fileBuffer: ArrayBuffer | null = null;
   try {
-    // Soporta dos modos:
-    //   A) multipart/form-data (cliente original con FormData)
-    //   B) body crudo (binario) con country en query param ?country=...
+    // Soporta TRES modos:
+    //   A) ?path=storage/path → baja archivo de Supabase Storage (uploads bucket).
+    //      Es el modo recomendado para archivos >4MB (evita límite de Vercel).
+    //   B) multipart/form-data (legacy)
+    //   C) body crudo binario (legacy)
+    const storagePath = req.nextUrl.searchParams.get("path");
     const ct = (req.headers.get("content-type") || "").toLowerCase();
-    if (ct.includes("multipart/form-data")) {
+    country = req.nextUrl.searchParams.get("country") || country;
+
+    if (storagePath) {
+      // Modo A: bajar de Storage
+      const sb = getSupabase();
+      const dl = await sb.storage.from("uploads").download(storagePath);
+      if (dl.error || !dl.data) {
+        return NextResponse.json({ error: "No se pudo leer el archivo de Storage: " + (dl.error?.message || "missing") }, { status: 400 });
+      }
+      fileBuffer = await dl.data.arrayBuffer();
+      // limpiar el path después de procesar (best-effort, no bloqueante)
+      sb.storage.from("uploads").remove([storagePath]).catch(() => {});
+    } else if (ct.includes("multipart/form-data")) {
       const form = await req.formData();
       country = String(form.get("country") || country);
       const file = form.get("file");
       if (!(file instanceof File)) return NextResponse.json({ error: "Archivo requerido (form-data)" }, { status: 400 });
       fileBuffer = await file.arrayBuffer();
     } else {
-      country = req.nextUrl.searchParams.get("country") || country;
       fileBuffer = await req.arrayBuffer();
       if (!fileBuffer || fileBuffer.byteLength === 0) {
         return NextResponse.json({ error: "Body vacío" }, { status: 400 });

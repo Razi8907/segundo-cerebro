@@ -916,16 +916,33 @@ function UploadRegistrados({ country, onUploaded }: { country: "ar" | "py"; onUp
     if (!file) return;
     setUploading(true); setError(""); setResult(null);
     try {
-      // Subida con body crudo (binario). Evita problemas de multipart/FormData en
-      // algunos navegadores (Safari especialmente) cuando el archivo está cerca
-      // del límite de payload de Vercel. country va por query param.
-      const res = await fetch(`/api/data/usuarios/upload?country=${country}`, {
+      // 1) Pedir signed upload URL al server.
+      const urlRes = await fetch("/api/data/usuarios/upload-url", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "X-Filename": file.name,
-        },
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country, filename: file.name }),
+      });
+      if (!urlRes.ok) {
+        const t = await urlRes.text().catch(() => "");
+        throw new Error(`No se pudo obtener URL de subida (HTTP ${urlRes.status}): ${t.slice(0, 200)}`);
+      }
+      const { path, signedUrl } = await urlRes.json();
+      if (!signedUrl || !path) throw new Error("Respuesta inválida del servidor (sin signedUrl/path)");
+
+      // 2) Subir archivo directo a Supabase Storage (bypass del límite de Vercel).
+      const upRes = await fetch(signedUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
         body: file,
+      });
+      if (!upRes.ok) {
+        const t = await upRes.text().catch(() => "");
+        throw new Error(`Subida a Storage falló (HTTP ${upRes.status}): ${t.slice(0, 200)}`);
+      }
+
+      // 3) Llamar al endpoint de proceso con el path del archivo en Storage.
+      const res = await fetch(`/api/data/usuarios/upload?country=${country}&path=${encodeURIComponent(path)}`, {
+        method: "POST",
       });
 
       // Lectura defensiva: si el body no es JSON, mostrar status + fragmento del texto.
