@@ -109,7 +109,8 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
           };
         }
       }
-      const allData = (mainRes?.data || {}) as { resumen?: Record<string, ResumenMes>; meta_info?: MetaInfo };
+      // El endpoint /api/data/[country] hace spread del snapshot, no lo envuelve en .data
+      const allData = (mainRes || {}) as { resumen?: Record<string, ResumenMes>; meta_info?: MetaInfo };
       if (allData.resumen) {
         for (const m of MESES_Q2) {
           if (map[m]) continue; // ya cargado de resumen_operacional
