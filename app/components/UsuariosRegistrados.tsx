@@ -920,13 +920,34 @@ function UploadRegistrados({ country, onUploaded }: { country: "ar" | "py"; onUp
       fd.append("country", country);
       fd.append("file", file);
       const res = await fetch("/api/data/usuarios/upload", { method: "POST", body: fd });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
-      setResult({ parsed: json.parsed_users, summary: json.summary });
-      // refrescar data del componente padre
+
+      // Lectura defensiva: si el body no es JSON, mostrar status + fragmento del texto.
+      const ct = res.headers.get("content-type") || "";
+      let json: { error?: string; parsed_users?: number; summary?: Record<string, UploadSummary> } | null = null;
+      let rawText = "";
+      if (ct.includes("application/json")) {
+        try { json = await res.json(); }
+        catch (parseErr) {
+          rawText = "(JSON inválido: " + (parseErr instanceof Error ? parseErr.message : String(parseErr)) + ")";
+        }
+      } else {
+        try { rawText = await res.text(); }
+        catch { rawText = "(respuesta sin cuerpo legible)"; }
+      }
+
+      if (!res.ok) {
+        const msg = json?.error
+          || (rawText ? `HTTP ${res.status} — ${rawText.slice(0, 200)}` : `HTTP ${res.status}`);
+        throw new Error(msg);
+      }
+      if (!json) {
+        throw new Error(`Respuesta no-JSON (HTTP ${res.status}): ${rawText.slice(0, 200)}`);
+      }
+      setResult({ parsed: json.parsed_users ?? 0, summary: json.summary ?? {} });
       onUploaded();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Error");
+      console.error("[UploadRegistrados]", e);
+      setError(e instanceof Error ? e.message : String(e));
     } finally {
       setUploading(false);
     }

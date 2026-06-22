@@ -10,7 +10,7 @@ import {
 } from "../../../../lib/usuarios-cohort-builder";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 const Q2 = ["abril", "mayo", "junio"];
 
@@ -37,15 +37,32 @@ function findHeaderIndices(headerRow: unknown[]): {
 }
 
 function excelDateToJs(v: unknown): Date | null {
-  if (v instanceof Date) return v;
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
   if (typeof v === "number") {
-    // Excel serial date: days since 1899-12-30 (accounts for Lotus 1-2-3 bug)
+    // Excel serial date: days since 1899-12-30
     const epoch = new Date(Date.UTC(1899, 11, 30));
     return new Date(epoch.getTime() + v * 24 * 60 * 60 * 1000);
   }
   if (typeof v === "string") {
-    const d = new Date(v);
-    if (!isNaN(d.getTime())) return d;
+    const s = v.trim();
+    if (!s) return null;
+    // ISO o formato reconocido nativamente
+    const d1 = new Date(s);
+    if (!isNaN(d1.getTime())) return d1;
+    // DD/MM/YYYY o DD-MM-YYYY (formato común AR/PY)
+    let m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (m) {
+      const [, dd, mm, yyyy, hh = "0", mi = "0", ss = "0"] = m;
+      const d = new Date(Date.UTC(+yyyy, +mm - 1, +dd, +hh, +mi, +ss));
+      if (!isNaN(d.getTime())) return d;
+    }
+    // YYYY-MM-DD HH:MM:SS
+    m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+    if (m) {
+      const [, yyyy, mm, dd, hh = "0", mi = "0", ss = "0"] = m;
+      const d = new Date(Date.UTC(+yyyy, +mm - 1, +dd, +hh, +mi, +ss));
+      if (!isNaN(d.getTime())) return d;
+    }
   }
   return null;
 }
