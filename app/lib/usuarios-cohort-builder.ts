@@ -321,36 +321,91 @@ export function buildUsuariosSegmentados(
     ing_abril: u.ops.abril.ing, ing_mayo: u.ops.mayo.ing, ing_junio: u.ops.junio.ing,
   });
 
-  const byCohort = { abril: users.filter((u) => u.reg_mes === "abril"), mayo: users.filter((u) => u.reg_mes === "mayo") };
-  const retention: UsuariosSegmentados["retention"] = {
-    mayo: { abril: { nunca_operaron: [], solo_abril: [], activo_mayo: [] } },
-    junio: {
-      abril: { nunca_operaron: [], solo_abril: [], bajaron_jun: [], activo_jun: [] },
-      mayo: { nunca_operaron: [], solo_mayo: [], activo_jun: [] },
-    },
-    q2: {} as never,
-  };
-  for (const u of byCohort.abril) {
-    const a = u.ops.abril.mov, my = u.ops.mayo.mov, j = u.ops.junio.mov;
-    const rec = toRet(u);
-    // Mayo view
-    if (a === 0 && my === 0 && j === 0) retention.mayo.abril.nunca_operaron.push(rec);
-    else if (my === 0) retention.mayo.abril.solo_abril.push(rec);
-    else retention.mayo.abril.activo_mayo.push(rec);
-    // Junio view
-    if (a === 0 && my === 0 && j === 0) retention.junio.abril.nunca_operaron.push(rec);
-    else if (j === 0) retention.junio.abril.solo_abril.push(rec);
-    else if (j < Math.max(a, my)) retention.junio.abril.bajaron_jun.push(rec);
-    else retention.junio.abril.activo_jun.push(rec);
+  // Retención de cohorts previas — para cada mes vista (abril/mayo/junio/q2),
+  // mirar todos los cohorts de meses anteriores y clasificar usuarios en
+  // buckets genéricos:
+  //   nunca_operaron: nunca movilizó en ningún mes
+  //   solo_<cohort>: movilizó en su cohort pero NO en el mes vista
+  //   activo_<vista>: movilizó en el mes vista (= retención positiva)
+  //   bajaron_<vista>: movilizó en vista pero menos que su mejor mes previo
+  const ALL_MESES = ["enero","febrero","marzo","abril","mayo","junio"];
+  const Q1_MES = new Set(["enero","febrero","marzo"]);
+  const Q2_MES = new Set(["abril","mayo","junio"]);
+
+  const byCohortMes: Record<string, UserWithOps[]> = {};
+  for (const m of ALL_MESES) byCohortMes[m] = users.filter((u) => u.reg_mes === m);
+  // Cohort virtual "q1" = todos los registrados en Q1
+  const byCohortQ1 = users.filter((u) => Q1_MES.has(u.reg_mes));
+
+  function movInMes(u: UserWithOps, mes: string): number {
+    return u.ops[mes]?.mov ?? 0;
   }
-  for (const u of byCohort.mayo) {
-    const my = u.ops.mayo.mov, j = u.ops.junio.mov;
-    const rec = toRet(u);
-    if (my === 0 && j === 0) retention.junio.mayo.nunca_operaron.push(rec);
-    else if (j === 0) retention.junio.mayo.solo_mayo.push(rec);
-    else retention.junio.mayo.activo_jun.push(rec);
+  function totalMovLifetime(u: UserWithOps): number {
+    return u.q1_mov + u.q2_mov;
   }
-  retention.q2 = { abril: retention.junio.abril, mayo: retention.junio.mayo };
+  function bestMonthBefore(u: UserWithOps, vista: string): number {
+    const idx = ALL_MESES.indexOf(vista);
+    if (idx < 0) return 0;
+    let best = 0;
+    for (let i = 0; i < idx; i++) {
+      const v = movInMes(u, ALL_MESES[i]);
+      if (v > best) best = v;
+    }
+    return best;
+  }
+
+  type Bucket = "nunca_operaron" | "solo_cohort" | "activo_vista" | "bajaron_vista";
+
+  // Para vista=q2 (acumulado), se usa q2_mov como métrica del mes vista.
+  function classify(u: UserWithOps, cohortMes: string, vista: string): Bucket {
+    const lifetime = totalMovLifetime(u);
+    const inVista = vista === "q2" ? u.q2_mov : movInMes(u, vista);
+    if (lifetime === 0) return "nunca_operaron";
+    if (inVista === 0) return "solo_cohort";
+    const best = bestMonthBefore(u, vista === "q2" ? "junio" : vista);
+    if (inVista < best && best > 0) return "bajaron_vista";
+    return "activo_vista";
+  }
+
+  // Construye los buckets para una (vista, cohortKey, cohortUsers)
+  function buildBuckets(vista: string, cohortKey: string, cohortUsers: UserWithOps[]) {
+    const buckets: Record<string, RetUser[]> = {
+      nunca_operaron: [],
+      [`solo_${cohortKey}`]: [],
+      [`activo_${vista}`]: [],
+      [`bajaron_${vista}`]: [],
+    };
+    for (const u of cohortUsers) {
+      const b = classify(u, cohortKey, vista);
+      const key = b === "nunca_operaron" ? "nunca_operaron"
+        : b === "solo_cohort" ? `solo_${cohortKey}`
+        : b === "bajaron_vista" ? `bajaron_${vista}`
+        : `activo_${vista}`;
+      buckets[key].push(toRet(u));
+    }
+    return buckets;
+  }
+
+  const retention: UsuariosSegmentados["retention"] = {} as never;
+
+  // Vistas Q2: abril, mayo, junio, q2 (acumulado)
+  const Q2_VIEWS = ["abril", "mayo", "junio", "q2"] as const;
+  for (const vista of Q2_VIEWS) {
+    retention[vista] = {};
+    // Cohorts previos en orden: q1 (acumulado) + meses Q2 anteriores al vista
+    const prevCohorts: { key: string; users: UserWithOps[] }[] = [];
+    if (byCohortQ1.length > 0) prevCohorts.push({ key: "q1", users: byCohortQ1 });
+    if (vista !== "abril") {
+      // agregar abril (si vista no es abril)
+      if (byCohortMes.abril.length > 0) prevCohorts.push({ key: "abril", users: byCohortMes.abril });
+    }
+    if (vista === "junio" || vista === "q2") {
+      if (byCohortMes.mayo.length > 0) prevCohorts.push({ key: "mayo", users: byCohortMes.mayo });
+    }
+    for (const { key, users: cu } of prevCohorts) {
+      retention[vista][key] = buildBuckets(vista, key, cu);
+    }
+  }
 
   // Sort + cap
   const RET_CAP = 2500; const seenLists = new Set<unknown>();

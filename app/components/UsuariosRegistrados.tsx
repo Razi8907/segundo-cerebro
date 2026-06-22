@@ -586,60 +586,48 @@ function ComunidadesCard({ title, subtitle, comunidades, comunidadesDetalle }: {
   );
 }
 
-// Configuración de buckets de retención: orden, labels, colores, descripción.
-const BUCKET_META: Record<string, { label: string; icon: string; color: string; tone: "bad" | "warn" | "good"; subtitleFor: (cohort: string, view: string) => string }> = {
-  nunca_operaron: {
-    label: "Nunca operaron",
-    icon: "🔴",
-    color: "#dc2626",
-    tone: "bad",
-    subtitleFor: (cohort) => `Registrados en ${cap(cohort)} que NO operaron en ningún mes de Q2. Candidatos a campaña de despertar.`,
-  },
-  solo_abril: {
-    label: "Operaron en Abril pero no en el mes vista",
-    icon: "🟡",
-    color: "#f59e0b",
-    tone: "warn",
-    subtitleFor: (_, view) => `Activaron en Abril pero NO operaron en ${cap(view)}. Recuperables.`,
-  },
-  solo_mayo: {
-    label: "Solo operaron en Mayo",
-    icon: "🟡",
-    color: "#f59e0b",
-    tone: "warn",
-    subtitleFor: () => `Activaron en Mayo pero NO operaron en Junio. Bajaron — recuperables.`,
-  },
-  bajaron_jun: {
-    label: "Bajaron en Junio",
-    icon: "🟠",
-    color: "#fb923c",
-    tone: "warn",
-    subtitleFor: () => `Activaron en Junio pero con menos movilizadas que su mejor mes anterior. Atención: están perdiendo velocidad.`,
-  },
-  activo_post_abril: {
-    label: "Siguen activos post-Abril",
-    icon: "🟢",
-    color: "#10b981",
-    tone: "good",
-    subtitleFor: () => `Registrados en Abril que también operaron en Mayo y/o Junio. Crecer y retener.`,
-  },
-  activo_mayo: {
-    label: "Activaron en Mayo",
-    icon: "🟢",
-    color: "#10b981",
-    tone: "good",
-    subtitleFor: () => `Registrados en Abril que también operaron en Mayo. Retención positiva — potenciarlos.`,
-  },
-  activo_jun: {
-    label: "Siguen activos en Junio",
-    icon: "🟢",
-    color: "#10b981",
-    tone: "good",
-    subtitleFor: (cohort) => `Registrados en ${cap(cohort)} que también operaron en Junio (manteniendo o creciendo). Sostenidos — crecer.`,
-  },
-};
-
 function cap(s: string) { return s.charAt(0).toUpperCase() + s.slice(1); }
+
+// Resuelve la metadata de un bucket según el prefijo de la key:
+//   nunca_operaron      → rojo
+//   solo_<cohort>       → amarillo (cohort que es: 'q1', 'abril', 'mayo', etc.)
+//   bajaron_<vista>     → naranja
+//   activo_<vista>      → verde
+function bucketMeta(bucketKey: string, cohortMes: string, viewMes: string): {
+  label: string; icon: string; color: string; subtitle: string;
+} {
+  const cohortLabel = MES_LABEL[cohortMes] || cap(cohortMes);
+  const viewLabel = MES_LABEL[viewMes] || cap(viewMes);
+  if (bucketKey === "nunca_operaron") {
+    return {
+      label: "Nunca operaron",
+      icon: "🔴", color: "#dc2626",
+      subtitle: `Registrados en ${cohortLabel} que NO movilizaron en ningún mes. Candidatos a campaña de despertar.`,
+    };
+  }
+  if (bucketKey.startsWith("solo_")) {
+    return {
+      label: `Operaron en ${cohortLabel} pero no en ${viewLabel}`,
+      icon: "🟡", color: "#f59e0b",
+      subtitle: `Activaron en ${cohortLabel} pero NO operaron en ${viewLabel}. Recuperables.`,
+    };
+  }
+  if (bucketKey.startsWith("bajaron_")) {
+    return {
+      label: `Bajaron en ${viewLabel}`,
+      icon: "🟠", color: "#fb923c",
+      subtitle: `Activaron en ${viewLabel} con menos movilizadas que su mejor mes anterior. Están perdiendo velocidad.`,
+    };
+  }
+  if (bucketKey.startsWith("activo_")) {
+    return {
+      label: `Activos en ${viewLabel}`,
+      icon: "🟢", color: "#10b981",
+      subtitle: `Registrados en ${cohortLabel} que también operaron en ${viewLabel} (manteniendo o creciendo). Potenciarlos.`,
+    };
+  }
+  return { label: bucketKey, icon: "•", color: "#6b7280", subtitle: "" };
+}
 
 function RetentionSection({ viewMes, retention }: { viewMes: string; retention: RetentionByCohort }) {
   return (
@@ -661,24 +649,29 @@ function RetentionSection({ viewMes, retention }: { viewMes: string; retention: 
 
 function CohortRetentionCard({ cohortMes, viewMes, buckets }: { cohortMes: string; viewMes: string; buckets: RetentionBuckets }) {
   const total = Object.values(buckets).reduce((s, arr) => s + arr.length, 0);
-  // Orden visual: malo → bueno
-  const order = ["nunca_operaron", "solo_abril", "solo_mayo", "bajaron_jun", "activo_post_abril", "activo_mayo", "activo_jun"];
-  const bucketKeys = order.filter((k) => k in buckets);
+  // Orden visual: nunca → solo (perdidos) → bajaron → activos
+  const orderPrefix = (k: string): number => {
+    if (k === "nunca_operaron") return 0;
+    if (k.startsWith("solo_")) return 1;
+    if (k.startsWith("bajaron_")) return 2;
+    if (k.startsWith("activo_")) return 3;
+    return 4;
+  };
+  const bucketKeys = Object.keys(buckets).sort((a, b) => orderPrefix(a) - orderPrefix(b));
   return (
     <div className="rounded-lg border border-amber-500/15" style={{ background: "var(--bg-input)" }}>
       <div className="px-4 pt-3 pb-2 border-b border-amber-500/10">
-        <h3 className="text-sm font-bold t-primary">Cohort {MES_LABEL[cohortMes]} — {total.toLocaleString("es-AR")} registrados</h3>
-        <p className="text-[11px] t-muted">Comportamiento de estos usuarios visto desde {MES_LABEL[viewMes]}.</p>
+        <h3 className="text-sm font-bold t-primary">Cohort {MES_LABEL[cohortMes] || cap(cohortMes)} — {total.toLocaleString("es-AR")} registrados</h3>
+        <p className="text-[11px] t-muted">Comportamiento de estos usuarios visto desde {MES_LABEL[viewMes] || cap(viewMes)}.</p>
       </div>
       <div className="p-3 space-y-2">
         {bucketKeys.map((bk) => {
-          const meta = BUCKET_META[bk];
-          if (!meta) return null;
+          const meta = bucketMeta(bk, cohortMes, viewMes);
           const users = buckets[bk];
           return (
             <RetentionBucketCard key={bk}
               label={meta.label} icon={meta.icon} color={meta.color}
-              subtitle={meta.subtitleFor(cohortMes, viewMes)}
+              subtitle={meta.subtitle}
               users={users} cohortMes={cohortMes} viewMes={viewMes} bucketKey={bk}
             />
           );
