@@ -262,13 +262,26 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
   const [filterNear, setFilterNear] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [rebuildMsg, setRebuildMsg] = useState("");
+  const [cohortStats, setCohortStats] = useState<Record<string, { reg: number; act: number }>>({});
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/data/estrategia?country=${country}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const [estRes, usRes] = await Promise.all([
+        fetch(`/api/data/estrategia?country=${country}`),
+        fetch(`/api/data/usuarios?country=${country}`).catch(() => null),
+      ]);
+      if (!estRes.ok) throw new Error(`HTTP ${estRes.status}`);
+      setData(await estRes.json());
+      // cohort_stats (activación por mes/Q) — opcional
+      if (usRes && usRes.ok) {
+        const us = await usRes.json();
+        const stats: Record<string, { reg: number; act: number }> = {};
+        for (const [mes, c] of Object.entries((us.cohorts || {}) as Record<string, { total_registrados?: number; activos_total?: number }>)) {
+          stats[mes] = { reg: c.total_registrados ?? 0, act: c.activos_total ?? 0 };
+        }
+        setCohortStats(stats);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error");
     } finally { setLoading(false); }
@@ -335,8 +348,27 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
     users: usuariosComputed.length,
     mov: usuariosComputed.reduce((s, u) => s + u.mov, 0),
     near: usuariosComputed.filter((u) => u.near_upgrade).length,
-    sabioCount: usuariosComputed.filter((u) => u.segmento === "sabio_vip").length,
+    sabioCount: usuariosComputed.filter((u) => u.segmento === "sabio_vip" || u.segmento === "sabio_vip_ar").length,
   }), [usuariosComputed]);
+
+  // % de activación de la ventana seleccionada: registrados vs activos del cohort
+  // - Mes único → cohorts[mes]
+  // - q1 / q2 → cohorts.q1 / cohorts.q2 (acumulado)
+  // - Sin filtro → suma de todos los meses disponibles
+  const activacion = useMemo(() => {
+    if (!cohortStats || Object.keys(cohortStats).length === 0) return null;
+    if (!mesFilter) {
+      let reg = 0, act = 0;
+      for (const m of windowMeses) {
+        if (cohortStats[m]) { reg += cohortStats[m].reg; act += cohortStats[m].act; }
+      }
+      return { reg, act };
+    }
+    // mes único o q1/q2 — usar la key directa si existe
+    const c = cohortStats[mesFilter];
+    if (c) return { reg: c.reg, act: c.act };
+    return null;
+  }, [cohortStats, mesFilter, windowMeses]);
 
   const applyFilters = useCallback((users: UsuarioComputed[]) => {
     return users.filter((u) => {
@@ -403,11 +435,19 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
       </div>
 
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3">
         <Kpi label={`DSs con mov ≥1 en ${ventanaLabel}`} value={totals.users.toLocaleString("es-AR")} color="#a78bfa" />
         <Kpi label="Movilizadas en la ventana" value={totals.mov.toLocaleString("es-AR")} color="#f97316" />
+        {activacion && activacion.reg > 0 && (
+          <Kpi
+            label={`% Activación ${ventanaLabel}`}
+            value={`${((activacion.act / activacion.reg) * 100).toFixed(1)}%`}
+            color="#10b981"
+            sub={`${activacion.act.toLocaleString("es-AR")} de ${activacion.reg.toLocaleString("es-AR")} registrados`}
+          />
+        )}
         <Kpi label="🚀 Próximos a subir nivel" value={totals.near.toLocaleString("es-AR")} color="#fbbf24" sub="los más rentables HOY" />
-        <Kpi label="👑 Sabio VIP" value={totals.sabioCount.toLocaleString("es-AR")} color="#f59e0b" sub="≥2000 mov en la ventana" />
+        <Kpi label="👑 Sabio VIP" value={totals.sabioCount.toLocaleString("es-AR")} color="#f59e0b" sub={`top de la ventana`} />
       </div>
 
       {/* Filtros */}
