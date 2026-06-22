@@ -31,9 +31,19 @@ function findHeaderIndices(headerRow: unknown[]): {
     email: find("email", "correo"),
     nombre: find("nombre_usuario", "nombre"),
     telefono: find("telefono", "teléfono", "celular"),
-    comunidad: find("comunidad"),
-    fecha: find("fecha de creación", "fecha de creacion", "fecha"),
+    // En el nuevo export Dropi la columna se llama "referido_por" en lugar de "comunidad"
+    comunidad: find("referido_por", "referidor", "comunidad"),
+    // Acepta "fecha de creación" (export viejo) y "fecha_creacion" (export nuevo)
+    fecha: find("fecha_creacion", "fecha de creación", "fecha de creacion", "fecha"),
   };
+}
+
+// Limpia strings tipo "NULL" que vienen en algunos exports de Dropi.
+function cleanCell(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  const s = String(v).trim();
+  if (!s || s.toUpperCase() === "NULL") return "";
+  return s;
 }
 
 function excelDateToJs(v: unknown): Date | null {
@@ -160,7 +170,7 @@ export async function POST(req: NextRequest) {
     const byEmail = new Map<string, RegisteredUser>();
     for (const r of dataRows) {
       if (!r || !r[idx.email]) continue;
-      const email = String(r[idx.email]).trim().toLowerCase();
+      const email = cleanCell(r[idx.email]).toLowerCase();
       if (!email || !email.includes("@")) continue;
       const fechaRaw = r[idx.fecha];
       const fc = excelDateToJs(fechaRaw);
@@ -170,11 +180,12 @@ export async function POST(req: NextRequest) {
       const iso = fc.toISOString();
       const existing = byEmail.get(email);
       if (existing && existing.fecha_registro < iso) continue;
+      const comunidadRaw = idx.comunidad >= 0 ? cleanCell(r[idx.comunidad]) : "";
       byEmail.set(email, {
         email,
-        nombre: String(r[idx.nombre] ?? "").trim(),
-        telefono: String(r[idx.telefono] ?? "").trim(),
-        comunidad: idx.comunidad >= 0 && r[idx.comunidad] ? String(r[idx.comunidad]).trim() : null,
+        nombre: cleanCell(r[idx.nombre]),
+        telefono: cleanCell(r[idx.telefono]),
+        comunidad: comunidadRaw || null,
         reg_mes: mes,
         fecha_registro: iso,
       });
@@ -201,6 +212,57 @@ export async function POST(req: NextRequest) {
   const snap = (snapRes.data?.data as Record<string, unknown>) || {};
   const legacyDS = (snap.dropshippers as LegacyDropshipper[]) || [];
   const q2Snaps: OperationalSnapshot[] = (opsRes.data || []).map((r) => ({ mes: r.mes as string, ...(r.data as Omit<OperationalSnapshot, "mes">) }));
+
+  // MERGE con base previa. El xlsx puede ser incremental (solo registros nuevos
+  // de un mes). Extraemos la base anterior de usuarios_segmentados.cohorts y
+  // mergeamos por email: el archivo nuevo gana en caso de conflicto.
+  const previousUS = snap.usuarios_segmentados as { cohorts?: Record<string, {
+    segmento_1_pareto75?: { usuarios?: { email: string; nombre?: string; telefono?: string; comunidad?: string | null }[] };
+    segmento_3_1_a_19?: { usuarios?: { email: string; nombre?: string; telefono?: string; comunidad?: string | null }[] };
+    segmento_intentaron?: { usuarios?: { email: string; nombre?: string; telefono?: string; comunidad?: string | null }[] };
+    segmento_4_cero?: { usuarios?: { email: string; nombre?: string; telefono?: string; comunidad?: string | null }[] };
+    segmento_2_bins?: Record<string, { usuarios?: { email: string; nombre?: string; telefono?: string; comunidad?: string | null }[] }>;
+  }> } | undefined;
+  const previousReg = new Map<string, RegisteredUser>();
+  if (previousUS?.cohorts) {
+    for (const [mes, c] of Object.entries(previousUS.cohorts)) {
+      // Solo nos importan los cohorts mensuales (no q1/q2 que son acumulados)
+      if (!["enero","febrero","marzo","abril","mayo","junio"].includes(mes)) continue;
+      const pools: { email: string; nombre?: string; telefono?: string; comunidad?: string | null }[][] = [];
+      for (const k of ["segmento_1_pareto75","segmento_3_1_a_19","segmento_intentaron","segmento_4_cero"] as const) {
+        const seg = c?.[k];
+        if (seg?.usuarios) pools.push(seg.usuarios);
+      }
+      for (const bin of Object.values(c?.segmento_2_bins || {})) {
+        if (bin.usuarios) pools.push(bin.usuarios);
+      }
+      for (const pool of pools) {
+        for (const u of pool) {
+          const em = (u.email || "").trim().toLowerCase();
+          if (!em || !em.includes("@")) continue;
+          if (previousReg.has(em)) continue;
+          previousReg.set(em, {
+            email: em,
+            nombre: u.nombre || "",
+            telefono: u.telefono || "",
+            comunidad: u.comunidad ?? null,
+            reg_mes: mes,
+            fecha_registro: "", // desconocido, se mantiene reg_mes
+          });
+        }
+      }
+    }
+  }
+
+  // Aplicar merge: nuevos del xlsx tienen prioridad
+  const newEmails = new Set(registered.map((r) => r.email));
+  const merged: RegisteredUser[] = [...registered];
+  for (const [em, prev] of previousReg.entries()) {
+    if (!newEmails.has(em)) merged.push(prev);
+  }
+  const fromPrev = merged.length - registered.length;
+  console.log(`[usuarios/upload] xlsx=${registered.length} + previos=${fromPrev} → total merged=${merged.length}`);
+  registered = merged;
 
   // Build
   let usuarios_segmentados;
