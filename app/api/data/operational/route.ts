@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "../../../lib/supabase";
 import { verifyToken, COOKIE_NAME } from "../../../lib/auth";
+import { buildEstrategia } from "../../../lib/estrategia-builder";
 
 const isColumnMissing = (err: any) => {
   const msg = String(err?.message || "").toLowerCase();
@@ -91,7 +92,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    // Write-through: reconstruir estrategia_usuarios para que refleje la data nueva.
+    // Si falla, no rompemos el upload — solo logueamos.
+    let estrategia_users = 0;
+    try {
+      if (["ar", "py"].includes(country)) {
+        const [snapRes, opsRes] = await Promise.all([
+          supabase.from("dashboard_snapshots").select("data").eq("country", country).maybeSingle(),
+          supabase.from("operational_snapshots").select("mes, data").eq("country", country).in("mes", ["abril","mayo","junio"]),
+        ]);
+        if (!snapRes.error && !opsRes.error) {
+          const snap = (snapRes.data?.data as Record<string, unknown>) || {};
+          const q2 = (opsRes.data || []).map((r) => ({ mes: r.mes as string, data: r.data as Parameters<typeof buildEstrategia>[2][number]["data"] }));
+          const estrategia = buildEstrategia(country as "ar" | "py", snap as Parameters<typeof buildEstrategia>[1], q2);
+          snap.estrategia_usuarios = estrategia;
+          await supabase.from("dashboard_snapshots").update({ data: snap, updated_at: new Date().toISOString() }).eq("country", country);
+          estrategia_users = estrategia.usuarios.length;
+        }
+      }
+    } catch (e) {
+      console.warn("[operational/POST] estrategia rebuild failed (non-blocking):", e);
+    }
+
+    return NextResponse.json({ success: true, estrategia_users });
   } catch (err) {
     console.error("Operational upload error:", err);
     return NextResponse.json({ error: "Error interno" }, { status: 500 });

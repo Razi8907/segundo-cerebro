@@ -260,6 +260,8 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
   const [showStrategy, setShowStrategy] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterNear, setFilterNear] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildMsg, setRebuildMsg] = useState("");
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -273,6 +275,21 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
   }, [country]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const rebuildNow = useCallback(async () => {
+    setRebuilding(true); setRebuildMsg("");
+    try {
+      const res = await fetch(`/api/data/estrategia/rebuild?country=${country}`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+      setRebuildMsg(`✅ Reconstruido — ${json.total_usuarios} usuarios.`);
+      await fetchData();
+    } catch (e: unknown) {
+      setRebuildMsg("⚠️ " + (e instanceof Error ? e.message : "Error"));
+    } finally {
+      setRebuilding(false);
+    }
+  }, [country, fetchData]);
 
   // Reset estado cuando cambia el mes
   useEffect(() => { setOpenSegment(null); setShowStrategy(null); setSearch(""); setFilterNear(false); }, [mesFilter]);
@@ -357,12 +374,32 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
     <div className="space-y-4">
       {/* Header */}
       <div className="rounded-xl p-4 border border-purple-500/20" style={{ background: "var(--bg-card)" }}>
-        <h1 className="text-lg font-bold t-primary mb-1">🎯 Estrategia de Usuarios — {country.toUpperCase()} <span className="text-sm t-muted font-normal">· ventana: {ventanaLabel}</span></h1>
-        <p className="text-[11px] t-muted">
-          Segmentación de DSs activos por <strong>movilizadas en la ventana seleccionada</strong>. Cambiá el mes/Q en el header
-          para recalcular. Foco en los <strong className="text-amber-300">próximos a subir</strong>.
-        </p>
-        {data.window_note && <p className="text-[10px] text-amber-300 mt-2">ⓘ {data.window_note}</p>}
+        <div className="flex items-start justify-between gap-2 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-bold t-primary mb-1">🎯 Estrategia de Usuarios — {country.toUpperCase()} <span className="text-sm t-muted font-normal">· ventana: {ventanaLabel}</span></h1>
+            <p className="text-[11px] t-muted">
+              Segmentación de DSs activos por <strong>movilizadas en la ventana seleccionada</strong>. Cambiá el mes/Q en el header
+              para recalcular. Foco en los <strong className="text-amber-300">próximos a subir</strong>.
+            </p>
+            {data.window_note && <p className="text-[10px] text-amber-300 mt-2">ⓘ {data.window_note}</p>}
+            {data.updated_at && (
+              <p className="text-[10px] t-muted mt-1">
+                Última actualización: <strong>{new Date(data.updated_at).toLocaleString("es-AR")}</strong>{" "}
+                <span className="t-muted">(se reconstruye automáticamente cuando se actualiza el análisis operacional)</span>
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <button
+              onClick={rebuildNow}
+              disabled={rebuilding}
+              className="text-xs px-3 py-2 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 disabled:opacity-40"
+            >
+              {rebuilding ? "Reconstruyendo…" : "🔄 Refrescar ahora"}
+            </button>
+            {rebuildMsg && <span className="text-[10px] t-secondary">{rebuildMsg}</span>}
+          </div>
+        </div>
       </div>
 
       {/* KPIs */}
@@ -409,9 +446,6 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
         ))}
       </div>
 
-      {data.updated_at && (
-        <p className="text-[10px] t-muted text-center">Actualizado: {new Date(data.updated_at).toLocaleString("es-AR")}</p>
-      )}
     </div>
   );
 }
