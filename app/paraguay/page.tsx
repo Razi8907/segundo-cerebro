@@ -31,6 +31,7 @@ import FinanzasDashboard from "../components/FinanzasDashboard";
 import FinanzasDashboardPY_Q1 from "../components/FinanzasDashboardPY_Q1";
 import SeguimientoComercial from "../components/SeguimientoComercial";
 import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
+import AnalisisRecomendaciones from "../components/AnalisisRecomendaciones";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
@@ -85,7 +86,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
 }
 
 type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
-type ComercialSub = "general" | "minimo" | "minimo_sem" | "minimo_mes" | "dropshippers" | "proveedores" | "crm";
+type ComercialSub = "general" | "analisis" | "minimo" | "minimo_sem" | "minimo_mes" | "dropshippers" | "proveedores" | "crm";
 type EstrategiaSub = "segmentos" | "registrados";
 
 export default function ParaguayDashboard() {
@@ -234,6 +235,7 @@ export default function ParaguayDashboard() {
             <div className="flex flex-wrap gap-2">
               {([
                 { key: "general" as ComercialSub, label: "📊 General" },
+                { key: "analisis" as ComercialSub, label: "🔍 Análisis y Recomendaciones" },
                 { key: "minimo" as ComercialSub, label: "📐 Mínimo Diario" },
                 { key: "minimo_sem" as ComercialSub, label: "📅 Mínimo Semanal" },
                 { key: "minimo_mes" as ComercialSub, label: "📆 Mínimo Mensual" },
@@ -269,6 +271,10 @@ export default function ParaguayDashboard() {
                 <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} mesFilter={mesFilter} country="py" />
                 <ProductGoalPlanner proveedores={proveedores} mesFilter={mesFilter} country="py" />
               </>
+            )}
+
+            {comercialSub === "analisis" && (
+              <AnalisisRecomendaciones country="py" />
             )}
 
             {comercialSub === "dropshippers" && (
