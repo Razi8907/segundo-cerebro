@@ -916,10 +916,17 @@ function UploadRegistrados({ country, onUploaded }: { country: "ar" | "py"; onUp
     if (!file) return;
     setUploading(true); setError(""); setResult(null);
     try {
-      const fd = new FormData();
-      fd.append("country", country);
-      fd.append("file", file);
-      const res = await fetch("/api/data/usuarios/upload", { method: "POST", body: fd });
+      // Subida con body crudo (binario). Evita problemas de multipart/FormData en
+      // algunos navegadores (Safari especialmente) cuando el archivo está cerca
+      // del límite de payload de Vercel. country va por query param.
+      const res = await fetch(`/api/data/usuarios/upload?country=${country}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/octet-stream",
+          "X-Filename": file.name,
+        },
+        body: file,
+      });
 
       // Lectura defensiva: si el body no es JSON, mostrar status + fragmento del texto.
       const ct = res.headers.get("content-type") || "";
@@ -946,8 +953,16 @@ function UploadRegistrados({ country, onUploaded }: { country: "ar" | "py"; onUp
       setResult({ parsed: json.parsed_users ?? 0, summary: json.summary ?? {} });
       onUploaded();
     } catch (e: unknown) {
-      console.error("[UploadRegistrados]", e);
-      setError(e instanceof Error ? e.message : String(e));
+      console.error("[UploadRegistrados] caught:", e);
+      let msg = "Error desconocido";
+      if (e instanceof Error) {
+        msg = `${e.name}: ${e.message}`;
+      } else if (typeof e === "string") {
+        msg = e;
+      } else {
+        try { msg = JSON.stringify(e); } catch { msg = String(e); }
+      }
+      setError(msg);
     } finally {
       setUploading(false);
     }

@@ -79,13 +79,25 @@ export async function POST(req: NextRequest) {
   let country = "py";
   let fileBuffer: ArrayBuffer | null = null;
   try {
-    const form = await req.formData();
-    country = String(form.get("country") || "py");
-    const file = form.get("file");
-    if (!(file instanceof File)) return NextResponse.json({ error: "Archivo requerido" }, { status: 400 });
-    fileBuffer = await file.arrayBuffer();
+    // Soporta dos modos:
+    //   A) multipart/form-data (cliente original con FormData)
+    //   B) body crudo (binario) con country en query param ?country=...
+    const ct = (req.headers.get("content-type") || "").toLowerCase();
+    if (ct.includes("multipart/form-data")) {
+      const form = await req.formData();
+      country = String(form.get("country") || country);
+      const file = form.get("file");
+      if (!(file instanceof File)) return NextResponse.json({ error: "Archivo requerido (form-data)" }, { status: 400 });
+      fileBuffer = await file.arrayBuffer();
+    } else {
+      country = req.nextUrl.searchParams.get("country") || country;
+      fileBuffer = await req.arrayBuffer();
+      if (!fileBuffer || fileBuffer.byteLength === 0) {
+        return NextResponse.json({ error: "Body vacío" }, { status: 400 });
+      }
+    }
   } catch (e) {
-    return NextResponse.json({ error: "Form data inválido: " + (e as Error).message }, { status: 400 });
+    return NextResponse.json({ error: "Error leyendo body: " + (e as Error).message }, { status: 400 });
   }
   if (!["ar", "py"].includes(country)) return NextResponse.json({ error: "country inválido" }, { status: 400 });
 
