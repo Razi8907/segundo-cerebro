@@ -375,23 +375,56 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     }
 
     // 2. Tasa de entrega
-    // 2-PRE. Tasa de MOVILIZACIÓN (ingresadas → movilizadas). Si cae, las órdenes se generan
-    // pero no se despachan: cancelaciones, rechazos, pendientes acumulados.
+    // 2-PRE. Tasa de MOVILIZACIÓN (ingresadas → movilizadas).
+    // ATENCIÓN: la tasa del mes corriente está siempre subestimada porque los
+    // pendientes/en_proceso aún no se contaron como movilizadas. Recién días
+    // después del cierre se ve la tasa real. Cuando el mes seleccionado es el
+    // mes corriente, calculamos tasa proyectada = (mov + en_proceso) / ing.
+    const isMesCorriente = (() => {
+      const now = new Date();
+      return now.getFullYear() === 2026 && now.getMonth() + 1 === MES_NUM[mesActual];
+    })();
+    const enProcCurr = resumenes[mesActual]?.en_proceso || 0;
+    const tasaProyCurr = kpis.ing.curr > 0 ? Math.round(((kpis.mov.curr + enProcCurr) / kpis.ing.curr) * 1000) / 10 : 0;
     const dMov = kpis.pctMov.curr - kpis.pctMov.prev;
-    if (dMov <= -3) {
-      const ordPerdidas = Math.round((kpis.ing.curr * Math.abs(dMov)) / 100);
-      inmediatas.push({
-        titulo: `⚠️ Tasa de movilización cayó ${Math.abs(dMov).toFixed(1)} pp`,
-        detalle: `Pasó de ${kpis.pctMov.prev.toFixed(1)}% a ${kpis.pctMov.curr.toFixed(1)}%. De cada 100 ingresadas, ${Math.abs(dMov).toFixed(0)} menos están saliendo a despacho. Estimado perdidas en el mes: ${fmt(ordPerdidas)} órdenes.`,
-        cualitativo: `Esto es lo más grave del mes. Las órdenes se están generando pero no se despachan. Causas típicas: 1) Cancelaciones por cliente que no confirma → reforzar contacto WhatsApp automatizado. 2) Rechazos por producto sin stock → bloquear productos sin stock en tiempo real. 3) Pendientes acumulados por demora del proveedor → auditar tiempos de respuesta. 4) Rechazos por error en dirección → validar formulario antes de cobrar. Diagnóstico por estado: mirar by_status en operaciones para ver dónde se está acumulando el cuello.`,
-        impacto: "alto",
-      });
-    } else if (dMov >= 3) {
-      inmediatas.push({
-        titulo: `✅ Tasa de movilización subió ${dMov.toFixed(1)} pp`,
-        detalle: `Pasó de ${kpis.pctMov.prev.toFixed(1)}% a ${kpis.pctMov.curr.toFixed(1)}%. Mismas ingresadas, más despachos. Sostener.`,
-        impacto: "medio",
-      });
+    const dMovProy = tasaProyCurr - kpis.pctMov.prev;
+
+    if (isMesCorriente) {
+      // En mes corriente: usar tasa proyectada para evaluar
+      if (dMovProy <= -3 && enProcCurr > 0) {
+        const ordPerdidas = Math.round((kpis.ing.curr * Math.abs(dMovProy)) / 100);
+        inmediatas.push({
+          titulo: `⚠️ Tasa de movilización proyectada cayó ${Math.abs(dMovProy).toFixed(1)} pp`,
+          detalle: `Aún con todos los pendientes (${fmt(enProcCurr)}) saliendo a despacho, la tasa proyectada del mes sería ${tasaProyCurr.toFixed(1)}% vs ${kpis.pctMov.prev.toFixed(1)}% de ${MES_LABEL[mesPrev]}. Estimado perdidas: ${fmt(ordPerdidas)} órdenes.`,
+          cualitativo: `Mes en curso — la tasa actual (${kpis.pctMov.curr.toFixed(1)}%) está subestimada porque los pendientes aún no se contaron. La proyectada (asumiendo que todos los en_proceso se movilizan) es ${tasaProyCurr.toFixed(1)}%. Aún así está abajo de ${MES_LABEL[mesPrev]}, lo cual sí es preocupante. Causas típicas: cancelaciones por cliente que no confirma, rechazos por stock, pendientes que no se resuelven. Revisar by_status del mes en operaciones para encontrar el cuello.`,
+          impacto: "alto",
+        });
+      } else if (enProcCurr > 0) {
+        // Solo informativo, no alarma
+        inmediatas.push({
+          titulo: `ℹ️ Tasa de movilización del mes en curso (${kpis.pctMov.curr.toFixed(1)}%) — preliminar`,
+          detalle: `Hay ${fmt(enProcCurr)} órdenes en proceso (PENDIENTE / GUIA_GENERADA / EN_PROCESO) que aún no se contaron como movilizadas. Tasa proyectada incluyéndolas: ${tasaProyCurr.toFixed(1)}% (vs ${kpis.pctMov.prev.toFixed(1)}% de ${MES_LABEL[mesPrev]}).`,
+          cualitativo: `Es normal que durante el mes la tasa esté más baja que el mes anterior cerrado. La tasa real del mes recién se ve unos días después del cierre. Si la proyectada (${tasaProyCurr.toFixed(1)}%) está cerca o por encima de ${MES_LABEL[mesPrev]}, todo OK. Acción: monitorear que los pendientes se resuelvan rápido — meta sana es ≤10% de las ingresadas del mes en estados pendientes hacia el cierre.`,
+          impacto: "bajo",
+        });
+      }
+    } else {
+      // Mes cerrado: comparación directa válida
+      if (dMov <= -3) {
+        const ordPerdidas = Math.round((kpis.ing.curr * Math.abs(dMov)) / 100);
+        inmediatas.push({
+          titulo: `⚠️ Tasa de movilización cayó ${Math.abs(dMov).toFixed(1)} pp vs ${MES_LABEL[mesPrev]}`,
+          detalle: `Pasó de ${kpis.pctMov.prev.toFixed(1)}% a ${kpis.pctMov.curr.toFixed(1)}%. De cada 100 ingresadas, ${Math.abs(dMov).toFixed(0)} menos salieron a despacho. Total perdidas en el mes: ${fmt(ordPerdidas)} órdenes.`,
+          cualitativo: `Mes cerrado, esto es la tasa final. Diagnóstico por estado: mirar by_status en operaciones para ver dónde se acumularon las no-movilizadas. Causas típicas: cancelaciones por cliente, rechazos por stock, errores en dirección. Para el próximo mes: reforzar contacto WhatsApp automatizado pre-despacho, bloquear productos sin stock, validar formularios.`,
+          impacto: "alto",
+        });
+      } else if (dMov >= 3) {
+        inmediatas.push({
+          titulo: `✅ Tasa de movilización subió ${dMov.toFixed(1)} pp`,
+          detalle: `Pasó de ${kpis.pctMov.prev.toFixed(1)}% a ${kpis.pctMov.curr.toFixed(1)}%. Mismas ingresadas, más despachos. Sostener.`,
+          impacto: "medio",
+        });
+      }
     }
 
     const dEnt = kpis.pctEnt.curr - kpis.pctEnt.prev;
@@ -701,9 +734,29 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
             <h3 className="text-[10px] t-muted uppercase tracking-wider mb-2">Tasas operativas</h3>
             <div className="space-y-2">
               <RowDelta label="% Movilización" curr={kpis.pctMov.curr} prev={kpis.pctMov.prev} suffix="%" />
+              {(() => {
+                const now = new Date();
+                const enCurso = now.getFullYear() === 2026 && now.getMonth() + 1 === MES_NUM[mesActual];
+                const enProc = resumenes[mesActual]?.en_proceso || 0;
+                if (!enCurso || enProc <= 0 || kpis.ing.curr <= 0) return null;
+                const proyectada = ((kpis.mov.curr + enProc) / kpis.ing.curr) * 100;
+                return (
+                  <div className="text-[10px] t-muted pl-2 -mt-1 italic">
+                    → proyectada (incluye {fmt(enProc)} en proceso): <strong className="text-cyan-300">{proyectada.toFixed(1)}%</strong>
+                  </div>
+                );
+              })()}
               <RowDelta label="% Entrega" curr={kpis.pctEnt.curr} prev={kpis.pctEnt.prev} suffix="%" />
               <RowDelta label="% Devolución" curr={kpis.pctDev.curr} prev={kpis.pctDev.prev} suffix="%" invertColor />
             </div>
+            {(() => {
+              const now = new Date();
+              const enCurso = now.getFullYear() === 2026 && now.getMonth() + 1 === MES_NUM[mesActual];
+              if (!enCurso) return null;
+              return (
+                <p className="text-[9px] t-muted mt-2 italic">ⓘ {MES_LABEL[mesActual]} en curso — la tasa final se ve recién días después del cierre cuando se resuelven los pendientes.</p>
+              );
+            })()}
           </div>
           <div className="rounded-lg p-4 border border-amber-500/30" style={{ background: "var(--bg-card)" }}>
             <h3 className="text-[10px] t-muted uppercase tracking-wider mb-2">Progreso a meta {MES_LABEL[mesActual]}</h3>
