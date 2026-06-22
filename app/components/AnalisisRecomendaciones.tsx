@@ -337,7 +337,16 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
 
   // Recomendaciones (heurísticas) — umbrales más bajos + cobertura completa
   const recomendaciones = useMemo(() => {
-    const inmediatas: { titulo: string; detalle: string; impacto: "alto" | "medio" | "bajo" }[] = [];
+    type RecItem = { label: string; sub?: string; right?: string; deltaPct?: number; phone?: string; email?: string };
+    type Rec = {
+      titulo: string;
+      detalle: string;
+      impacto: "alto" | "medio" | "bajo";
+      cualitativo?: string; // párrafo extra de contexto / por qué pasa / qué decir
+      items?: RecItem[]; // lista expandible (productos, proveedores, DSs)
+      itemsLabel?: string; // ej: "5 productos", "12 dropshippers"
+    };
+    const inmediatas: Rec[] = [];
     const inicio_mes: { titulo: string; detalle: string }[] = [];
     if (!kpis || !projeccion) return { inmediatas, inicio_mes };
 
@@ -410,65 +419,136 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     }
 
     // 5. Productos en caída
-    const prodCaida = topProductos.filter((p) => p.prev >= 30 && p.delta <= -20).slice(0, 5);
+    const prodCaida = topProductos.filter((p) => p.prev >= 30 && p.delta <= -20);
     if (prodCaida.length > 0) {
       inmediatas.push({
         titulo: `📉 ${prodCaida.length} producto${prodCaida.length>1?"s":""} top en caída`,
-        detalle: `Cayeron: ${prodCaida.slice(0, 3).map((p) => `${p.nombre} (${p.delta}%)`).join(" · ")}. Llamá al proveedor: diagnostico si es stock, precio o competencia. Si no recuperable, reemplazá con un winner del mismo segmento.`,
+        detalle: `Estos productos movían bien en ${MES_LABEL[mesPrev]} y bajaron al menos 20% este mes. Probable: rotura de stock, baja de precio de la competencia, fatiga del creativo. Diagnóstico producto por producto.`,
+        cualitativo: `Mensaje sugerido para el equipo: "Tenemos ${prodCaida.length} productos en caída fuerte vs ${MES_LABEL[mesPrev]}. Antes de buscar productos nuevos, recuperemos estos: pidan al proveedor stock actualizado, revisen si la competencia bajó precio en Mercado Libre, y si el producto no es recuperable, reemplacen YA con un winner del mismo segmento."`,
         impacto: "medio",
+        items: prodCaida.slice(0, 30).map((p) => ({
+          label: p.nombre,
+          sub: p.proveedor ? `prov: ${p.proveedor.split("(")[0].trim()}` : undefined,
+          right: `${fmt(p.curr)} ord (era ${fmt(p.prev)})`,
+          deltaPct: p.delta,
+        })),
+        itemsLabel: `Ver ${prodCaida.length} producto${prodCaida.length>1?"s":""} en caída`,
       });
     }
 
     // 6. Productos winners
-    const prodWinner = topProductos.filter((p) => p.prev >= 20 && p.delta >= 25 && p.curr >= 50).slice(0, 5);
+    const prodWinner = topProductos.filter((p) => p.prev >= 20 && p.delta >= 25 && p.curr >= 50);
     if (prodWinner.length > 0) {
       inmediatas.push({
         titulo: `🚀 ${prodWinner.length} producto${prodWinner.length>1?"s":""} con tracción fuerte`,
-        detalle: `Crecieron: ${prodWinner.slice(0, 3).map((p) => `${p.nombre} (+${p.delta}%)`).join(" · ")}. Acciones: pedir stock al proveedor, ponerlos como "destacados" en el catálogo, ofrecerlos primero a los Sabios VIP y Expertos.`,
+        detalle: `Estos productos están creciendo en doble dígito vs ${MES_LABEL[mesPrev]}. Es donde tenés que doblar la apuesta.`,
+        cualitativo: `Mensaje sugerido: "Estos ${prodWinner.length} productos están explotando. Acciones HOY: 1) Asegurar stock con los proveedores (que no se rompa la cadena), 2) Subirlos al banner principal del catálogo, 3) Empujarlos en el grupo WhatsApp de Sabios VIP y Expertos como 'producto del mes', 4) Crear creativos nuevos para los DSs que aún no los testearon."`,
         impacto: "medio",
+        items: prodWinner.slice(0, 30).map((p) => ({
+          label: p.nombre,
+          sub: p.proveedor ? `prov: ${p.proveedor.split("(")[0].trim()}` : undefined,
+          right: `${fmt(p.curr)} ord (era ${fmt(p.prev)})`,
+          deltaPct: p.delta,
+        })),
+        itemsLabel: `Ver ${prodWinner.length} winner${prodWinner.length>1?"s":""}`,
       });
     }
 
     // 7. Proveedores con caída
-    const provCaida = topProveedores.filter((p) => p.prev >= 80 && p.delta <= -15).slice(0, 5);
+    const provCaida = topProveedores.filter((p) => p.prev >= 80 && p.delta <= -15);
     if (provCaida.length > 0) {
       inmediatas.push({
         titulo: `⚠️ ${provCaida.length} proveedor${provCaida.length>1?"es":""} con caída fuerte`,
-        detalle: `Llamada HOY a: ${provCaida.slice(0, 3).map((p) => `${p.nombre.split("(")[0].trim()} (${p.delta}%)`).join(", ")}. Posibles causas: rotura de stock, problemas operativos, cambio en comisiones. Resolverlo ahora pesa.`,
+        detalle: `Cada uno hacía ≥80 órdenes en ${MES_LABEL[mesPrev]} y cayó ≥15%. La causa más común es operativa (stock, demoras, problemas en entregas).`,
+        cualitativo: `Mensaje sugerido para customer success: "Llamada HOY a cada uno. Guion: '¿Cómo viene la operación este mes? Estamos viendo menos movimiento que ${MES_LABEL[mesPrev]} — queremos entender si es un tema nuestro o tuyo y cómo te ayudamos.' Si el proveedor responde con 'no tenemos stock' o 'problemas operativos', escalá al área correspondiente HOY. Si dice 'no hay demanda', es momento de armarle catálogo destacado o promoción."`,
         impacto: "alto",
+        items: provCaida.slice(0, 30).map((p) => ({
+          label: p.nombre.split("(")[0].trim(),
+          right: `${fmt(p.curr)} ord (era ${fmt(p.prev)})`,
+          deltaPct: p.delta,
+        })),
+        itemsLabel: `Ver ${provCaida.length} proveedor${provCaida.length>1?"es":""}`,
       });
     }
 
-    // 8. DSs activos
-    if (dssActivos && dssActivos.delta <= -10) {
+    // 8. Proveedores winners
+    const provWinner = topProveedores.filter((p) => p.prev >= 50 && p.delta >= 20 && p.curr >= 100);
+    if (provWinner.length > 0) {
       inmediatas.push({
-        titulo: `👥 DSs activos cayeron ${Math.abs(dssActivos.delta)}% (${fmt(dssActivos.curr)} vs ${fmt(dssActivos.prev)})`,
-        detalle: `Tenés ${fmt(dssActivos.prev - dssActivos.curr)} DSs menos operando este mes. No es tema de promedio por DS, es tema de cuántos están moviendo. Campaña de retención URGENTE: contactar a los Master que dejaron de operar.`,
+        titulo: `🏆 ${provWinner.length} proveedor${provWinner.length>1?"es":""} crecen fuerte`,
+        detalle: `Crecimiento sólido vs ${MES_LABEL[mesPrev]}. Entender por qué les funciona y replicar la fórmula al resto.`,
+        cualitativo: `Pedile a cada uno una llamada de 15 minutos esta semana. Preguntá: ¿qué hicieron distinto este mes? ¿productos nuevos? ¿campaña en redes? ¿algún DS estrella? Esa info es ORO — la reproducís con los otros proveedores y multiplicás.`,
+        impacto: "medio",
+        items: provWinner.slice(0, 30).map((p) => ({
+          label: p.nombre.split("(")[0].trim(),
+          right: `${fmt(p.curr)} ord (era ${fmt(p.prev)})`,
+          deltaPct: p.delta,
+        })),
+        itemsLabel: `Ver ${provWinner.length} proveedor${provWinner.length>1?"es":""} winners`,
+      });
+    }
+
+    // 9. DSs activos
+    if (dssActivos && dssActivos.delta <= -10) {
+      // Sacar la lista de DSs que operaron en prev y NO operaron en curr
+      const lostDS: { label: string; sub?: string; right?: string }[] = [];
+      if (estrategia?.usuarios) {
+        for (const u of estrategia.usuarios) {
+          const movC = u.por_mes?.[mesActual]?.mov ?? 0;
+          const movP = u.por_mes?.[mesPrev]?.mov ?? 0;
+          if (movP > 0 && movC === 0) {
+            const uu = u as unknown as { email?: string; nombre?: string; telefono?: string };
+            lostDS.push({
+              label: uu.nombre || uu.email || "(sin nombre)",
+              sub: uu.email,
+              right: `${fmt(movP)} mov en ${MES_LABEL[mesPrev]}`,
+            });
+          }
+        }
+      }
+      lostDS.sort((a, b) => parseInt((b.right || "0").replace(/\D/g, "")) - parseInt((a.right || "0").replace(/\D/g, "")));
+      inmediatas.push({
+        titulo: `👥 DSs operando cayeron ${Math.abs(dssActivos.delta)}% (${fmt(dssActivos.curr)} vs ${fmt(dssActivos.prev)})`,
+        detalle: `${fmt(dssActivos.prev - dssActivos.curr)} DSs menos están moviendo este mes. El volumen baja por menos DSs operando, no por menos pedidos promedio.`,
+        cualitativo: `Esto es lo más urgente — el negocio se construye sobre cuántos DSs están operando, no cuánto operan los de siempre. Lista en el detalle: cada uno con su nombre y email. Llamar HOY a los TOP 20 con un mensaje claro: "Vimos que no estás operando este mes y queremos entender por qué. ¿Hubo algún problema?". Ofrecé incentivo: 10 envíos bonificados si vuelven en los próximos 7 días.`,
         impacto: "alto",
+        items: lostDS.slice(0, 100),
+        itemsLabel: `Ver ${lostDS.length} DSs que dejaron de operar`,
       });
     } else if (dssActivos && dssActivos.delta >= 10) {
       inmediatas.push({
-        titulo: `👥 +${dssActivos.delta}% DSs activos vs ${MES_LABEL[mesPrev]}`,
-        detalle: `${fmt(dssActivos.curr)} DSs operando (+${fmt(dssActivos.curr - dssActivos.prev)}). Base ampliada — el siguiente paso es hacer que los nuevos suban a Master rápido (8+ mov en su primer mes).`,
+        titulo: `👥 +${dssActivos.delta}% DSs operando vs ${MES_LABEL[mesPrev]}`,
+        detalle: `${fmt(dssActivos.curr)} DSs operando (+${fmt(dssActivos.curr - dssActivos.prev)} netos). Base ampliada.`,
+        cualitativo: `Buena base, pero atención al efecto "primer mes": muchos DSs aparecen activos en su primer mes y desaparecen al segundo. Acción: identificá los DSs nuevos (Iniciados / Esporádicos) y armá un programa de onboarding intensivo para que lleguen a 10+ mov antes de que se vayan.`,
         impacto: "medio",
       });
     }
 
-    // 9. Retención perdidos (registrados que no volvieron)
+    // 10. Retención perdidos (registrados que no volvieron)
     if (analisisUsuarios && analisisUsuarios.retention_perdidos >= 20) {
       inmediatas.push({
-        titulo: `🔁 ${fmt(analisisUsuarios.retention_perdidos)} DSs que operaron antes NO volvieron en ${MES_LABEL[mesActual]}`,
-        detalle: `Son recuperables — ya saben usar la plataforma. Plan: lista filtrable en Estrategia Usuarios > Registrados/Activos > Retención. Llamada de "te extrañamos" con incentivo de 10 envíos bonificados para volver a arrancar.`,
+        titulo: `🔁 ${fmt(analisisUsuarios.retention_perdidos)} DSs operaron antes y NO volvieron en ${MES_LABEL[mesActual]}`,
+        detalle: `Son la pesca más fácil — ya saben usar la plataforma, ya generaron ventas alguna vez. Recuperarlos cuesta mucho menos que conseguir DSs nuevos.`,
+        cualitativo: `Campaña "te extrañamos" en 3 etapas: 1) WhatsApp automatizado con mensaje personal y bonus de 10 envíos gratis. 2) Si no responde en 48hs, llamada del comercial. 3) Si vuelve a operar, asignación a un programa de fidelización (proveedor preferente, info anticipada de productos nuevos). Lista completa en Estrategia Usuarios > Registrados/Activos > Retención.`,
         impacto: "medio",
       });
     }
 
-    // 10. Intentaron pero no movilizaron
+    // 11. Intentaron pero no movilizaron (con lista detallada)
     if (analisisUsuarios?.cohort_actual?.intentaron_total && analisisUsuarios.cohort_actual.intentaron_total >= 10) {
+      const cohort = usuariosSeg?.cohorts?.[mesActual] as unknown as { segmento_intentaron?: { usuarios?: { email?: string; nombre?: string; telefono?: string; ing?: number; comunidad?: string | null }[] } } | undefined;
+      const intentUsers = cohort?.segmento_intentaron?.usuarios || [];
       inmediatas.push({
-        titulo: `⚠️ ${fmt(analisisUsuarios.cohort_actual.intentaron_total)} DSs ingresaron órdenes pero NINGUNA se movilizó`,
-        detalle: `Generaron órdenes que se cancelaron o quedaron pendientes. Es la pesca más rápida: ya tienen tráfico/ventas. Foco: revisar por qué se cancelan (stock, dirección, teléfono) y destrabar caso por caso.`,
+        titulo: `⚠️ ${fmt(analisisUsuarios.cohort_actual.intentaron_total)} DSs registrados en ${MES_LABEL[mesActual]} ingresaron órdenes pero NINGUNA se movilizó`,
+        detalle: `Estos DSs ya generaron tráfico, ya hicieron pedidos — pero todo se cae antes de despachar (cancelado, pendiente, rechazado).`,
+        cualitativo: `Es la pesca más rápida del mes. Diagnóstico típico: 1) Cliente no confirma la dirección/teléfono → reforzar confirmación automatizada por WhatsApp antes de despachar. 2) Proveedor sin stock → revisar inventario en tiempo real y bloquear productos sin stock. 3) Precio mal calculado por el DS → llamarlos para tutorial rápido. Cada uno destrabado = una venta lograda con casi cero esfuerzo.`,
         impacto: "alto",
+        items: intentUsers.slice(0, 100).map((u) => ({
+          label: u.nombre || u.email || "(sin nombre)",
+          sub: u.email + (u.comunidad ? ` · ${u.comunidad}` : ""),
+          right: `${fmt(u.ing || 0)} ing, 0 mov`,
+        })),
+        itemsLabel: `Ver ${intentUsers.length} DSs intentaron sin mov`,
       });
     }
 
@@ -730,15 +810,7 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
         ) : (
           <div className="space-y-2">
             {recomendaciones.inmediatas.map((r, i) => (
-              <div key={i} className="rounded-lg p-3 border" style={{ background: "var(--bg-input)",
-                borderColor: r.impacto === "alto" ? "rgba(220,38,38,0.4)" : r.impacto === "medio" ? "rgba(245,158,11,0.4)" : "rgba(16,185,129,0.4)" }}>
-                <p className="text-sm font-bold t-primary mb-1">{r.titulo}</p>
-                <p className="text-[11px] t-secondary">{r.detalle}</p>
-                <span className="text-[9px] uppercase tracking-wider mt-1 inline-block" style={{
-                  color: r.impacto === "alto" ? "#fca5a5" : r.impacto === "medio" ? "#fcd34d" : "#86efac" }}>
-                  Impacto {r.impacto}
-                </span>
-              </div>
+              <RecCard key={i} rec={r} />
             ))}
           </div>
         )}
@@ -803,6 +875,92 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface RecCardItem { label: string; sub?: string; right?: string; deltaPct?: number; phone?: string; email?: string }
+interface RecCardData {
+  titulo: string; detalle: string; impacto: "alto" | "medio" | "bajo";
+  cualitativo?: string; items?: RecCardItem[]; itemsLabel?: string;
+}
+
+function RecCard({ rec }: { rec: RecCardData }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const r = rec;
+  const filtered = useMemo(() => {
+    if (!r.items) return [];
+    if (!search.trim()) return r.items;
+    const q = search.toLowerCase();
+    return r.items.filter((it) =>
+      it.label.toLowerCase().includes(q) ||
+      (it.sub || "").toLowerCase().includes(q) ||
+      (it.right || "").toLowerCase().includes(q)
+    );
+  }, [r.items, search]);
+
+  return (
+    <div className="rounded-lg p-3 border" style={{
+      background: "var(--bg-input)",
+      borderColor: r.impacto === "alto" ? "rgba(220,38,38,0.4)" : r.impacto === "medio" ? "rgba(245,158,11,0.4)" : "rgba(16,185,129,0.4)",
+    }}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-bold t-primary mb-1">{r.titulo}</p>
+          <p className="text-[11px] t-secondary">{r.detalle}</p>
+          {r.cualitativo && (
+            <p className="text-[11px] t-secondary mt-2 pl-2 border-l-2" style={{
+              borderColor: r.impacto === "alto" ? "#dc2626" : r.impacto === "medio" ? "#f59e0b" : "#10b981",
+              fontStyle: "italic", opacity: 0.92,
+            }}>
+              {r.cualitativo}
+            </p>
+          )}
+          <span className="text-[9px] uppercase tracking-wider mt-1 inline-block" style={{
+            color: r.impacto === "alto" ? "#fca5a5" : r.impacto === "medio" ? "#fcd34d" : "#86efac",
+          }}>Impacto {r.impacto}</span>
+        </div>
+        {r.items && r.items.length > 0 && (
+          <button onClick={() => setOpen(!open)}
+            className="text-[10px] px-2 py-1 rounded border border-gray-700 t-secondary hover:border-orange-500/40 shrink-0">
+            {open ? "Ocultar" : `▶ ${r.itemsLabel || `Ver ${r.items.length}`}`}
+          </button>
+        )}
+      </div>
+      {open && r.items && (
+        <div className="mt-3 space-y-1">
+          {r.items.length > 10 && (
+            <input
+              type="text" placeholder="🔍 Buscar..."
+              value={search} onChange={(e) => setSearch(e.target.value)}
+              className="w-full text-[11px] px-2 py-1 mb-1 rounded border border-gray-700 bg-transparent t-primary outline-none focus:border-orange-500"
+            />
+          )}
+          <div className="max-h-[400px] overflow-y-auto rounded border border-gray-700" style={{ background: "var(--bg-card)" }}>
+            <table className="w-full text-[11px]">
+              <tbody>
+                {filtered.slice(0, 200).map((it, i) => (
+                  <tr key={it.label + i} className="border-b border-gray-800/30 hover:bg-orange-500/5">
+                    <td className="py-1.5 px-2 t-muted text-[10px] w-8">{i + 1}</td>
+                    <td className="py-1.5 px-2 t-primary">
+                      {it.label}
+                      {it.sub && <div className="text-[9px] t-muted font-mono">{it.sub}</div>}
+                    </td>
+                    {it.right && <td className="py-1.5 px-2 text-right font-mono t-secondary text-[10px]">{it.right}</td>}
+                    {typeof it.deltaPct === "number" && (
+                      <td className="py-1.5 px-2 text-right font-mono font-bold text-[10px] w-16" style={{
+                        color: it.deltaPct > 0 ? "#10b981" : it.deltaPct < 0 ? "#dc2626" : "#94a3b8",
+                      }}>{it.deltaPct > 0 ? "+" : ""}{it.deltaPct}%</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {filtered.length > 200 && <p className="text-[9px] t-muted mt-1">Mostrando primeros 200. Usá la búsqueda.</p>}
         </div>
       )}
     </div>
