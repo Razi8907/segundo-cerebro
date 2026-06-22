@@ -375,6 +375,25 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     }
 
     // 2. Tasa de entrega
+    // 2-PRE. Tasa de MOVILIZACIÓN (ingresadas → movilizadas). Si cae, las órdenes se generan
+    // pero no se despachan: cancelaciones, rechazos, pendientes acumulados.
+    const dMov = kpis.pctMov.curr - kpis.pctMov.prev;
+    if (dMov <= -3) {
+      const ordPerdidas = Math.round((kpis.ing.curr * Math.abs(dMov)) / 100);
+      inmediatas.push({
+        titulo: `⚠️ Tasa de movilización cayó ${Math.abs(dMov).toFixed(1)} pp`,
+        detalle: `Pasó de ${kpis.pctMov.prev.toFixed(1)}% a ${kpis.pctMov.curr.toFixed(1)}%. De cada 100 ingresadas, ${Math.abs(dMov).toFixed(0)} menos están saliendo a despacho. Estimado perdidas en el mes: ${fmt(ordPerdidas)} órdenes.`,
+        cualitativo: `Esto es lo más grave del mes. Las órdenes se están generando pero no se despachan. Causas típicas: 1) Cancelaciones por cliente que no confirma → reforzar contacto WhatsApp automatizado. 2) Rechazos por producto sin stock → bloquear productos sin stock en tiempo real. 3) Pendientes acumulados por demora del proveedor → auditar tiempos de respuesta. 4) Rechazos por error en dirección → validar formulario antes de cobrar. Diagnóstico por estado: mirar by_status en operaciones para ver dónde se está acumulando el cuello.`,
+        impacto: "alto",
+      });
+    } else if (dMov >= 3) {
+      inmediatas.push({
+        titulo: `✅ Tasa de movilización subió ${dMov.toFixed(1)} pp`,
+        detalle: `Pasó de ${kpis.pctMov.prev.toFixed(1)}% a ${kpis.pctMov.curr.toFixed(1)}%. Mismas ingresadas, más despachos. Sostener.`,
+        impacto: "medio",
+      });
+    }
+
     const dEnt = kpis.pctEnt.curr - kpis.pctEnt.prev;
     if (dEnt <= -2) {
       inmediatas.push({
