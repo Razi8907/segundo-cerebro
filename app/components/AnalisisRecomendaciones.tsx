@@ -688,11 +688,54 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
           </div>
           <div className="rounded-lg p-4 border border-amber-500/30" style={{ background: "var(--bg-card)" }}>
             <h3 className="text-[10px] t-muted uppercase tracking-wider mb-2">Progreso a meta {MES_LABEL[mesActual]}</h3>
-            <div className="text-2xl font-bold t-primary">{fmt(kpis.mov.curr)}<span className="text-sm t-muted"> / {fmt(metaMes.mov)}</span></div>
-            <div className="mt-2 h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
-              <div className="h-full" style={{ width: `${Math.min(100, projeccion.pctMeta)}%`, background: projeccion.onTrack ? "#10b981" : "#f59e0b" }}></div>
+            {/* Movilizadas vs meta */}
+            <div className="mb-3">
+              <div className="flex items-baseline justify-between">
+                <span className="text-[10px] t-muted">Movilizadas</span>
+                <span className="text-[11px] font-mono font-bold" style={{ color: projeccion.onTrack ? "#10b981" : "#f59e0b" }}>
+                  {projeccion.pctMeta}%
+                </span>
+              </div>
+              <div className="text-base font-bold t-primary">{fmt(kpis.mov.curr)}<span className="text-xs t-muted"> / {fmt(metaMes.mov)}</span></div>
+              <div className="mt-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
+                <div className="h-full" style={{ width: `${Math.min(100, projeccion.pctMeta)}%`, background: projeccion.onTrack ? "#10b981" : "#f59e0b" }}></div>
+              </div>
+              <p className="text-[9px] t-muted mt-1">Faltan <strong className="t-secondary">{fmt(Math.max(0, metaMes.mov - kpis.mov.curr))}</strong> mov</p>
             </div>
-            <p className="text-[10px] t-muted mt-1">{projeccion.pctMeta}% de la meta — {projeccion.diasTranscurridos}/{projeccion.diasMes} días</p>
+            {/* Ingresadas vs meta */}
+            {metaMes.ing > 0 && (
+              <div className="mb-3">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-[10px] t-muted">Ingresadas</span>
+                  <span className="text-[11px] font-mono font-bold" style={{ color: kpis.ing.curr >= metaMes.ing ? "#10b981" : "#f59e0b" }}>
+                    {Math.round((kpis.ing.curr / metaMes.ing) * 1000) / 10}%
+                  </span>
+                </div>
+                <div className="text-base font-bold t-primary">{fmt(kpis.ing.curr)}<span className="text-xs t-muted"> / {fmt(metaMes.ing)}</span></div>
+                <div className="mt-1 h-2 rounded-full overflow-hidden" style={{ background: "var(--bg-input)" }}>
+                  <div className="h-full" style={{ width: `${Math.min(100, (kpis.ing.curr / metaMes.ing) * 100)}%`, background: kpis.ing.curr >= metaMes.ing ? "#10b981" : "#0891b2" }}></div>
+                </div>
+                <p className="text-[9px] t-muted mt-1">Faltan <strong className="t-secondary">{fmt(Math.max(0, metaMes.ing - kpis.ing.curr))}</strong> ing</p>
+              </div>
+            )}
+            {/* Proyección de movilizadas si se mantiene la tasa de mov del mes anterior */}
+            {kpis.pctMov.prev > 0 && (() => {
+              const tasaPrev = kpis.pctMov.prev / 100;
+              const movProyectadasPorIng = Math.round(kpis.ing.curr * tasaPrev);
+              const faltanPara100 = Math.max(0, metaMes.mov - movProyectadasPorIng);
+              const pctConTasaPrev = metaMes.mov > 0 ? Math.round((movProyectadasPorIng / metaMes.mov) * 1000) / 10 : 0;
+              return (
+                <div className="pt-2 border-t border-amber-500/15">
+                  <p className="text-[9px] t-muted uppercase tracking-wider mb-1">Si manteneís la tasa de {MES_LABEL[mesPrev]} ({kpis.pctMov.prev.toFixed(1)}%)</p>
+                  <p className="text-[11px] t-secondary">
+                    Tus {fmt(kpis.ing.curr)} ing actuales se convertirían en <strong className="text-cyan-300">{fmt(movProyectadasPorIng)} mov</strong>
+                    {" "}({pctConTasaPrev}% de la meta). {faltanPara100 > 0
+                      ? <>Faltarían <strong className="text-amber-300">{fmt(faltanPara100)} mov</strong> para llegar a {fmt(metaMes.mov)}.</>
+                      : <span className="text-emerald-300">Ya superarías la meta de movilizadas.</span>}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
           <div className="rounded-lg p-4 border border-purple-500/30" style={{ background: "var(--bg-card)" }}>
             <h3 className="text-[10px] t-muted uppercase tracking-wider mb-2">Proyección al cierre</h3>
