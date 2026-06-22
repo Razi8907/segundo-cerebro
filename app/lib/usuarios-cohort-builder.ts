@@ -223,7 +223,7 @@ function buildCohort(cu: UserWithOps[], useQTotal?: "q1" | "q2"): CohortOut {
 
   // Seg 4 (cero)
   const ceroU = us.filter((u) => getMov(u) === 0 && getIng(u) === 0);
-  const s4Cap = 1000;
+  const s4Cap = 500;
   const segmento_4_cero = {
     count: ceroU.length,
     usuarios: ceroU.slice(0, s4Cap).map(ur),
@@ -408,7 +408,7 @@ export function buildUsuariosSegmentados(
   }
 
   // Sort + cap
-  const RET_CAP = 1000; const seenLists = new Set<unknown>();
+  const RET_CAP = 500; const seenLists = new Set<unknown>();
   for (const view of Object.values(retention)) {
     for (const buckets of Object.values(view)) {
       for (const [bk, lst] of Object.entries(buckets)) {
