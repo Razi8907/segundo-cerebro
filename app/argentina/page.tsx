@@ -37,44 +37,58 @@ import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
 import type { MesFilter } from "../types";
 
+// Normaliza un resumen mensual a las claves esperadas por los componentes legacy
+// (entregados, devoluciones). Soporta tanto el formato viejo como el nuevo
+// (entregadas, devueltas) que vino al sincronizar con resumen_operacional.
+function norm(r: any) {
+  if (!r) return { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 };
+  return {
+    ingresadas: r.ingresadas ?? 0,
+    movilizadas: r.movilizadas ?? 0,
+    entregados: r.entregados ?? r.entregadas ?? 0,
+    devoluciones: r.devoluciones ?? r.devueltas ?? 0,
+  };
+}
+
 function getResumenByMes(mes: MesFilter, allData: any) {
-  const r = allData.resumen;
+  const r = allData.resumen || {};
   if (mes === "q1") {
+    const e = norm(r.enero), f = norm(r.febrero), m = norm(r.marzo);
     return {
-      ingresadas: r.enero.ingresadas + r.febrero.ingresadas + r.marzo.ingresadas,
-      movilizadas: r.enero.movilizadas + r.febrero.movilizadas + r.marzo.movilizadas,
-      entregados: r.enero.entregados + r.febrero.entregados + r.marzo.entregados,
-      devoluciones: r.enero.devoluciones + r.febrero.devoluciones + r.marzo.devoluciones,
+      ingresadas: e.ingresadas + f.ingresadas + m.ingresadas,
+      movilizadas: e.movilizadas + f.movilizadas + m.movilizadas,
+      entregados: e.entregados + f.entregados + m.entregados,
+      devoluciones: e.devoluciones + f.devoluciones + m.devoluciones,
     };
   }
   if (mes === "q2") {
-    const a = r.abril || {}, m = r.mayo || {}, j = r.junio || {};
+    const a = norm(r.abril), m = norm(r.mayo), j = norm(r.junio);
     return {
-      ingresadas: (a.ingresadas || 0) + (m.ingresadas || 0) + (j.ingresadas || 0),
-      movilizadas: (a.movilizadas || 0) + (m.movilizadas || 0) + (j.movilizadas || 0),
-      entregados: (a.entregados || 0) + (m.entregados || 0) + (j.entregados || 0),
-      devoluciones: (a.devoluciones || 0) + (m.devoluciones || 0) + (j.devoluciones || 0),
+      ingresadas: a.ingresadas + m.ingresadas + j.ingresadas,
+      movilizadas: a.movilizadas + m.movilizadas + j.movilizadas,
+      entregados: a.entregados + m.entregados + j.entregados,
+      devoluciones: a.devoluciones + m.devoluciones + j.devoluciones,
     };
   }
   if (mes === "abril") {
     return {
-      ingresadas: allData.meta_info.meta_ingresadas_abril,
-      movilizadas: allData.meta_info.meta_movilizadas_abril,
-      entregados: Math.round(allData.meta_info.meta_movilizadas_abril * 0.60),
-      devoluciones: Math.round(allData.meta_info.meta_movilizadas_abril * 0.26),
+      ingresadas: allData.meta_info?.meta_ingresadas_abril ?? 0,
+      movilizadas: allData.meta_info?.meta_movilizadas_abril ?? 0,
+      entregados: Math.round((allData.meta_info?.meta_movilizadas_abril ?? 0) * 0.60),
+      devoluciones: Math.round((allData.meta_info?.meta_movilizadas_abril ?? 0) * 0.26),
     };
   }
   if (mes === "mayo") {
     return {
-      ingresadas: allData.meta_info.meta_ingresadas_mayo,
-      movilizadas: allData.meta_info.meta_movilizadas_mayo,
-      entregados: Math.round(allData.meta_info.meta_movilizadas_mayo * 0.60),
-      devoluciones: Math.round(allData.meta_info.meta_movilizadas_mayo * 0.26),
+      ingresadas: allData.meta_info?.meta_ingresadas_mayo ?? 0,
+      movilizadas: allData.meta_info?.meta_movilizadas_mayo ?? 0,
+      entregados: Math.round((allData.meta_info?.meta_movilizadas_mayo ?? 0) * 0.60),
+      devoluciones: Math.round((allData.meta_info?.meta_movilizadas_mayo ?? 0) * 0.26),
     };
   }
   if (mes === "junio") {
-    const metaMov = allData.meta_info.meta_movilizadas_junio ?? allData.meta_info.meta_movilizadas_mayo ?? 0;
-    const metaIng = allData.meta_info.meta_ingresadas_junio ?? allData.meta_info.meta_ingresadas_mayo ?? 0;
+    const metaMov = allData.meta_info?.meta_movilizadas_junio ?? allData.meta_info?.meta_movilizadas_mayo ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_junio ?? allData.meta_info?.meta_ingresadas_mayo ?? 0;
     return {
       ingresadas: metaIng,
       movilizadas: metaMov,
@@ -82,7 +96,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
       devoluciones: Math.round(metaMov * 0.26),
     };
   }
-  return r[mes];
+  return norm(r[mes]);
 }
 
 type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
