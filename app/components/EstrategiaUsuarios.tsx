@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { MesFilter } from "../types";
 
 interface MesData { ing: number; mov: number; }
+interface ProductoItem { producto: string; ordenes: number; }
 
 interface UsuarioBase {
   email: string;
@@ -11,6 +12,7 @@ interface UsuarioBase {
   telefono: string;
   comunidad: string | null;
   por_mes: Record<string, MesData>;
+  productos_por_mes?: Record<string, ProductoItem[]>;
 }
 
 interface SegmentConfig {
@@ -482,6 +484,7 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
             onToggleStrategy={() => setShowStrategy(showStrategy === seg.key ? null : seg.key)}
             onExport={() => exportCsv(seg.users, `estrategia_${country}_${mesFilter || "all"}_${seg.key}.csv`)}
             onExportNear={() => exportCsv(seg.users.filter((u) => u.near_upgrade), `estrategia_${country}_${mesFilter || "all"}_${seg.key}_cerca.csv`)}
+            windowMeses={windowMeses}
           />
         ))}
       </div>
@@ -491,13 +494,14 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
 }
 
 function SegmentBlock({
-  seg, usuariosFiltered, isOpen, onToggle, showStrategy, onToggleStrategy, onExport, onExportNear,
+  seg, usuariosFiltered, isOpen, onToggle, showStrategy, onToggleStrategy, onExport, onExportNear, windowMeses,
 }: {
   seg: SegmentConfig & { users: UsuarioComputed[]; totalMov: number; totalIng: number; count: number; nearCount: number };
   usuariosFiltered: UsuarioComputed[];
   isOpen: boolean; onToggle: () => void;
   showStrategy: boolean; onToggleStrategy: () => void;
   onExport: () => void; onExportNear: () => void;
+  windowMeses: string[];
 }) {
   const strat = STRATEGIES[seg.key];
   const rangoLabel = seg.max ? `${seg.min}-${seg.max - 1}` : `${seg.min}+`;
@@ -580,14 +584,14 @@ function SegmentBlock({
                 ⬇️ CSV cerca de subir
               </button>
             </div>
-            <UserTable users={cercaUsers} color={seg.color} highlightNear />
+            <UserTable users={cercaUsers} color={seg.color} highlightNear windowMeses={windowMeses} />
           </div>
         </div>
       )}
 
       {isOpen && (
         <div className="px-4 pb-4">
-          <UserTable users={usuariosFiltered} color={seg.color} />
+          <UserTable users={usuariosFiltered} color={seg.color} windowMeses={windowMeses} />
           {usuariosFiltered.length === 0 && (
             <p className="text-xs t-muted text-center py-4">Sin usuarios que coincidan con los filtros.</p>
           )}
@@ -597,8 +601,25 @@ function SegmentBlock({
   );
 }
 
-function UserTable({ users, color, highlightNear = false }: { users: UsuarioComputed[]; color: string; highlightNear?: boolean }) {
+// Combina los productos del usuario sumando los meses de la ventana seleccionada
+function combineProductos(u: UsuarioComputed, windowMeses: string[]): ProductoItem[] {
+  if (!u.productos_por_mes) return [];
+  const acc = new Map<string, number>();
+  for (const m of windowMeses) {
+    const list = u.productos_por_mes[m];
+    if (!list) continue;
+    for (const p of list) {
+      acc.set(p.producto, (acc.get(p.producto) || 0) + p.ordenes);
+    }
+  }
+  return Array.from(acc.entries())
+    .map(([producto, ordenes]) => ({ producto, ordenes }))
+    .sort((a, b) => b.ordenes - a.ordenes);
+}
+
+function UserTable({ users, color, highlightNear = false, windowMeses }: { users: UsuarioComputed[]; color: string; highlightNear?: boolean; windowMeses: string[] }) {
   const [showAll, setShowAll] = useState(false);
+  const [expandedProds, setExpandedProds] = useState<string | null>(null);
   const visible = showAll ? users : users.slice(0, 50);
   return (
     <div className="space-y-2">
@@ -615,28 +636,67 @@ function UserTable({ users, color, highlightNear = false }: { users: UsuarioComp
               <th className="text-right py-2 px-2">Mov</th>
               <th className="text-right py-2 px-2" title="Mov acumulado en TODA la base (todos los meses)">Mov life</th>
               <th className="text-right py-2 px-2">Faltan p/ subir</th>
+              <th className="text-left py-2 px-2" title="Productos top que vende este DS en la ventana seleccionada">Productos top</th>
             </tr>
           </thead>
           <tbody>
-            {visible.map((u, i) => (
-              <tr key={u.email + i} className={`border-b border-gray-800/40 hover:bg-orange-500/5 ${highlightNear || u.near_upgrade ? "bg-amber-500/5" : ""}`}>
-                <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
-                <td className="py-2 px-2 t-primary font-mono text-[10px]">{u.email}</td>
-                <td className="py-2 px-2 t-secondary max-w-[160px] truncate" title={u.nombre}>{u.nombre}</td>
-                <td className="py-2 px-2 t-muted font-mono">{u.telefono || "—"}</td>
-                <td className="py-2 px-2 t-muted text-[10px] max-w-[160px] truncate" title={u.comunidad || ""}>{u.comunidad || "—"}</td>
-                <td className="py-2 px-2 text-right font-mono text-cyan-300">{u.ing.toLocaleString("es-AR")}</td>
-                <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{u.mov.toLocaleString("es-AR")}</td>
-                <td className="py-2 px-2 text-right font-mono t-muted text-[10px]">{u.mov_lifetime.toLocaleString("es-AR")}</td>
-                <td className="py-2 px-2 text-right font-mono">
-                  {u.falta_para_subir !== null ? (
-                    <span className={u.near_upgrade ? "text-amber-300 font-bold" : "t-muted"}>
-                      {u.falta_para_subir.toLocaleString("es-AR")}
-                    </span>
-                  ) : <span className="t-muted">top</span>}
-                </td>
-              </tr>
-            ))}
+            {visible.map((u, i) => {
+              const prods = combineProductos(u, windowMeses);
+              const topProd = prods[0];
+              const expandKey = u.email + "_" + i;
+              const isExpanded = expandedProds === expandKey;
+              return (
+                <Fragment key={expandKey}>
+                  <tr className={`border-b border-gray-800/40 hover:bg-orange-500/5 ${highlightNear || u.near_upgrade ? "bg-amber-500/5" : ""}`}>
+                    <td className="py-2 px-2 t-muted text-[10px]">{i + 1}</td>
+                    <td className="py-2 px-2 t-primary font-mono text-[10px]">{u.email}</td>
+                    <td className="py-2 px-2 t-secondary max-w-[160px] truncate" title={u.nombre}>{u.nombre}</td>
+                    <td className="py-2 px-2 t-muted font-mono">{u.telefono || "—"}</td>
+                    <td className="py-2 px-2 t-muted text-[10px] max-w-[160px] truncate" title={u.comunidad || ""}>{u.comunidad || "—"}</td>
+                    <td className="py-2 px-2 text-right font-mono text-cyan-300">{u.ing.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono font-bold text-orange-300">{u.mov.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono t-muted text-[10px]">{u.mov_lifetime.toLocaleString("es-AR")}</td>
+                    <td className="py-2 px-2 text-right font-mono">
+                      {u.falta_para_subir !== null ? (
+                        <span className={u.near_upgrade ? "text-amber-300 font-bold" : "t-muted"}>
+                          {u.falta_para_subir.toLocaleString("es-AR")}
+                        </span>
+                      ) : <span className="t-muted">top</span>}
+                    </td>
+                    <td className="py-2 px-2 text-[10px]">
+                      {topProd ? (
+                        <button
+                          onClick={() => setExpandedProds(isExpanded ? null : expandKey)}
+                          className="text-left hover:text-cyan-300"
+                          title="Click para ver todos los productos"
+                        >
+                          <span className="t-primary truncate inline-block max-w-[180px] align-middle" title={topProd.producto}>{topProd.producto}</span>
+                          <span className="text-orange-300 ml-1">({topProd.ordenes})</span>
+                          {prods.length > 1 && (
+                            <span className="t-muted ml-1">{isExpanded ? "▼" : `+${prods.length - 1}`}</span>
+                          )}
+                        </button>
+                      ) : <span className="t-muted">—</span>}
+                    </td>
+                  </tr>
+                  {isExpanded && prods.length > 0 && (
+                    <tr style={{ background: "rgba(8,145,178,0.05)" }}>
+                      <td colSpan={10} className="py-2 px-4">
+                        <p className="text-[10px] t-muted uppercase tracking-wider mb-1">Productos vendidos por {u.nombre} en la ventana ({prods.reduce((s, p) => s + p.ordenes, 0).toLocaleString("es-AR")} órdenes totales)</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1">
+                          {prods.map((p, idx) => (
+                            <div key={p.producto + idx} className="flex items-center justify-between text-[11px] border-b border-gray-800/30 py-1">
+                              <span className="t-primary truncate" title={p.producto}>{idx + 1}. {p.producto}</span>
+                              <span className="font-mono font-bold text-orange-300 shrink-0 ml-2">{p.ordenes.toLocaleString("es-AR")}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

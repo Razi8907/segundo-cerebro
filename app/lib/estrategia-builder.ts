@@ -32,14 +32,19 @@ export interface SegmentConfig {
 
 interface MesData { ing: number; mov: number; }
 
+interface ProductoItem { producto: string; ordenes: number; }
+
 interface UsuarioBase {
   email: string; nombre: string; telefono: string; comunidad: string | null;
   por_mes: Record<string, MesData>;
+  // Productos top que vende el DS por mes (top 5 por ordenes). Solo Q2.
+  productos_por_mes?: Record<string, ProductoItem[]>;
 }
 
 interface OperationalSnapshotData {
   by_dropshipper?: { nombre: string; total: number; estados?: Record<string, number> }[];
   by_ds_daily?: { ds?: string; dsEmail?: string; dsCelular?: string }[];
+  by_ds_producto?: { ds?: string; producto?: string; ordenes?: number }[];
 }
 
 interface DashboardSnapshotData {
@@ -89,11 +94,11 @@ export function buildEstrategia(
   const currentMes = options?.currentMes ?? getMesCorriente();
   const existing = options?.existing ?? null;
   const onlyCurrentMonth = !!existing; // si hay estrategia previa, solo tocamos el mes corriente
-  const ds = new Map<string, { nombre: string; telefono: string; comunidad: string | null; por_mes: Record<string, MesData> }>();
+  const ds = new Map<string, { nombre: string; telefono: string; comunidad: string | null; por_mes: Record<string, MesData>; productos_por_mes: Record<string, ProductoItem[]> }>();
   const ensure = (em: string) => {
     let cur = ds.get(em);
     if (!cur) {
-      cur = { nombre: "", telefono: "", comunidad: null, por_mes: {} };
+      cur = { nombre: "", telefono: "", comunidad: null, por_mes: {}, productos_por_mes: {} };
       ds.set(em, cur);
     }
     return cur;
@@ -112,6 +117,14 @@ export function buildEstrategia(
       for (const [m, data] of Object.entries(u.por_mes || {})) {
         if (m === currentMes) continue; // el corriente lo recalculamos
         cur.por_mes[m] = data;
+      }
+      // Preservar productos de meses cerrados
+      const existingProds = (u as unknown as { productos_por_mes?: Record<string, ProductoItem[]> }).productos_por_mes;
+      if (existingProds) {
+        for (const [m, prods] of Object.entries(existingProds)) {
+          if (m === currentMes) continue;
+          cur.productos_por_mes[m] = prods;
+        }
       }
     }
   }
@@ -158,6 +171,21 @@ export function buildEstrategia(
       }
       if (!u.telefono && nameToPhone.has(nm)) u.telefono = nameToPhone.get(nm) || "";
     }
+    // Productos por DS en este mes (top 5 por órdenes)
+    const dsToProds = new Map<string, ProductoItem[]>();
+    for (const r of snap.data.by_ds_producto || []) {
+      const nm = r.ds || "";
+      const em = nameToEmail.get(nm);
+      if (!em) continue;
+      const arr = dsToProds.get(em) || [];
+      arr.push({ producto: r.producto || "", ordenes: r.ordenes || 0 });
+      dsToProds.set(em, arr);
+    }
+    for (const [em, arr] of dsToProds.entries()) {
+      arr.sort((a, b) => b.ordenes - a.ordenes);
+      const u = ensure(em);
+      u.productos_por_mes[snap.mes] = arr.slice(0, 10);
+    }
   }
 
   // Cross-ref usuarios_segmentados for nombre/comunidad/telefono
@@ -197,6 +225,7 @@ export function buildEstrategia(
       telefono: info.telefono,
       comunidad: info.comunidad,
       por_mes: info.por_mes,
+      productos_por_mes: info.productos_por_mes,
     });
   }
 
