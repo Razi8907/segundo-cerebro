@@ -2300,6 +2300,11 @@ function LogisticsBreakdown({
     return Array.from(set).sort();
   }, [rows, prevRows]);
 
+  // Totales movilizadas (current y prev) sumando TODAS las transportadoras —
+  // se usa para calcular el % de participación de cada una sobre el total.
+  const totalMovAll = useMemo(() => computeMovMetrics(rows, country).movilizadas, [rows, country]);
+  const totalMovAllPrev = useMemo(() => computeMovMetrics(prevRows, country).movilizadas, [prevRows, country]);
+
   if (transportadoras.length === 0) {
     return null;
   }
@@ -2307,7 +2312,7 @@ function LogisticsBreakdown({
   return (
     <div className="rounded-xl p-4 border border-cyan-500/20" style={{ background: "var(--bg-card)" }}>
       <h3 className="text-sm font-bold t-primary mb-1">🚚 Por Logística</h3>
-      <p className="text-[11px] t-muted mb-3">Tasa de entrega/devolución/proceso por transportadora — todas las % se miden sobre las guías que esa logística recibió.</p>
+      <p className="text-[11px] t-muted mb-3">Tasa de entrega/devolución/proceso por transportadora. El <strong>% participación</strong> indica qué porción del total de guías movilizadas pasó por esa transportadora.</p>
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
         {transportadoras.map((t) => (
           <LogisticsCard
@@ -2318,6 +2323,8 @@ function LogisticsBreakdown({
             country={country}
             showComparison={showComparison}
             prevMesLabel={prevMesLabel}
+            totalMovAll={totalMovAll}
+            totalMovAllPrev={totalMovAllPrev}
           />
         ))}
       </div>
@@ -2326,7 +2333,7 @@ function LogisticsBreakdown({
 }
 
 function LogisticsCard({
-  transp, rows, prevRows, country, showComparison, prevMesLabel,
+  transp, rows, prevRows, country, showComparison, prevMesLabel, totalMovAll, totalMovAllPrev,
 }: {
   transp: string;
   rows: GuideRow[];
@@ -2334,6 +2341,8 @@ function LogisticsCard({
   country: "py" | "ar";
   showComparison: boolean;
   prevMesLabel: string;
+  totalMovAll: number;
+  totalMovAllPrev: number;
 }) {
   const m = computeMovMetrics(rows, country);
   const pm = computeMovMetrics(prevRows, country);
@@ -2353,11 +2362,26 @@ function LogisticsCard({
     return <span className="text-[10px] font-bold ml-1" style={{ color }}>{sign}{d.toFixed(1)}pp</span>;
   };
 
+  const pctParticipacion = totalMovAll > 0 ? (totalGuias / totalMovAll) * 100 : 0;
+  const pctParticipacionPrev = totalMovAllPrev > 0 ? (pm.movilizadas / totalMovAllPrev) * 100 : 0;
+  const dParticipacion = pctParticipacion - pctParticipacionPrev;
+
   return (
     <div className="rounded-lg p-3 border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
       <div className="flex items-center justify-between mb-2">
-        <h4 className="text-xs font-bold t-primary">{transp}</h4>
-        <span className="text-[10px] t-muted">{totalGuias.toLocaleString("es-AR")} guías</span>
+        <div className="min-w-0 flex-1">
+          <h4 className="text-xs font-bold t-primary">{transp}</h4>
+          <div className="flex items-baseline gap-1.5 mt-0.5">
+            <span className="text-[11px] font-bold text-cyan-300">{pctParticipacion.toFixed(1)}%</span>
+            <span className="text-[9px] t-muted uppercase tracking-wider">participación</span>
+            {showComparison && Math.abs(dParticipacion) >= 0.1 && (
+              <span className="text-[10px] font-bold" style={{ color: dParticipacion > 0 ? "#10b981" : "#dc2626" }}>
+                {dParticipacion > 0 ? "+" : ""}{dParticipacion.toFixed(1)}pp
+              </span>
+            )}
+          </div>
+        </div>
+        <span className="text-[10px] t-muted shrink-0">{totalGuias.toLocaleString("es-AR")} guías</span>
       </div>
       <div className="h-36 mb-2">
         {pieData.length > 0 ? (
