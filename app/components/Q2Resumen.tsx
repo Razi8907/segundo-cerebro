@@ -86,21 +86,48 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // ─── Aggregations ───
+  // ─── Métricas por mes calculadas desde operational_snapshots (source of truth) ───
+  // Si por algún motivo no hay snapshot, cae al resumen legacy (compat).
+  const metricsByMes = useMemo(() => {
+    const out: Record<Mes, ResumenMes> = {
+      abril: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 },
+      mayo:  { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 },
+      junio: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 },
+    };
+    MESES.forEach((m) => {
+      const s = snaps[m];
+      if (s?.by_dropshipper && s.by_dropshipper.length > 0) {
+        // SOURCE OF TRUTH: operational_snapshots
+        for (const r of s.by_dropshipper) {
+          const e = r.estados || {};
+          out[m].ingresadas += r.total;
+          out[m].movilizadas += movFromEstados(e);
+          out[m].entregados += entregadasFromEstados(e);
+          out[m].devoluciones += devolucionesFromEstados(e);
+        }
+      } else {
+        // Fallback al resumen legacy si aún no hay snap
+        const r = resumen[m] || { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 };
+        out[m] = { ingresadas: r.ingresadas, movilizadas: r.movilizadas, entregados: r.entregados, devoluciones: r.devoluciones };
+      }
+    });
+    return out;
+  }, [snaps, resumen]);
+
   const totales = useMemo(() => {
     let ing = 0, mov = 0, ent = 0, dev = 0, metaIng = 0, metaMov = 0;
     MESES.forEach((m) => {
-      const r = resumen[m] || { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 };
+      const r = metricsByMes[m];
       ing += r.ingresadas; mov += r.movilizadas; ent += r.entregados; dev += r.devoluciones;
       metaIng += (metaInfo[`meta_ingresadas_${m}`] as number) || 0;
       metaMov += (metaInfo[`meta_movilizadas_${m}`] as number) || 0;
     });
     return { ing, mov, ent, dev, metaIng, metaMov };
-  }, [resumen, metaInfo]);
+  }, [metricsByMes, metaInfo]);
 
   const porMesChart = useMemo(() => {
     return MESES.map((m) => {
-      const r = resumen[m] || { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 };
+      const r = metricsByMes[m];
       const metaMov = (metaInfo[`meta_movilizadas_${m}`] as number) || 0;
       const metaIng = (metaInfo[`meta_ingresadas_${m}`] as number) || 0;
       return {
@@ -112,7 +139,7 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
         metaMov, metaIng,
       };
     });
-  }, [resumen, metaInfo]);
+  }, [metricsByMes, metaInfo]);
 
   // Top 10 DSs Q2 (sum mov across 3 meses)
   const topDs = useMemo(() => {
@@ -281,7 +308,7 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
         {/* Breakdown por mes */}
         <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-gray-700/40">
           {MESES.map((m) => {
-            const r = resumen[m] || { ingresadas: 0, movilizadas: 0 } as ResumenMes;
+            const r = metricsByMes[m];
             const metaM = (metaInfo[`meta_movilizadas_${m}`] as number) || 0;
             const metaI = (metaInfo[`meta_ingresadas_${m}`] as number) || 0;
             const pctM = metaM > 0 ? (r.movilizadas / metaM) * 100 : 0;
@@ -347,11 +374,11 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
               <tr key={k} className="border-b border-gray-800/40">
                 <td className="py-2 px-2 t-primary capitalize">{k}</td>
                 {MESES.map((m) => {
-                  const v = (resumen[m]?.[k as keyof ResumenMes]) || 0;
+                  const v = (metricsByMes[m]?.[k as keyof ResumenMes]) || 0;
                   return <td key={m} className="text-right py-2 px-2 font-mono">{v.toLocaleString("es-AR")}</td>;
                 })}
                 <td className="text-right py-2 px-2 font-mono font-bold text-orange-300">
-                  {MESES.reduce((s, m) => s + ((resumen[m]?.[k as keyof ResumenMes]) || 0), 0).toLocaleString("es-AR")}
+                  {MESES.reduce((s, m) => s + ((metricsByMes[m]?.[k as keyof ResumenMes]) || 0), 0).toLocaleString("es-AR")}
                 </td>
               </tr>
             ))}
