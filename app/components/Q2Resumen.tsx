@@ -100,42 +100,68 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // ─── Métricas por mes calculadas como en el Dashboard Operacional ───
-  // Ingresadas → daily_tracking (Seguimiento Diario, total real registrado).
-  // Movilizadas / entregadas / devoluciones → suma de estados desde
-  // operational_snapshots.by_dropshipper.
-  // Si por algún motivo no hay snap, cae al resumen legacy.
+  // ─── Métricas por mes (idéntico al Dashboard Operacional) ───
+  //   INGRESADAS → daily_tracking (Seguimiento Diario)
+  //   MOV/ENT/DEV → operational_snapshots.by_status (más directo y rápido que by_dropshipper)
+  // Fallback: si falta cualquiera, usa el snap o el resumen legacy con badge ⚠️
   const metricsByMes = useMemo(() => {
-    const out: Record<Mes, ResumenMes> = {
-      abril: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 },
-      mayo:  { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 },
-      junio: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 },
+    const out: Record<Mes, ResumenMes & { _src: { ing: string; mov: string } }> = {
+      abril: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0, _src: { ing: "—", mov: "—" } },
+      mayo:  { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0, _src: { ing: "—", mov: "—" } },
+      junio: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0, _src: { ing: "—", mov: "—" } },
     };
     MESES.forEach((m) => {
       const s = snaps[m];
-      // Ingresadas: SIEMPRE desde daily_tracking si está disponible
       const ingDaily = ingresadasByMes[m] || 0;
-      if (s?.by_dropshipper && s.by_dropshipper.length > 0) {
-        // SOURCE OF TRUTH para mov/ent/dev: operational_snapshots
+
+      // INGRESADAS — fuente única: daily_tracking (igual que Ops)
+      if (ingDaily > 0) {
+        out[m].ingresadas = ingDaily;
+        out[m]._src.ing = "daily_tracking";
+      } else if (s?.total_orders) {
+        out[m].ingresadas = s.total_orders;
+        out[m]._src.ing = "snap.total_orders (⚠ sin daily_tracking)";
+      } else {
+        out[m].ingresadas = (resumen[m] || {}).ingresadas || 0;
+        out[m]._src.ing = "snap.resumen (⚠ legacy)";
+      }
+
+      // MOV / ENT / DEV — desde by_status (directo del snapshot operacional)
+      if (s?.by_status && Object.keys(s.by_status).length > 0) {
+        const bs = s.by_status;
+        const totalStatus = Object.values(bs).reduce((a, b) => a + b, 0);
+        let noMovSum = 0;
+        for (const k in bs) if (NO_MOV.has(k)) noMovSum += bs[k] || 0;
+        out[m].movilizadas = Math.max(0, totalStatus - noMovSum);
+        out[m].entregados = bs["ENTREGADO"] || 0;
+        out[m].devoluciones = (bs["DEVOLUCION"] || 0) + (bs["EN PROCESO DE DEVOLUCION"] || 0);
+        out[m]._src.mov = "snap.by_status";
+      } else if (s?.by_dropshipper && s.by_dropshipper.length > 0) {
+        // Fallback: agregamos desde by_dropshipper
         for (const r of s.by_dropshipper) {
           const e = r.estados || {};
           out[m].movilizadas += movFromEstados(e);
           out[m].entregados += entregadasFromEstados(e);
           out[m].devoluciones += devolucionesFromEstados(e);
         }
-        // Ingresadas: priorizar daily_tracking; si no hay, usar sum(total) como fallback
-        out[m].ingresadas = ingDaily > 0 ? ingDaily : s.by_dropshipper.reduce((acc, r) => acc + (r.total || 0), 0);
+        out[m]._src.mov = "snap.by_dropshipper";
       } else {
-        // Fallback al resumen legacy si aún no hay snap
         const r = resumen[m] || { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 };
-        out[m] = {
-          ingresadas: ingDaily > 0 ? ingDaily : r.ingresadas,
-          movilizadas: r.movilizadas,
-          entregados: r.entregados,
-          devoluciones: r.devoluciones,
-        };
+        out[m].movilizadas = r.movilizadas;
+        out[m].entregados = r.entregados;
+        out[m].devoluciones = r.devoluciones;
+        out[m]._src.mov = "snap.resumen (⚠ legacy)";
       }
     });
+    // Log de transparencia
+    if (typeof window !== "undefined") {
+      // eslint-disable-next-line no-console
+      console.log("[Q2Resumen] sources & totals:", MESES.map((m) => ({
+        mes: m, src: out[m]._src,
+        ing: out[m].ingresadas, mov: out[m].movilizadas,
+        ent: out[m].entregados, dev: out[m].devoluciones,
+      })));
+    }
     return out;
   }, [snaps, resumen, ingresadasByMes]);
 
@@ -361,6 +387,28 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
         <Kpi label="Entregadas" value={totales.ent.toLocaleString("es-AR")} color="#10b981" sub={`${pctEnt.toFixed(1)}% de mov`} />
         <Kpi label="Devueltas" value={totales.dev.toLocaleString("es-AR")} color="#dc2626" sub={`${pctDev.toFixed(1)}% de mov`} />
         <Kpi label="Meta mov vs real" value={`${pctVsMetaMov.toFixed(0)}%`} color={pctVsMetaMov >= 100 ? "#10b981" : pctVsMetaMov >= 75 ? "#f59e0b" : "#dc2626"} sub={`${totales.mov.toLocaleString("es-AR")} / ${totales.metaMov.toLocaleString("es-AR")}`} />
+      </div>
+
+      {/* Fuente de datos — transparencia para coincidir con Operaciones */}
+      <div className="rounded-lg p-2 text-[10px] border border-gray-700/40 t-muted" style={{ background: "var(--bg-input)" }}>
+        <strong className="t-secondary">Fuente:</strong>{" "}
+        <span>ingresadas = <code>Seguimiento Diario</code></span> ·{" "}
+        <span>mov/ent/dev = <code>operational_snapshots.by_status</code></span>{" "}
+        <span className="opacity-70">(idéntico al Dashboard Operacional)</span>
+        <div className="mt-1 grid grid-cols-3 gap-2">
+          {MESES.map((m) => {
+            const r = metricsByMes[m];
+            return (
+              <div key={m} className="font-mono">
+                <span className="t-secondary">{MES_LABEL[m]}:</span>{" "}
+                <span className="text-cyan-300">{r.ingresadas.toLocaleString("es-AR")}</span>
+                {" / "}
+                <span className="text-emerald-300">{r.movilizadas.toLocaleString("es-AR")}</span>{" "}
+                <span className="opacity-60">[{r._src.ing.split(" ")[0]}+{r._src.mov.split(".")[1] || r._src.mov}]</span>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Chart por mes */}
