@@ -57,6 +57,9 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
   const [snaps, setSnaps] = useState<Record<Mes, OpSnapshot | null>>({ abril: null, mayo: null, junio: null });
   const [metaInfo, setMetaInfo] = useState<MetaInfo>({});
   const [resumen, setResumen] = useState<Record<string, ResumenMes>>({});
+  // Ingresadas reales por mes: vienen del Seguimiento Diario (daily_tracking),
+  // misma fuente que usa el Dashboard Operacional.
+  const [ingresadasByMes, setIngresadasByMes] = useState<Record<Mes, number>>({ abril: 0, mayo: 0, junio: 0 });
   const [usuariosQ2, setUsuariosQ2] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -76,6 +79,17 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
       setMetaInfo(dash?.meta_info || {});
       setResumen(dash?.resumen || {});
 
+      // Get daily_tracking de cada mes — fuente de ingresadas REALES
+      const dailys = await Promise.all(
+        MESES.map((m) => fetch(`/api/data/daily-tracking?country=${country}&mes=${m}`).then(r => r.json()).catch(() => null))
+      );
+      const ingMap: Record<Mes, number> = { abril: 0, mayo: 0, junio: 0 };
+      MESES.forEach((m, i) => {
+        const days = (dailys[i]?.days || []) as { ordenes: number }[];
+        ingMap[m] = days.reduce((s, d) => s + (d.ordenes || 0), 0);
+      });
+      setIngresadasByMes(ingMap);
+
       // Get usuarios Q2
       const us = await fetch(`/api/data/usuarios?country=${country}`).then(r => r.json()).catch(() => null);
       if (us?.cohorts?.q2) setUsuariosQ2(us.cohorts.q2);
@@ -86,8 +100,11 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // ─── Métricas por mes calculadas desde operational_snapshots (source of truth) ───
-  // Si por algún motivo no hay snapshot, cae al resumen legacy (compat).
+  // ─── Métricas por mes calculadas como en el Dashboard Operacional ───
+  // Ingresadas → daily_tracking (Seguimiento Diario, total real registrado).
+  // Movilizadas / entregadas / devoluciones → suma de estados desde
+  // operational_snapshots.by_dropshipper.
+  // Si por algún motivo no hay snap, cae al resumen legacy.
   const metricsByMes = useMemo(() => {
     const out: Record<Mes, ResumenMes> = {
       abril: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 },
@@ -96,23 +113,31 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
     };
     MESES.forEach((m) => {
       const s = snaps[m];
+      // Ingresadas: SIEMPRE desde daily_tracking si está disponible
+      const ingDaily = ingresadasByMes[m] || 0;
       if (s?.by_dropshipper && s.by_dropshipper.length > 0) {
-        // SOURCE OF TRUTH: operational_snapshots
+        // SOURCE OF TRUTH para mov/ent/dev: operational_snapshots
         for (const r of s.by_dropshipper) {
           const e = r.estados || {};
-          out[m].ingresadas += r.total;
           out[m].movilizadas += movFromEstados(e);
           out[m].entregados += entregadasFromEstados(e);
           out[m].devoluciones += devolucionesFromEstados(e);
         }
+        // Ingresadas: priorizar daily_tracking; si no hay, usar sum(total) como fallback
+        out[m].ingresadas = ingDaily > 0 ? ingDaily : s.by_dropshipper.reduce((acc, r) => acc + (r.total || 0), 0);
       } else {
         // Fallback al resumen legacy si aún no hay snap
         const r = resumen[m] || { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 };
-        out[m] = { ingresadas: r.ingresadas, movilizadas: r.movilizadas, entregados: r.entregados, devoluciones: r.devoluciones };
+        out[m] = {
+          ingresadas: ingDaily > 0 ? ingDaily : r.ingresadas,
+          movilizadas: r.movilizadas,
+          entregados: r.entregados,
+          devoluciones: r.devoluciones,
+        };
       }
     });
     return out;
-  }, [snaps, resumen]);
+  }, [snaps, resumen, ingresadasByMes]);
 
   const totales = useMemo(() => {
     let ing = 0, mov = 0, ent = 0, dev = 0, metaIng = 0, metaMov = 0;
