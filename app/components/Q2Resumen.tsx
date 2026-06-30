@@ -60,6 +60,9 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
   // Ingresadas reales por mes: vienen del Seguimiento Diario (daily_tracking),
   // misma fuente que usa el Dashboard Operacional.
   const [ingresadasByMes, setIngresadasByMes] = useState<Record<Mes, number>>({ abril: 0, mayo: 0, junio: 0 });
+  // Métricas calculadas con la regla EXACTA de Operaciones desde operations_data.
+  // Reemplaza el cálculo aproximado desde operational_snapshots.
+  const [opsSummary, setOpsSummary] = useState<Record<Mes, { ingresadas: number; movilizadas: number; entregadas: number; devueltas: number; en_proceso: number; canceladas: number } | null>>({ abril: null, mayo: null, junio: null });
   const [usuariosQ2, setUsuariosQ2] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -90,6 +93,17 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
       });
       setIngresadasByMes(ingMap);
 
+      // ⭐ Operations summary — réplica EXACTA de la lógica de Operaciones (operations_data).
+      const summaries = await Promise.all(
+        MESES.map((m) => fetch(`/api/data/operations-summary?country=${country}&mes=${m}`).then(r => r.json()).catch(() => null))
+      );
+      const summaryMap: typeof opsSummary = { abril: null, mayo: null, junio: null };
+      MESES.forEach((m, i) => {
+        const s = summaries[i];
+        if (s && !s.error) summaryMap[m] = s;
+      });
+      setOpsSummary(summaryMap);
+
       // Get usuarios Q2
       const us = await fetch(`/api/data/usuarios?country=${country}`).then(r => r.json()).catch(() => null);
       if (us?.cohorts?.q2) setUsuariosQ2(us.cohorts.q2);
@@ -101,9 +115,9 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   // ─── Métricas por mes (idéntico al Dashboard Operacional) ───
-  //   INGRESADAS → daily_tracking (Seguimiento Diario)
-  //   MOV/ENT/DEV → operational_snapshots.by_status (más directo y rápido que by_dropshipper)
-  // Fallback: si falta cualquiera, usa el snap o el resumen legacy con badge ⚠️
+  //   PRIORIDAD MÁXIMA: opsSummary (mismo cálculo y misma fuente que Operaciones).
+  //   Fallback 1: snap.by_status (aproximación si el endpoint falla).
+  //   Fallback 2: resumen legacy.
   const metricsByMes = useMemo(() => {
     const out: Record<Mes, ResumenMes & { _src: { ing: string; mov: string } }> = {
       abril: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0, _src: { ing: "—", mov: "—" } },
@@ -111,23 +125,29 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
       junio: { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0, _src: { ing: "—", mov: "—" } },
     };
     MESES.forEach((m) => {
+      const ops = opsSummary[m];
       const s = snaps[m];
       const ingDaily = ingresadasByMes[m] || 0;
 
-      // INGRESADAS — fuente única: daily_tracking (igual que Ops)
+      // INGRESADAS — daily_tracking siempre (igual que Ops)
       if (ingDaily > 0) {
         out[m].ingresadas = ingDaily;
         out[m]._src.ing = "daily_tracking";
-      } else if (s?.total_orders) {
-        out[m].ingresadas = s.total_orders;
-        out[m]._src.ing = "snap.total_orders (⚠ sin daily_tracking)";
+      } else if (ops?.ingresadas) {
+        out[m].ingresadas = ops.ingresadas;
+        out[m]._src.ing = "operations-summary.daily";
       } else {
-        out[m].ingresadas = (resumen[m] || {}).ingresadas || 0;
-        out[m]._src.ing = "snap.resumen (⚠ legacy)";
+        out[m].ingresadas = s?.total_orders || (resumen[m]?.ingresadas || 0);
+        out[m]._src.ing = "snap (⚠ sin daily)";
       }
 
-      // MOV / ENT / DEV — desde by_status (directo del snapshot operacional)
-      if (s?.by_status && Object.keys(s.by_status).length > 0) {
+      // MOV / ENT / DEV — operations-summary (réplica exacta de Ops)
+      if (ops) {
+        out[m].movilizadas = ops.movilizadas;
+        out[m].entregados = ops.entregadas;
+        out[m].devoluciones = ops.devueltas;
+        out[m]._src.mov = "operations-summary (= Ops)";
+      } else if (s?.by_status && Object.keys(s.by_status).length > 0) {
         const bs = s.by_status;
         const totalStatus = Object.values(bs).reduce((a, b) => a + b, 0);
         let noMovSum = 0;
@@ -135,16 +155,15 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
         out[m].movilizadas = Math.max(0, totalStatus - noMovSum);
         out[m].entregados = bs["ENTREGADO"] || 0;
         out[m].devoluciones = (bs["DEVOLUCION"] || 0) + (bs["EN PROCESO DE DEVOLUCION"] || 0);
-        out[m]._src.mov = "snap.by_status";
+        out[m]._src.mov = "snap.by_status (⚠ aprox)";
       } else if (s?.by_dropshipper && s.by_dropshipper.length > 0) {
-        // Fallback: agregamos desde by_dropshipper
         for (const r of s.by_dropshipper) {
           const e = r.estados || {};
           out[m].movilizadas += movFromEstados(e);
           out[m].entregados += entregadasFromEstados(e);
           out[m].devoluciones += devolucionesFromEstados(e);
         }
-        out[m]._src.mov = "snap.by_dropshipper";
+        out[m]._src.mov = "snap.by_dropshipper (⚠ aprox)";
       } else {
         const r = resumen[m] || { ingresadas: 0, movilizadas: 0, entregados: 0, devoluciones: 0 };
         out[m].movilizadas = r.movilizadas;
@@ -163,7 +182,7 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
       })));
     }
     return out;
-  }, [snaps, resumen, ingresadasByMes]);
+  }, [snaps, resumen, ingresadasByMes, opsSummary]);
 
   const totales = useMemo(() => {
     let ing = 0, mov = 0, ent = 0, dev = 0, metaIng = 0, metaMov = 0;
