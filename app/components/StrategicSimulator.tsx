@@ -71,16 +71,27 @@ export default function StrategicSimulator({
 }) {
   const [showAll, setShowAll] = useState(false);
   const isMayo = mesFilter === "mayo";
+  const isJunio = mesFilter === "junio";
+  const isJulio = mesFilter === "julio";
+  const mi = metaInfo as Record<string, unknown> | undefined;
 
   // Etiquetas dinámicas según el mes target
-  const TARGET_LABEL = isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isMayo ? "Abril" : "Marzo";
+  const TARGET_LABEL = isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
 
-  const GOAL_MOVILIZADAS = isMayo
+  const GOAL_MOVILIZADAS = isJulio
+    ? ((mi?.meta_movilizadas_julio as number) ?? (mi?.meta_movilizadas_junio as number) ?? 40000)
+    : isJunio
+    ? ((mi?.meta_movilizadas_junio as number) ?? metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
+    : isMayo
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
   const TASA_MOVILIZACION = metaInfo?.tasa_movilizacion ?? 0.78;
-  const GOAL_INGRESADAS = isMayo
+  const GOAL_INGRESADAS = isJulio
+    ? ((mi?.meta_ingresadas_julio as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
+    : isJunio
+    ? ((mi?.meta_ingresadas_junio as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
+    : isMayo
     ? (metaInfo?.meta_ingresadas_mayo ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
     : (metaInfo?.meta_ingresadas_abril ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION));
 

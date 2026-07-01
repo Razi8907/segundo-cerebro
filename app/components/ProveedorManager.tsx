@@ -83,17 +83,22 @@ export default function ProveedorManager({
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
-  const isPlanning = isMayo || isJunio;
-  const TARGET = isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP = isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const isJulio = mesFilter === "julio";
+  const isPlanning = isMayo || isJunio || isJulio;
+  const TARGET = isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
 
   const mi = metaInfo as any;
-  const META_MOV = isJunio
+  const META_MOV = isJulio
+    ? (mi?.meta_movilizadas_julio ?? mi?.meta_movilizadas_junio ?? 40000)
+    : isJunio
     ? (mi?.meta_movilizadas_junio ?? metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : isMayo
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
-  const META_ING = isJunio
+  const META_ING = isJulio
+    ? (mi?.meta_ingresadas_julio ?? mi?.meta_ingresadas_junio ?? 51283)
+    : isJunio
     ? (mi?.meta_ingresadas_junio ?? metaInfo?.meta_ingresadas_mayo ?? metaInfo?.meta_ingresadas_abril ?? 51283)
     : isMayo
     ? (metaInfo?.meta_ingresadas_mayo ?? metaInfo?.meta_ingresadas_abril ?? 51283)
@@ -118,9 +123,9 @@ export default function ProveedorManager({
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    // Cuando el mes activo es Junio, opsAbril guarda Mayo (comp) y opsMayo guarda Junio (target).
-    const compMes = isJunio ? "mayo" : "abril";
-    const targetMes = isJunio ? "junio" : "mayo";
+    // Cuando el mes activo es Julio: comp=junio target=julio
+    const compMes = isJulio ? "junio" : isJunio ? "mayo" : "abril";
+    const targetMes = isJulio ? "julio" : isJunio ? "junio" : "mayo";
     Promise.all([
       fetch(`/api/data/operational?country=${country}&mes=${compMes}`).then((r) => r.json()).catch(() => null),
       fetch(`/api/data/operational?country=${country}&mes=${targetMes}`).then((r) => r.json()).catch(() => null),
@@ -133,7 +138,7 @@ export default function ProveedorManager({
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [country, isJunio]);
+  }, [country, isJunio, isJulio]);
 
   // Agrupa by_prov_daily filtrando por día del mes (1..31) → OpsRow agregada por proveedor
   function aggregateProvDaily(daily: ProvDaily[], fromDay: number, toDay: number): OpsRow[] {

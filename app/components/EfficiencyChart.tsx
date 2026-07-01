@@ -18,17 +18,22 @@ interface Resumen {
 export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resumen; mesFilter: MesFilter }) {
   let totalIng: number, totalMov: number, totalEnt: number, totalDev: number;
 
-  if (mesFilter === "q1" || mesFilter === "q2" || mesFilter === "abril" || mesFilter === "mayo" || mesFilter === "junio") {
-    totalIng = resumen.enero.ingresadas + resumen.febrero.ingresadas + resumen.marzo.ingresadas;
-    totalMov = resumen.enero.movilizadas + resumen.febrero.movilizadas + resumen.marzo.movilizadas;
-    totalEnt = resumen.enero.entregados + resumen.febrero.entregados + resumen.marzo.entregados;
-    totalDev = resumen.enero.devoluciones + resumen.febrero.devoluciones + resumen.marzo.devoluciones;
-  } else {
-    const d = resumen[mesFilter as "enero" | "febrero" | "marzo"];
+  // Q1/Q2/Q3 y meses futuros suman siempre desde enero-marzo (referencia histórica).
+  // Meses individuales muestran solo la data del mes seleccionado si existe.
+  const r = resumen as unknown as Record<string, { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number } | undefined>;
+  const isSpecificMonth = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre"].includes(mesFilter as string);
+  const d = isSpecificMonth ? r[mesFilter as string] : undefined;
+  if (d && d.ingresadas > 0) {
     totalIng = d.ingresadas;
     totalMov = d.movilizadas;
     totalEnt = d.entregados;
     totalDev = d.devoluciones;
+  } else {
+    // Fallback Q1
+    totalIng = resumen.enero.ingresadas + resumen.febrero.ingresadas + resumen.marzo.ingresadas;
+    totalMov = resumen.enero.movilizadas + resumen.febrero.movilizadas + resumen.marzo.movilizadas;
+    totalEnt = resumen.enero.entregados + resumen.febrero.entregados + resumen.marzo.entregados;
+    totalDev = resumen.enero.devoluciones + resumen.febrero.devoluciones + resumen.marzo.devoluciones;
   }
 
   const pctMov = parseFloat(((totalMov / totalIng) * 100).toFixed(1));

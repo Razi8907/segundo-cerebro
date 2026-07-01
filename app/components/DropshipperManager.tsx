@@ -68,28 +68,33 @@ export default function DropshipperManager({
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
-  const isPlanning = isMayo || isJunio;
+  const isJulio = mesFilter === "julio";
+  const isPlanning = isMayo || isJunio || isJulio;
   // Cuando hay un mes en planificación, opsAbril guarda la data del mes
   // COMPARATIVO (anterior) y opsMayo la del mes ACTIVO (target).
-  const TARGET_MES = isJunio ? "junio" : "mayo";
-  const COMP_MES = isJunio ? "mayo" : "abril";
+  const TARGET_MES = isJulio ? "julio" : isJunio ? "junio" : "mayo";
+  const COMP_MES = isJulio ? "junio" : isJunio ? "mayo" : "abril";
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "escalar" | "reactivar" | "nuevos_provs" | "alto_dev">("all");
   const [selectedDS, setSelectedDS] = useState<string | null>(null);
 
   // Etiquetas dinámicas
-  const TARGET_LABEL = isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
-  const HIST_LABEL = isJunio ? "Mayo" : isMayo ? "Abril" : "Q1";
+  const TARGET_LABEL = isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const HIST_LABEL = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Q1";
 
   // Metas del mes target
   const mi = metaInfo as any;
-  const META_MOV_ABRIL = isJunio
+  const META_MOV_ABRIL = isJulio
+    ? (mi?.meta_movilizadas_julio ?? mi?.meta_movilizadas_junio ?? 40000)
+    : isJunio
     ? (mi?.meta_movilizadas_junio ?? metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : isMayo
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
-  const META_ING_ABRIL = isJunio
+  const META_ING_ABRIL = isJulio
+    ? (mi?.meta_ingresadas_julio ?? mi?.meta_ingresadas_junio ?? 51283)
+    : isJunio
     ? (mi?.meta_ingresadas_junio ?? metaInfo?.meta_ingresadas_mayo ?? metaInfo?.meta_ingresadas_abril ?? 51283)
     : isMayo
     ? (metaInfo?.meta_ingresadas_mayo ?? metaInfo?.meta_ingresadas_abril ?? 51283)

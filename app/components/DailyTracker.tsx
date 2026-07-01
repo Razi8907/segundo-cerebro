@@ -66,6 +66,15 @@ const DIAS_SEMANA_JUNIO = [
   "LUNES","MARTES",
 ];
 
+// Julio 2026 — día 1 es miércoles (31 días)
+const DIAS_SEMANA_JULIO = [
+  "MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES","MARTES",
+  "MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES","MARTES",
+  "MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES","MARTES",
+  "MIÉRCOLES","JUEVES","VIERNES","SÁBADO","DOMINGO","LUNES","MARTES",
+  "MIÉRCOLES","JUEVES","VIERNES",
+];
+
 interface ResumenMes {
   ingresadas: number;
   movilizadas: number;
@@ -81,7 +90,7 @@ interface Resumen {
 }
 
 const DIAS_MES: Record<string, number> = { enero: 31, febrero: 28, marzo: 31 };
-const MES_LABELS: Record<string, string> = { enero: "Enero 2026", febrero: "Febrero 2026", marzo: "Marzo 2026", abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026" };
+const MES_LABELS: Record<string, string> = { enero: "Enero 2026", febrero: "Febrero 2026", marzo: "Marzo 2026", abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026", julio: "Julio 2026" };
 
 export default function DailyTracker({
   marzoData,
@@ -101,43 +110,54 @@ export default function DailyTracker({
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
-  const isPlanning = isAbril || isMayo || isJunio;
+  const isJulio = mesFilter === "julio";
+  const isPlanning = isAbril || isMayo || isJunio || isJulio;
   const mi = metaInfo as any;
 
   // Configuración del mes activo — todo lo "actual" se resuelve dinámicamente
-  const META_DIARIA = isJunio
+  const META_DIARIA = isJulio
+    ? (mi.promedio_diario_necesario_julio ?? Math.round(((mi.meta_ingresadas_julio || 0) / 31)))
+    : isJunio
     ? (mi.promedio_diario_necesario_junio ?? mi.promedio_diario_necesario_mayo ?? mi.promedio_diario_necesario)
     : isMayo
     ? (metaInfo.promedio_diario_necesario_mayo ?? metaInfo.promedio_diario_necesario)
     : metaInfo.promedio_diario_necesario;
-  const META_TOTAL = isJunio
+  const META_TOTAL = isJulio
+    ? (mi.meta_ingresadas_julio ?? mi.meta_ingresadas_junio ?? metaInfo.meta_ingresadas_abril)
+    : isJunio
     ? (mi.meta_ingresadas_junio ?? mi.meta_ingresadas_mayo ?? metaInfo.meta_ingresadas_abril)
     : isMayo
     ? (metaInfo.meta_ingresadas_mayo ?? metaInfo.meta_ingresadas_abril)
     : metaInfo.meta_ingresadas_abril;
-  const META_MOV_ACTIVE = isJunio
+  const META_MOV_ACTIVE = isJulio
+    ? (mi.meta_movilizadas_julio ?? mi.meta_movilizadas_junio ?? metaInfo.meta_movilizadas_abril)
+    : isJunio
     ? (mi.meta_movilizadas_junio ?? mi.meta_movilizadas_mayo ?? metaInfo.meta_movilizadas_abril)
     : isMayo
     ? (metaInfo.meta_movilizadas_mayo ?? metaInfo.meta_movilizadas_abril)
     : metaInfo.meta_movilizadas_abril;
-  const TOTAL_DAYS = isJunio ? (mi.dias_junio ?? 30) : isMayo ? (metaInfo.dias_mayo ?? 31) : (metaInfo.dias_abril ?? 30);
-  const DIAS_SEMANA_ACTIVE = isJunio ? DIAS_SEMANA_JUNIO : isMayo ? DIAS_SEMANA_MAYO : DIAS_SEMANA_ABRIL;
-  const ACTIVE_LABEL = isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const ACTIVE_LABEL_FULL = isJunio ? "Junio 2026" : isMayo ? "Mayo 2026" : "Abril 2026";
-  const COMP_LABEL = isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
-  const COMP_LABEL_FULL = isJunio ? "Mayo 2026" : isMayo ? "Abril 2026" : "Marzo 2026";
-  const COMP_TOTAL_REF = isJunio
+  const TOTAL_DAYS = isJulio ? (mi.dias_julio ?? 31) : isJunio ? (mi.dias_junio ?? 30) : isMayo ? (metaInfo.dias_mayo ?? 31) : (metaInfo.dias_abril ?? 30);
+  const DIAS_SEMANA_ACTIVE = isJulio ? DIAS_SEMANA_JULIO : isJunio ? DIAS_SEMANA_JUNIO : isMayo ? DIAS_SEMANA_MAYO : DIAS_SEMANA_ABRIL;
+  const ACTIVE_LABEL = isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const ACTIVE_LABEL_FULL = isJulio ? "Julio 2026" : isJunio ? "Junio 2026" : isMayo ? "Mayo 2026" : "Abril 2026";
+  const COMP_LABEL = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const COMP_LABEL_FULL = isJulio ? "Junio 2026" : isJunio ? "Mayo 2026" : isMayo ? "Abril 2026" : "Marzo 2026";
+  const COMP_TOTAL_REF = isJulio
+    ? (mi.junio_total_ordenes ?? 0)
+    : isJunio
     ? (mi.mayo_total_ordenes ?? 0)
     : isMayo
     ? (metaInfo.abril_total_ordenes ?? 0)
     : metaInfo.marzo_total_ordenes;
-  const COMP_PROMEDIO_REF = isJunio
+  const COMP_PROMEDIO_REF = isJulio
+    ? (mi.junio_promedio_diario ?? 0)
+    : isJunio
     ? (mi.mayo_promedio_diario ?? 0)
     : isMayo
     ? (metaInfo.abril_promedio_diario ?? 0)
     : metaInfo.marzo_promedio_diario;
-  const ACTIVE_MES_KEY = isJunio ? "junio" : isMayo ? "mayo" : "abril";
-  const COMP_DAYS = isJunio ? (metaInfo.dias_mayo ?? 31) : isMayo ? (metaInfo.dias_abril ?? 30) : 31;
+  const ACTIVE_MES_KEY = isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril";
+  const COMP_DAYS = isJulio ? (mi.dias_junio ?? 30) : isJunio ? (metaInfo.dias_mayo ?? 31) : isMayo ? (metaInfo.dias_abril ?? 30) : 31;
 
   const STORAGE_KEY = `segundo-cerebro-${ACTIVE_MES_KEY}-${country}`;
 

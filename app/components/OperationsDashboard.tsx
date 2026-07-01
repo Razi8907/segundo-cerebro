@@ -113,11 +113,11 @@ function toIsoDate(s: string): string {
 }
 
 // Mes numérico de cada MesOps. Hardcoded a 2026 (los meses cubiertos por el dashboard).
-const MES_MONTH_NUM: Record<"abril" | "mayo" | "junio", number> = { abril: 4, mayo: 5, junio: 6 };
+const MES_MONTH_NUM: Record<"abril" | "mayo" | "junio" | "julio", number> = { abril: 4, mayo: 5, junio: 6, julio: 7 };
 
 // Convierte una fecha ISO a la misma fecha pero en el mes objetivo (mismo día).
 // Si el día no existe (31 de un mes con 30), lo recorta al último día válido.
-function shiftDateToMes(iso: string, targetMes: "abril" | "mayo" | "junio"): string {
+function shiftDateToMes(iso: string, targetMes: "abril" | "mayo" | "junio" | "julio"): string {
   if (!iso) return "";
   const m = iso.match(/^(\d{4})-\d{2}-(\d{2})$/);
   if (!m) return iso;
@@ -608,7 +608,7 @@ function DataTable({ rows, columns, highlightHours }: {
 }
 
 /* ───────── MAIN COMPONENT ───────── */
-type MesOps = "abril" | "mayo" | "junio" | "julio";
+type MesOps = "abril" | "mayo" | "junio" | "julio" | "julio";
 const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026", julio: "Julio 2026" };
 
 export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
@@ -682,7 +682,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     setDailyCurr([]);
     setDailyPrev([]);
     setServerUploadHistory([]);
-    const prevMes: MesOps = mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
+    const prevMes: MesOps = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
     try {
       const [resCur, resPrev, resOpCur, resOpPrev, resDailyCur, resDailyPrev] = await Promise.all([
         fetch(`/api/data/operations?country=${country}&mes=${mes}`),
@@ -1779,6 +1779,7 @@ function MesSwitcher({ mes, setMes }: { mes: MesOps; setMes: (m: MesOps) => void
     { key: "abril", label: "Abril 2026" },
     { key: "mayo", label: "Mayo 2026" },
     { key: "junio", label: "Junio 2026" },
+    { key: "julio", label: "Julio 2026" },
   ];
   return (
     <div className="inline-flex rounded-lg border border-cyan-500/30 overflow-hidden">
