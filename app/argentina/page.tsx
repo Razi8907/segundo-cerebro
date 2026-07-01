@@ -96,12 +96,25 @@ function getResumenByMes(mes: MesFilter, allData: any) {
     };
   }
   if (mes === "junio") {
-    // Junio ya está cerrado — usar data real del resumen
-    return norm(r.junio);
+    // Mostrar la META (mismo criterio que abril/mayo). Data real se ve en Operaciones.
+    const metaMov = allData.meta_info?.meta_movilizadas_junio ?? allData.meta_info?.meta_movilizadas_mayo ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_junio ?? allData.meta_info?.meta_ingresadas_mayo ?? 0;
+    return {
+      ingresadas: metaIng,
+      movilizadas: metaMov,
+      entregados: Math.round(metaMov * 0.60),
+      devoluciones: Math.round(metaMov * 0.26),
+    };
   }
   if (mes === "julio") {
-    // Julio en curso — data real del resumen (se llena a medida que avanza el mes)
-    return norm(r.julio);
+    const metaMov = allData.meta_info?.meta_movilizadas_julio ?? allData.meta_info?.meta_movilizadas_junio ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_julio ?? allData.meta_info?.meta_ingresadas_junio ?? 0;
+    return {
+      ingresadas: metaIng,
+      movilizadas: metaMov,
+      entregados: Math.round(metaMov * 0.60),
+      devoluciones: Math.round(metaMov * 0.26),
+    };
   }
   return norm(r[mes]);
 }

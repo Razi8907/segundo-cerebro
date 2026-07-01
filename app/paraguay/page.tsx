@@ -95,10 +95,27 @@ function getResumenByMes(mes: MesFilter, allData: any) {
     };
   }
   if (mes === "junio") {
-    return norm(r.junio);
+    // Mostrar la META en los KPI cards. La data real se ve en Operaciones y en Análisis.
+    const metaMov = allData.meta_info?.meta_movilizadas_junio ?? allData.meta_info?.meta_movilizadas_mayo ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_junio ?? allData.meta_info?.meta_ingresadas_mayo ?? 0;
+    return {
+      ingresadas: metaIng,
+      movilizadas: metaMov,
+      entregados: Math.round(metaMov * 0.67),
+      devoluciones: Math.round(metaMov * 0.20),
+    };
   }
   if (mes === "julio") {
-    return norm(r.julio);
+    // Mismo criterio: mostrar META en KPI cards. Cuando cargues data real de julio,
+    // sigue mostrando la meta arriba como referencia y el análisis abajo muestra el avance.
+    const metaMov = allData.meta_info?.meta_movilizadas_julio ?? allData.meta_info?.meta_movilizadas_junio ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_julio ?? allData.meta_info?.meta_ingresadas_junio ?? 0;
+    return {
+      ingresadas: metaIng,
+      movilizadas: metaMov,
+      entregados: Math.round(metaMov * 0.67),
+      devoluciones: Math.round(metaMov * 0.20),
+    };
   }
   return norm(r[mes]);
 }
