@@ -77,7 +77,10 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
 
   const mesPrev: MesQ2 = mesActual === "julio" ? "junio" : mesActual === "junio" ? "mayo" : mesActual === "mayo" ? "abril" : "abril";
 
-  const [estrategia, setEstrategia] = useState<{ usuarios?: { por_mes: Record<string, { ing: number; mov: number }> }[] } | null>(null);
+  const [estrategia, setEstrategia] = useState<{
+    usuarios?: { por_mes: Record<string, { ing: number; mov: number }> }[];
+    segments_config?: { key: string; label: string; min: number; max: number | null; near_floor?: number | null }[];
+  } | null>(null);
   const [usuariosSeg, setUsuariosSeg] = useState<{ cohorts?: Record<string, { total_registrados?: number; activos_total?: number; intentaron_total?: number }>; retention?: Record<string, Record<string, Record<string, unknown[]>>> } | null>(null);
 
   const fetchAll = useCallback(async () => {
@@ -732,6 +735,54 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     const tasaJunio = junio.ingresadas > 0 ? junio.movilizadas / junio.ingresadas : 0;
     const dentroDelRango = tasaJunio >= tasaMin && tasaJunio <= tasaMax;
 
+    // Cálculo de gap Junio → Meta Julio
+    const gapMeta = Math.max(0, metaMes.mov - junio.movilizadas);
+    const gapMetaPct = junio.movilizadas > 0 ? (gapMeta / junio.movilizadas) * 100 : 0;
+    const diasJulio = 31;
+    const movDiarioNecesario = Math.ceil(metaMes.mov / diasJulio);
+    const ingDiarioNecesario = ingNecesariasParaMeta > 0 ? Math.ceil(ingNecesariasParaMeta / diasJulio) : 0;
+    const movDiarioJunio = Math.round(junio.movilizadas / 30);
+
+    // Análisis por segmentos (basado en estrategia_usuarios) — específico AR o PY según config
+    const segmentosBreakdown = (() => {
+      if (!estrategia?.usuarios) return null;
+      const cfg = estrategia.segments_config || [];
+      const totales: Record<string, { count: number; near: number; label: string; movProm: number; totalMov: number }> = {};
+      for (const s of cfg) {
+        totales[s.key] = { count: 0, near: 0, label: s.label, movProm: 0, totalMov: 0 };
+      }
+      for (const u of estrategia.usuarios) {
+        const movJun = u.por_mes?.junio?.mov || 0;
+        if (movJun < 1) continue;
+        for (const s of cfg) {
+          const mx = s.max ?? Number.POSITIVE_INFINITY;
+          if (movJun >= s.min && movJun < mx) {
+            totales[s.key].count += 1;
+            totales[s.key].totalMov += movJun;
+            if (s.near_floor && movJun >= s.near_floor) totales[s.key].near += 1;
+            break;
+          }
+        }
+      }
+      for (const k of Object.keys(totales)) {
+        const t = totales[k];
+        t.movProm = t.count > 0 ? Math.round(t.totalMov / t.count) : 0;
+      }
+      return totales;
+    })();
+
+    // Retención perdidos (DSs que operaron en meses anteriores y no en junio)
+    const retencionPerdidos = (() => {
+      if (!usuariosSeg?.retention?.junio) return 0;
+      let total = 0;
+      for (const [ck, buckets] of Object.entries(usuariosSeg.retention.junio)) {
+        const soloKey = `solo_${ck}`;
+        const bMap = buckets as Record<string, unknown[]>;
+        if (bMap[soloKey]) total += (bMap[soloKey] as unknown[]).length;
+      }
+      return total;
+    })();
+
     return {
       mejorMes: mejorPorMov,
       junio,
@@ -743,8 +794,14 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
       tasaEsperada, tasaMin, tasaMax,
       ingNecesariasParaMeta,
       tasaJunio, dentroDelRango,
+      // Nuevos: cálculos accionables
+      gapMeta, gapMetaPct: Math.round(gapMetaPct),
+      diasJulio, movDiarioNecesario, ingDiarioNecesario, movDiarioJunio,
+      segmentosBreakdown,
+      retencionPerdidos,
+      intentaronSinMov: analisisUsuarios?.cohort_actual?.intentaron_total || 0,
     };
-  }, [mesActual, resumenes, topProductos, metaMes, meta]);
+  }, [mesActual, resumenes, topProductos, metaMes, meta, estrategia, usuariosSeg, analisisUsuarios]);
 
   if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando análisis…</div>;
   if (error) return <div className="glass-card p-6 text-red-400 text-sm">⚠️ {error}</div>;
@@ -1065,41 +1122,172 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
             )}
           </div>
 
-          {/* Acciones rápidas — retorno inmediato */}
+          {/* Ritmo diario y gap */}
           <div className="rounded-lg p-3 border border-orange-500/40 mb-3" style={{ background: "var(--bg-input)" }}>
-            <h3 className="text-sm font-bold text-orange-300 mb-2">⚡ Acciones RÁPIDAS con retorno inmediato (semana 1-2)</h3>
-            <ul className="space-y-2 text-[12px] t-secondary">
-              <li>
-                <strong className="t-primary">1. Reactivar productos ganadores de {MES_LABEL[playbookQ3.mejorMes.mesKey]}</strong> que en Junio bajaron o desaparecieron.
-                {playbookQ3.winnersRecuperar.length > 0 && (
-                  <span className="block mt-1 pl-3 text-[11px]">
-                    Ejemplos: {playbookQ3.winnersRecuperar.slice(0, 3).map((p) => `${p.nombre.slice(0, 40)} (${p.delta}%)`).join(" · ")}
-                  </span>
-                )}
-                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Pedir stock urgente al proveedor, poner en banner y push a WhatsApp de DSs Sabio VIP.</span>
+            <h3 className="text-sm font-bold text-orange-300 mb-2">🎯 Lo que tenés que hacer en Julio para llegar a {fmt(playbookQ3.metaJulio.mov)} movilizadas</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+              <div className="rounded p-2 border border-gray-700" style={{ background: "var(--bg-card)" }}>
+                <p className="text-[9px] t-muted uppercase tracking-wider">Gap vs Junio</p>
+                <p className="text-lg font-bold text-amber-300">+{fmt(playbookQ3.gapMeta)}</p>
+                <p className="text-[10px] t-muted">{playbookQ3.gapMetaPct}% más mov</p>
+              </div>
+              <div className="rounded p-2 border border-gray-700" style={{ background: "var(--bg-card)" }}>
+                <p className="text-[9px] t-muted uppercase tracking-wider">Mov/día necesario</p>
+                <p className="text-lg font-bold text-cyan-300">{fmt(playbookQ3.movDiarioNecesario)}</p>
+                <p className="text-[10px] t-muted">Junio hizo {fmt(playbookQ3.movDiarioJunio)}/día</p>
+              </div>
+              <div className="rounded p-2 border border-gray-700" style={{ background: "var(--bg-card)" }}>
+                <p className="text-[9px] t-muted uppercase tracking-wider">Ing/día necesario</p>
+                <p className="text-lg font-bold text-cyan-300">{fmt(playbookQ3.ingDiarioNecesario)}</p>
+                <p className="text-[10px] t-muted">a tasa {(playbookQ3.tasaEsperada*100).toFixed(0)}%</p>
+              </div>
+              <div className="rounded p-2 border border-gray-700" style={{ background: "var(--bg-card)" }}>
+                <p className="text-[9px] t-muted uppercase tracking-wider">DSs activos junio</p>
+                <p className="text-lg font-bold text-emerald-300">{playbookQ3.segmentosBreakdown ? fmt(Object.values(playbookQ3.segmentosBreakdown).reduce((s, x) => s + x.count, 0)) : "—"}</p>
+                <p className="text-[10px] t-muted">base a empujar</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Análisis por segmento con contribución estimada */}
+          {playbookQ3.segmentosBreakdown && (
+            <div className="rounded-lg p-3 border border-emerald-500/40 mb-3" style={{ background: "var(--bg-input)" }}>
+              <h3 className="text-sm font-bold text-emerald-300 mb-2">💰 De dónde puede venir el crecimiento (por segmento)</h3>
+              <div className="space-y-2 text-[12px]">
+                {Object.entries(playbookQ3.segmentosBreakdown).map(([key, s]) => {
+                  // Impacto estimado si el segmento crece 30% en mov promedio
+                  const impactoOptimista = Math.round(s.totalMov * 0.30);
+                  return (
+                    <div key={key} className="rounded p-2 border border-gray-700/50" style={{ background: "var(--bg-card)" }}>
+                      <div className="flex items-baseline justify-between flex-wrap gap-1">
+                        <strong className="t-primary">{s.label}</strong>
+                        <span className="text-[11px] t-secondary">
+                          <span className="text-orange-300 font-bold">{s.count} DSs</span> · {fmt(s.totalMov)} mov junio · prom {fmt(s.movProm)}
+                          {s.near > 0 && <span className="text-amber-300"> · {s.near} cerca de subir 🚀</span>}
+                        </span>
+                      </div>
+                      <p className="text-[10px] t-muted mt-1">
+                        {key === "esporadicos" && "→ Onboarding express + productos winners. Meta: pasar 20+ a En Desarrollo (11+ mov)."}
+                        {key === "en_desarrollo" && "→ Capacitación intermedia + acceso a productos premium. Meta: pasar 10+ a Master (66+ mov)."}
+                        {key === "master_ar" && "→ Comercial dedicado + incentivos por volumen. Objetivo: cero baja + subir 2-3 a Sabio VIP."}
+                        {key === "sabio_vip_ar" && "→ Blindar cartera + acceso a productos nuevos primero. Objetivo: crecer 15-20% cada uno."}
+                        {" "}Impacto potencial si crecen +30%: <strong className="text-emerald-400">+{fmt(impactoOptimista)} mov</strong>.
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Acciones rápidas — retorno inmediato con estimaciones */}
+          <div className="rounded-lg p-3 border border-orange-500/40 mb-3" style={{ background: "var(--bg-input)" }}>
+            <h3 className="text-sm font-bold text-orange-300 mb-2">⚡ 5 Acciones RÁPIDAS con retorno en semanas 1-2</h3>
+            <ul className="space-y-3 text-[12px] t-secondary">
+              <li className="pb-2 border-b border-gray-700/40">
+                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                  <strong className="t-primary">1. Blindar y empujar Sabio VIP + Master ({playbookQ3.segmentosBreakdown ? (playbookQ3.segmentosBreakdown.sabio_vip_ar?.count || 0) + (playbookQ3.segmentosBreakdown.master_ar?.count || 0) : "—"} DSs)</strong>
+                  <span className="text-[10px] text-emerald-300 font-bold">Impacto: +{playbookQ3.segmentosBreakdown ? fmt(Math.round((playbookQ3.segmentosBreakdown.sabio_vip_ar?.totalMov || 0 + (playbookQ3.segmentosBreakdown.master_ar?.totalMov || 0)) * 0.25)) : "?"} mov</span>
+                </div>
+                <p className="text-[11px] mt-1">Llamada personalizada 15 min a cada uno: qué producto quieren stock preferente, qué campaña les cerró, qué necesitan para vender más. Ofrecer bonus de envío en su TOP 3 productos.</p>
+                <p className="text-[10px] t-muted mt-0.5">→ Estimado: 25% de crecimiento en sus movilizadas = <strong className="text-emerald-400">~{fmt(Math.round((playbookQ3.segmentosBreakdown?.master_ar?.totalMov || 0) * 0.25 + (playbookQ3.segmentosBreakdown?.sabio_vip_ar?.totalMov || 0) * 0.20))} mov extra</strong>.</p>
               </li>
-              <li>
-                <strong className="t-primary">2. Doblar apuesta en productos que YA vienen creciendo</strong> — asegurar stock antes del pico Q3.
-                {playbookQ3.winnersReplicar.length > 0 && (
-                  <span className="block mt-1 pl-3 text-[11px]">
-                    Winners sostenidos: {playbookQ3.winnersReplicar.slice(0, 3).map((p) => `${p.nombre.slice(0, 40)} (+${p.delta}%)`).join(" · ")}
-                  </span>
-                )}
-                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Campaña con creativos nuevos + capacitación a Iniciados/En Desarrollo para que los prueben.</span>
+
+              <li className="pb-2 border-b border-gray-700/40">
+                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                  <strong className="t-primary">2. Empujar {(playbookQ3.segmentosBreakdown?.esporadicos?.near || 0) + (playbookQ3.segmentosBreakdown?.en_desarrollo?.near || 0) + (playbookQ3.segmentosBreakdown?.master_ar?.near || 0)} DSs &quot;cerca de subir&quot; nivel</strong>
+                  <span className="text-[10px] text-emerald-300 font-bold">Impacto: +{fmt(((playbookQ3.segmentosBreakdown?.esporadicos?.near || 0) * 5) + ((playbookQ3.segmentosBreakdown?.en_desarrollo?.near || 0) * 15) + ((playbookQ3.segmentosBreakdown?.master_ar?.near || 0) * 40))} mov</span>
+                </div>
+                <p className="text-[11px] mt-1">Bonus específico por cruzar el umbral en primeros 15 días:</p>
+                <ul className="text-[10px] t-muted pl-4 mt-0.5 space-y-0.5">
+                  <li>• {playbookQ3.segmentosBreakdown?.esporadicos?.near || 0} Esporádicos con 8-10 mov → llegar a 11+ (En Desarrollo): +5 mov cada uno = ~{fmt((playbookQ3.segmentosBreakdown?.esporadicos?.near || 0) * 5)} mov</li>
+                  <li>• {playbookQ3.segmentosBreakdown?.en_desarrollo?.near || 0} En Desarrollo con 55-65 → llegar a 66+ (Master): +15 mov = ~{fmt((playbookQ3.segmentosBreakdown?.en_desarrollo?.near || 0) * 15)} mov</li>
+                  <li>• {playbookQ3.segmentosBreakdown?.master_ar?.near || 0} Master con 270+ → llegar a 300+ (Sabio VIP): +40 mov = ~{fmt((playbookQ3.segmentosBreakdown?.master_ar?.near || 0) * 40)} mov</li>
+                </ul>
               </li>
-              <li>
-                <strong className="t-primary">3. Winback de DSs que operaron en {MES_LABEL[playbookQ3.mejorMes.mesKey]} pero no en Junio</strong>.
-                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Lista en Estrategia Usuarios &gt; Retención cohorts. WhatsApp con bonus de 10 envíos gratis los primeros 7 días de julio.</span>
+
+              <li className="pb-2 border-b border-gray-700/40">
+                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                  <strong className="t-primary">3. Winback {fmt(playbookQ3.retencionPerdidos)} DSs perdidos en Junio (operaron antes)</strong>
+                  <span className="text-[10px] text-emerald-300 font-bold">Impacto: +{fmt(Math.round(playbookQ3.retencionPerdidos * 0.30 * 6))} mov</span>
+                </div>
+                <p className="text-[11px] mt-1">Ya usaron la plataforma, ya generaron ventas. Recuperarlos es 5x más barato que conseguir DSs nuevos.</p>
+                <p className="text-[10px] t-muted mt-0.5">→ Campaña &quot;te extrañamos&quot; con 10 envíos bonificados los primeros 7 días. Estimado: 30% vuelve con ~6 mov promedio = <strong className="text-emerald-400">~{fmt(Math.round(playbookQ3.retencionPerdidos * 0.30 * 6))} mov</strong>.</p>
+                <p className="text-[10px] text-cyan-300 mt-0.5">📋 Lista completa en Estrategia Usuarios → Registrados/Activos → 📊 Retención cohorts previas.</p>
               </li>
-              <li>
-                <strong className="t-primary">4. Empujar &quot;próximos a subir&quot;</strong> (Iniciados en 8-10 mov, En Desarrollo en 55-65 mov).
-                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Bonus por cruzar el umbral en los primeros 15 días. Retorno inmediato en cantidad + calidad de operación.</span>
+
+              <li className="pb-2 border-b border-gray-700/40">
+                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                  <strong className="t-primary">4. Destrabar {fmt(playbookQ3.intentaronSinMov)} DSs que ingresaron pero no movilizaron</strong>
+                  <span className="text-[10px] text-emerald-300 font-bold">Impacto: +{fmt(Math.round(playbookQ3.intentaronSinMov * 0.60 * 4))} mov</span>
+                </div>
+                <p className="text-[11px] mt-1">Ya generaron tráfico y pedidos — solo hay que sacar el bloqueo (cliente no confirma, sin stock, error de dirección).</p>
+                <p className="text-[10px] t-muted mt-0.5">→ Análisis 1:1 caso por caso. Estimado: 60% se destraba con 4 mov promedio = <strong className="text-emerald-400">~{fmt(Math.round(playbookQ3.intentaronSinMov * 0.60 * 4))} mov</strong>.</p>
               </li>
+
               <li>
-                <strong className="t-primary">5. Destrabar los &quot;intentaron sin mov&quot;</strong> (mov=0, ing&gt;0 del mes anterior).
-                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Ya generaron tráfico. Diagnóstico: cancelaciones por confirmación, stock, dirección. Reforzar WhatsApp automatizado.</span>
+                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                  <strong className="t-primary">5. Recuperar tasa de movilización → {(playbookQ3.tasaEsperada * 100).toFixed(0)}%+</strong>
+                  <span className="text-[10px] text-emerald-300 font-bold">Impacto: +{fmt(Math.round((playbookQ3.tasaEsperada - playbookQ3.tasaJunio) * playbookQ3.junio.ingresadas))} mov con misma ing</span>
+                </div>
+                <p className="text-[11px] mt-1">Junio cerró en {(playbookQ3.tasaJunio * 100).toFixed(1)}% (vs esperada {(playbookQ3.tasaEsperada * 100).toFixed(0)}%). Con misma cantidad de ingresadas, subir la tasa 1 punto = {fmt(Math.round(playbookQ3.junio.ingresadas * 0.01))} mov extra.</p>
+                <p className="text-[10px] t-muted mt-0.5">→ Auditar dónde se pierden: cancelaciones por confirmación, stock, dirección incorrecta. Reforzar WhatsApp pre-despacho, bloqueo automático de productos sin stock, validación de formulario.</p>
               </li>
             </ul>
+          </div>
+
+          {/* Total estimado */}
+          <div className="rounded-lg p-3 mb-3 border border-cyan-500/40" style={{ background: "linear-gradient(90deg, rgba(6,182,212,0.08), rgba(16,185,129,0.08))" }}>
+            {(() => {
+              const impactoSabioMaster = Math.round((playbookQ3.segmentosBreakdown?.master_ar?.totalMov || 0) * 0.25 + (playbookQ3.segmentosBreakdown?.sabio_vip_ar?.totalMov || 0) * 0.20);
+              const impactoCercaSubir = ((playbookQ3.segmentosBreakdown?.esporadicos?.near || 0) * 5) + ((playbookQ3.segmentosBreakdown?.en_desarrollo?.near || 0) * 15) + ((playbookQ3.segmentosBreakdown?.master_ar?.near || 0) * 40);
+              const impactoWinback = Math.round(playbookQ3.retencionPerdidos * 0.30 * 6);
+              const impactoIntentaron = Math.round(playbookQ3.intentaronSinMov * 0.60 * 4);
+              const impactoTasa = Math.round((playbookQ3.tasaEsperada - Math.min(playbookQ3.tasaJunio, playbookQ3.tasaEsperada)) * playbookQ3.junio.ingresadas);
+              const totalEstimado = impactoSabioMaster + impactoCercaSubir + impactoWinback + impactoIntentaron + impactoTasa;
+              const junioMov = playbookQ3.junio.movilizadas || 0;
+              const proyeccionOptimista = junioMov + totalEstimado;
+              const brechaConMeta = Math.max(0, playbookQ3.metaJulio.mov - proyeccionOptimista);
+              return (
+                <>
+                  <p className="text-[11px] t-primary font-bold mb-2">📊 Resumen de impacto estimado de las 5 acciones:</p>
+                  <div className="text-[11px] t-secondary space-y-0.5">
+                    <div>• Blindar Sabio/Master: <strong className="text-emerald-400">+{fmt(impactoSabioMaster)}</strong> mov</div>
+                    <div>• Empujar cerca de subir: <strong className="text-emerald-400">+{fmt(impactoCercaSubir)}</strong> mov</div>
+                    <div>• Winback perdidos: <strong className="text-emerald-400">+{fmt(impactoWinback)}</strong> mov</div>
+                    <div>• Destrabar intentaron: <strong className="text-emerald-400">+{fmt(impactoIntentaron)}</strong> mov</div>
+                    <div>• Recuperar tasa mov: <strong className="text-emerald-400">+{fmt(impactoTasa)}</strong> mov</div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-gray-700/40 text-[11px]">
+                    <div className="flex justify-between">
+                      <span className="t-secondary">Total estimado extra:</span>
+                      <strong className="text-emerald-300">+{fmt(totalEstimado)} mov</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="t-secondary">Junio real:</span>
+                      <span className="t-primary">{fmt(junioMov)} mov</span>
+                    </div>
+                    <div className="flex justify-between font-bold">
+                      <span className="t-primary">Proyección optimista Julio:</span>
+                      <span className="text-cyan-300">{fmt(proyeccionOptimista)} mov</span>
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="t-secondary">Meta Julio:</span>
+                      <span className="text-cyan-300">{fmt(playbookQ3.metaJulio.mov)} mov</span>
+                    </div>
+                    {brechaConMeta > 0 ? (
+                      <div className="mt-1 p-2 rounded text-[10px]" style={{ background: "rgba(245,158,11,0.1)", color: "#fcd34d" }}>
+                        ⚠ <strong>Aún faltarían {fmt(brechaConMeta)} mov</strong> para cumplir meta. Requiere adquisición NUEVA: campaña de captación en Q3 (Google Ads, referidos, alianzas con influencers de nicho, expansión de proveedores).
+                      </div>
+                    ) : (
+                      <div className="mt-1 p-2 rounded text-[10px]" style={{ background: "rgba(16,185,129,0.1)", color: "#86efac" }}>
+                        ✅ La proyección optimista SUPERA la meta (+{fmt(proyeccionOptimista - playbookQ3.metaJulio.mov)} mov). Ejecutando estas 5 acciones alcanzás y superás.
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
           </div>
 
           {/* Acciones estructurales para todo Q3 */}
