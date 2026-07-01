@@ -36,10 +36,10 @@ export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resum
     totalDev = resumen.enero.devoluciones + resumen.febrero.devoluciones + resumen.marzo.devoluciones;
   }
 
-  const pctMov = parseFloat(((totalMov / totalIng) * 100).toFixed(1));
-  const pctEnt = parseFloat(((totalEnt / totalMov) * 100).toFixed(1));
-  const pctDev = parseFloat(((totalDev / totalMov) * 100).toFixed(1));
-  const pctExito = parseFloat(((totalEnt / totalIng) * 100).toFixed(1));
+  const pctMov = totalIng > 0 ? parseFloat(((totalMov / totalIng) * 100).toFixed(1)) : 0;
+  const pctEnt = totalMov > 0 ? parseFloat(((totalEnt / totalMov) * 100).toFixed(1)) : 0;
+  const pctDev = totalMov > 0 ? parseFloat(((totalDev / totalMov) * 100).toFixed(1)) : 0;
+  const pctExito = totalIng > 0 ? parseFloat(((totalEnt / totalIng) * 100).toFixed(1)) : 0;
 
   const metrics = [
     { label: "Movilización", value: pctMov, color: "#F97316", desc: "Ingresadas → Movilizadas" },
