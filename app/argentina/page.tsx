@@ -128,7 +128,7 @@ export default function ArgentinaDashboard() {
     abril: "Abril 2026",
     mayo: "Mayo 2026",
     junio: "Junio 2026",
-    julio: "Julio 2026 (En curso)",
+    julio: "Julio 2026 (Meta)",
     agosto: "Agosto 2026",
     septiembre: "Septiembre 2026",
   };
@@ -176,7 +176,7 @@ export default function ArgentinaDashboard() {
                     : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
                 }`}
               >
-                {m === "q1" ? "Q1 Completo" : m === "junio" ? "🎯 Junio (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
+                {m === "q1" ? "Q1 Completo" : m === "julio" ? "🎯 Julio (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
               </button>
             ))}
             <span className="text-xs px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 ml-2">
@@ -225,7 +225,7 @@ export default function ArgentinaDashboard() {
         {!isQ2 && sector === "comercial" && <>
         {/* Period indicator */}
         <div className="text-center">
-          <span className={`text-sm font-medium ${isJulio ? "text-cyan-400" : isJunio ? "text-green-400" : isMayo ? "text-green-400" : "text-orange-400"}`}>
+          <span className={`text-sm font-medium ${isJulio ? "text-orange-400" : isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
             {mesLabels[mesFilter]}
             {isAbril && ` — ${meta_info.meta_movilizadas_abril.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_abril.toLocaleString()} ingresadas`}
             {isMayo && ` — ${meta_info.meta_movilizadas_mayo.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_mayo.toLocaleString()} ingresadas`}
