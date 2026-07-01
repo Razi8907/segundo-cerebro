@@ -728,8 +728,7 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     // Ingresadas necesarias para llegar a la meta a esa tasa
     const ingNecesariasParaMeta = tasaEsperada > 0 ? Math.round(metaMes.mov / tasaEsperada) : 0;
 
-    // Tasa REAL de junio (mes cerrado más reciente)
-    const junio = resumenes.junio || { ingresadas: 0, movilizadas: 0, entregadas: 0, devueltas: 0 };
+    // Tasa REAL de junio (mes cerrado más reciente) — reutilizamos junio ya declarado arriba
     const tasaJunio = junio.ingresadas > 0 ? junio.movilizadas / junio.ingresadas : 0;
     const dentroDelRango = tasaJunio >= tasaMin && tasaJunio <= tasaMax;
 
