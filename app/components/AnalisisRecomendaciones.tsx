@@ -39,11 +39,11 @@ interface MetaInfo {
   [k: string]: number | undefined;
 }
 
-type MesQ2 = "abril" | "mayo" | "junio";
-const MESES_Q2: MesQ2[] = ["abril", "mayo", "junio"];
-const MES_LABEL: Record<string, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio" };
-const MES_DIAS: Record<MesQ2, number> = { abril: 30, mayo: 31, junio: 30 };
-const MES_NUM: Record<MesQ2, number> = { abril: 4, mayo: 5, junio: 6 };
+type MesQ2 = "abril" | "mayo" | "junio" | "julio";
+const MESES_Q2: MesQ2[] = ["abril", "mayo", "junio", "julio"];
+const MES_LABEL: Record<string, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio" };
+const MES_DIAS: Record<MesQ2, number> = { abril: 30, mayo: 31, junio: 30, julio: 31 };
+const MES_NUM: Record<MesQ2, number> = { abril: 4, mayo: 5, junio: 6, julio: 7 };
 
 // Day of month from "DD-MM-YYYY"
 function dayOf(s: string): number {
@@ -65,7 +65,7 @@ function fmt(n: number): string {
 }
 
 export default function AnalisisRecomendaciones({ country }: { country: "ar" | "py" }) {
-  const [mesActual, setMesActual] = useState<MesQ2>("junio");
+  const [mesActual, setMesActual] = useState<MesQ2>("julio");
   const [opCurr, setOpCurr] = useState<OpSnapshot | null>(null);
   const [opPrev, setOpPrev] = useState<OpSnapshot | null>(null);
   const [resumenes, setResumenes] = useState<Record<string, ResumenMes>>({});
@@ -75,7 +75,7 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
 
-  const mesPrev: MesQ2 = mesActual === "junio" ? "mayo" : mesActual === "mayo" ? "abril" : "abril";
+  const mesPrev: MesQ2 = mesActual === "julio" ? "junio" : mesActual === "junio" ? "mayo" : mesActual === "mayo" ? "abril" : "abril";
 
   const [estrategia, setEstrategia] = useState<{ usuarios?: { por_mes: Record<string, { ing: number; mov: number }> }[] } | null>(null);
   const [usuariosSeg, setUsuariosSeg] = useState<{ cohorts?: Record<string, { total_registrados?: number; activos_total?: number; intentaron_total?: number }>; retention?: Record<string, Record<string, Record<string, unknown[]>>> } | null>(null);
@@ -693,6 +693,45 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
     return { inmediatas, inicio_mes };
   }, [kpis, projeccion, metaMes, mesActual, mesPrev, topProductos, topProveedores, dssActivos, analisisUsuarios, mejorMes]);
 
+  // ─── Playbook Q3: solo activo cuando estamos en Julio ───
+  // Compara el mejor mes de Q2 vs junio (cierre reciente) y produce un plan
+  // accionable para julio con estrategias de retorno rápido.
+  const playbookQ3 = useMemo(() => {
+    if (mesActual !== "julio") return null;
+
+    // Encontrar el mejor mes de Q2 en cada dimensión
+    const q2Meses = ["abril","mayo","junio"] as const;
+    const resQ2 = q2Meses.map((m) => {
+      const r = resumenes[m] || { ingresadas: 0, movilizadas: 0, entregadas: 0, devueltas: 0, en_proceso: 0 };
+      return { mesKey: m as string, ingresadas: r.ingresadas, movilizadas: r.movilizadas, entregadas: r.entregadas, devueltas: r.devueltas };
+    });
+    const mejorPorMov = [...resQ2].sort((a, b) => (b.movilizadas || 0) - (a.movilizadas || 0))[0];
+    const junio = resumenes.junio || { ingresadas: 0, movilizadas: 0, entregadas: 0, devueltas: 0 };
+    const gapVsBest = (mejorPorMov?.movilizadas || 0) - (junio.movilizadas || 0);
+    const gapPct = mejorPorMov?.movilizadas ? (gapVsBest / mejorPorMov.movilizadas) * 100 : 0;
+
+    // Top productos del mejor mes que en junio bajaron o desaparecieron
+    // (opCurr no aplica aún porque Julio no tiene datos, usamos comparación indirecta)
+    const winnersQ2NotInJunio = topProductos
+      .filter((p) => p.prev >= 30 && (p.delta <= -20 || p.curr === 0))
+      .slice(0, 8);
+
+    // Winners consistentes (crecieron o se mantuvieron en junio)
+    const winnersSostenidos = topProductos
+      .filter((p) => p.curr >= 30 && p.delta >= 0)
+      .slice(0, 10);
+
+    return {
+      mejorMes: mejorPorMov,
+      junio,
+      gapVsBest,
+      gapPct: Math.round(gapPct * 10) / 10,
+      winnersRecuperar: winnersQ2NotInJunio,
+      winnersReplicar: winnersSostenidos,
+      metaJulio: metaMes,
+    };
+  }, [mesActual, resumenes, topProductos, metaMes]);
+
   if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando análisis…</div>;
   if (error) return <div className="glass-card p-6 text-red-400 text-sm">⚠️ {error}</div>;
 
@@ -958,6 +997,92 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
           </div>
         )}
       </div>
+
+      {/* Playbook Q3 — solo se muestra cuando estamos en Julio */}
+      {playbookQ3 && (
+        <div className="rounded-xl p-4 border-2 border-cyan-500/50" style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.08), rgba(139,92,246,0.05))" }}>
+          <div className="flex items-start justify-between gap-2 flex-wrap mb-3">
+            <div>
+              <h2 className="text-lg font-bold t-primary mb-1">🎯 Playbook Q3 — Estrategias para arrancar Julio con foco</h2>
+              <p className="text-[11px] t-muted">
+                Análisis del mejor mes de Q2 vs Junio (cierre reciente). Priorizamos <strong className="text-cyan-300">retorno rápido</strong> con acciones ejecutables las primeras 2 semanas del mes.
+              </p>
+            </div>
+          </div>
+
+          {/* Contexto: mejor mes Q2 vs junio */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+            <div className="rounded-lg p-3 border border-emerald-500/30" style={{ background: "var(--bg-input)" }}>
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">📈 Mejor mes de Q2</p>
+              <p className="text-lg font-bold text-emerald-400">{MES_LABEL[playbookQ3.mejorMes.mesKey] || playbookQ3.mejorMes.mesKey}</p>
+              <p className="text-[11px] t-secondary">{fmt(playbookQ3.mejorMes.movilizadas || 0)} movilizadas</p>
+            </div>
+            <div className="rounded-lg p-3 border border-gray-700" style={{ background: "var(--bg-input)" }}>
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">🏁 Cierre de Junio</p>
+              <p className="text-lg font-bold t-primary">{fmt(playbookQ3.junio.movilizadas || 0)}</p>
+              <p className="text-[11px]" style={{ color: playbookQ3.gapPct >= 0 ? "#fbbf24" : "#10b981" }}>
+                {playbookQ3.gapPct >= 0 ? `${playbookQ3.gapPct.toFixed(1)}% por debajo del mejor` : `${Math.abs(playbookQ3.gapPct).toFixed(1)}% por encima`}
+              </p>
+            </div>
+            <div className="rounded-lg p-3 border border-cyan-500/40" style={{ background: "var(--bg-input)" }}>
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">🎯 Meta Julio</p>
+              <p className="text-lg font-bold text-cyan-400">{fmt(playbookQ3.metaJulio.mov)}</p>
+              <p className="text-[11px] t-secondary">movilizadas · {fmt(playbookQ3.metaJulio.ing)} ing</p>
+            </div>
+          </div>
+
+          {/* Acciones rápidas — retorno inmediato */}
+          <div className="rounded-lg p-3 border border-orange-500/40 mb-3" style={{ background: "var(--bg-input)" }}>
+            <h3 className="text-sm font-bold text-orange-300 mb-2">⚡ Acciones RÁPIDAS con retorno inmediato (semana 1-2)</h3>
+            <ul className="space-y-2 text-[12px] t-secondary">
+              <li>
+                <strong className="t-primary">1. Reactivar productos ganadores de {MES_LABEL[playbookQ3.mejorMes.mesKey]}</strong> que en Junio bajaron o desaparecieron.
+                {playbookQ3.winnersRecuperar.length > 0 && (
+                  <span className="block mt-1 pl-3 text-[11px]">
+                    Ejemplos: {playbookQ3.winnersRecuperar.slice(0, 3).map((p) => `${p.nombre.slice(0, 40)} (${p.delta}%)`).join(" · ")}
+                  </span>
+                )}
+                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Pedir stock urgente al proveedor, poner en banner y push a WhatsApp de DSs Sabio VIP.</span>
+              </li>
+              <li>
+                <strong className="t-primary">2. Doblar apuesta en productos que YA vienen creciendo</strong> — asegurar stock antes del pico Q3.
+                {playbookQ3.winnersReplicar.length > 0 && (
+                  <span className="block mt-1 pl-3 text-[11px]">
+                    Winners sostenidos: {playbookQ3.winnersReplicar.slice(0, 3).map((p) => `${p.nombre.slice(0, 40)} (+${p.delta}%)`).join(" · ")}
+                  </span>
+                )}
+                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Campaña con creativos nuevos + capacitación a Iniciados/En Desarrollo para que los prueben.</span>
+              </li>
+              <li>
+                <strong className="t-primary">3. Winback de DSs que operaron en {MES_LABEL[playbookQ3.mejorMes.mesKey]} pero no en Junio</strong>.
+                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Lista en Estrategia Usuarios &gt; Retención cohorts. WhatsApp con bonus de 10 envíos gratis los primeros 7 días de julio.</span>
+              </li>
+              <li>
+                <strong className="t-primary">4. Empujar &quot;próximos a subir&quot;</strong> (Iniciados en 8-10 mov, En Desarrollo en 55-65 mov).
+                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Bonus por cruzar el umbral en los primeros 15 días. Retorno inmediato en cantidad + calidad de operación.</span>
+              </li>
+              <li>
+                <strong className="t-primary">5. Destrabar los &quot;intentaron sin mov&quot;</strong> (mov=0, ing&gt;0 del mes anterior).
+                <span className="block text-[10px] t-muted pl-3 mt-0.5">→ Ya generaron tráfico. Diagnóstico: cancelaciones por confirmación, stock, dirección. Reforzar WhatsApp automatizado.</span>
+              </li>
+            </ul>
+          </div>
+
+          {/* Acciones estructurales para todo Q3 */}
+          <div className="rounded-lg p-3 border border-purple-500/40" style={{ background: "var(--bg-input)" }}>
+            <h3 className="text-sm font-bold text-purple-300 mb-2">🏗️ Acciones estructurales para todo Q3</h3>
+            <ul className="space-y-1.5 text-[12px] t-secondary">
+              <li>• <strong className="t-primary">Playbook Q2:</strong> Documentar qué se hizo en {MES_LABEL[playbookQ3.mejorMes.mesKey]} (mejor mes) — productos, campañas, transportadoras, comerciales — y reproducirlo mensualmente.</li>
+              <li>• <strong className="t-primary">Setup Q3:</strong> Meta Julio = {fmt(playbookQ3.metaJulio.mov)} mov. Definir metas Agosto y Septiembre con crecimiento +5-10% mensual.</li>
+              <li>• <strong className="t-primary">Reunión de arranque:</strong> Día 1 de julio con todo el equipo. Compartir meta, top productos, top DSs, campañas activas.</li>
+              <li>• <strong className="t-primary">Programa de cartera:</strong> Cada Master+ tiene comercial asignado con QBR mensual. Objetivo: 0 DSs Master perdidos en Q3.</li>
+              <li>• <strong className="t-primary">Nuevos DSs onboarding intensivo:</strong> Los nuevos Iniciados de Julio tienen que llegar a 10 mov antes del día 21 (60% se pierde entre día 15-30 del primer mes).</li>
+              <li>• <strong className="t-primary">Auditoría de transportadoras:</strong> Identificar la de mejor tasa entrega en Junio y derivar más volumen hacia ella. Escalar las que bajaron.</li>
+              <li>• <strong className="t-primary">Reporte semanal:</strong> Cada lunes revisar ingresadas vs meta, % entrega por transportadora, productos winners/en caída y próximos a subir de nivel.</li>
+            </ul>
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl p-4 border border-purple-500/30" style={{ background: "var(--bg-card)" }}>
         <h2 className="text-base font-bold t-primary mb-3">🚀 Acciones para arrancar el próximo mes (lecciones de {MES_LABEL[mesPrev]} → {MES_LABEL[mesActual]})</h2>

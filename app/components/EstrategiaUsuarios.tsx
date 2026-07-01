@@ -235,9 +235,10 @@ const MES_LABEL: Record<string, string> = {
 };
 
 function getMesesForWindow(mesFilter?: MesFilter | null): string[] {
-  if (!mesFilter) return ["enero","febrero","marzo","abril","mayo","junio"];
+  if (!mesFilter) return ["enero","febrero","marzo","abril","mayo","junio","julio"];
   if (mesFilter === "q1") return ["enero","febrero","marzo"];
   if (mesFilter === "q2") return ["abril","mayo","junio"];
+  if (mesFilter === "q3") return ["julio","agosto","septiembre"];
   return [mesFilter];
 }
 

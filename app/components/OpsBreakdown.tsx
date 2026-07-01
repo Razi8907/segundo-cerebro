@@ -72,10 +72,10 @@ function aggregate(rows: OpsRow[]): Aggregated[] {
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTE
 // ═══════════════════════════════════════════════════════════════════
-type Mes = "abril" | "mayo" | "junio";
+type Mes = "abril" | "mayo" | "junio" | "julio";
 type Category = "dropshipper" | "proveedor";
 
-const MES_LABEL: Record<Mes, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026" };
+const MES_LABEL: Record<Mes, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026", julio: "Julio 2026" };
 
 export default function OpsBreakdown({
   country,

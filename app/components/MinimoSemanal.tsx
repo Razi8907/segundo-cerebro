@@ -7,14 +7,14 @@ const NO_MOV = new Set([
   "CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA",
 ]);
 
-type Mes = "abril" | "mayo" | "junio";
+type Mes = "abril" | "mayo" | "junio" | "julio";
 type ByDS = { nombre: string; total: number; estados: Record<string, number> };
 type ByDSDaily = { ds: string; fecha: string; ordenes: number };
 type ByDate = { fecha: string; total: number; estados: Record<string, number> };
 
-const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio" };
-const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30 };
-const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6 };
+const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio" };
+const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31 };
+const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7 };
 
 function dayOfMonth(s: string): number | null {
   const m = s.match(/^(\d{1,2})[-/]/);

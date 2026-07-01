@@ -608,8 +608,8 @@ function DataTable({ rows, columns, highlightHours }: {
 }
 
 /* ───────── MAIN COMPONENT ───────── */
-type MesOps = "abril" | "mayo" | "junio";
-const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026" };
+type MesOps = "abril" | "mayo" | "junio" | "julio";
+const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026", julio: "Julio 2026" };
 
 export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
