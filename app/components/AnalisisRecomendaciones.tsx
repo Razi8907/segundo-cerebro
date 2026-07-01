@@ -721,6 +721,18 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
       .filter((p) => p.curr >= 30 && p.delta >= 0)
       .slice(0, 10);
 
+    // Tasa histórica esperada (viene de meta_info.tasa_movilizacion, ej AR=0.81 / PY=0.76)
+    const tasaEsperada = meta.tasa_movilizacion || 0.80;
+    const tasaMin = meta.tasa_movilizacion_min || (tasaEsperada - 0.01);
+    const tasaMax = meta.tasa_movilizacion_max || (tasaEsperada + 0.01);
+    // Ingresadas necesarias para llegar a la meta a esa tasa
+    const ingNecesariasParaMeta = tasaEsperada > 0 ? Math.round(metaMes.mov / tasaEsperada) : 0;
+
+    // Tasa REAL de junio (mes cerrado más reciente)
+    const junio = resumenes.junio || { ingresadas: 0, movilizadas: 0, entregadas: 0, devueltas: 0 };
+    const tasaJunio = junio.ingresadas > 0 ? junio.movilizadas / junio.ingresadas : 0;
+    const dentroDelRango = tasaJunio >= tasaMin && tasaJunio <= tasaMax;
+
     return {
       mejorMes: mejorPorMov,
       junio,
@@ -729,8 +741,11 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
       winnersRecuperar: winnersQ2NotInJunio,
       winnersReplicar: winnersSostenidos,
       metaJulio: metaMes,
+      tasaEsperada, tasaMin, tasaMax,
+      ingNecesariasParaMeta,
+      tasaJunio, dentroDelRango,
     };
-  }, [mesActual, resumenes, topProductos, metaMes]);
+  }, [mesActual, resumenes, topProductos, metaMes, meta]);
 
   if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando análisis…</div>;
   if (error) return <div className="glass-card p-6 text-red-400 text-sm">⚠️ {error}</div>;
@@ -1010,25 +1025,45 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
             </div>
           </div>
 
-          {/* Contexto: mejor mes Q2 vs junio */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
+          {/* Contexto: mejor mes Q2 vs junio + meta + tasa esperada */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div className="rounded-lg p-3 border border-emerald-500/30" style={{ background: "var(--bg-input)" }}>
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">📈 Mejor mes de Q2</p>
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">📈 Mejor mes Q2</p>
               <p className="text-lg font-bold text-emerald-400">{MES_LABEL[playbookQ3.mejorMes.mesKey] || playbookQ3.mejorMes.mesKey}</p>
               <p className="text-[11px] t-secondary">{fmt(playbookQ3.mejorMes.movilizadas || 0)} movilizadas</p>
             </div>
             <div className="rounded-lg p-3 border border-gray-700" style={{ background: "var(--bg-input)" }}>
-              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">🏁 Cierre de Junio</p>
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">🏁 Cierre Junio</p>
               <p className="text-lg font-bold t-primary">{fmt(playbookQ3.junio.movilizadas || 0)}</p>
               <p className="text-[11px]" style={{ color: playbookQ3.gapPct >= 0 ? "#fbbf24" : "#10b981" }}>
-                {playbookQ3.gapPct >= 0 ? `${playbookQ3.gapPct.toFixed(1)}% por debajo del mejor` : `${Math.abs(playbookQ3.gapPct).toFixed(1)}% por encima`}
+                {playbookQ3.gapPct >= 0 ? `${playbookQ3.gapPct.toFixed(1)}% vs mejor` : `+${Math.abs(playbookQ3.gapPct).toFixed(1)}% vs mejor`}
               </p>
             </div>
             <div className="rounded-lg p-3 border border-cyan-500/40" style={{ background: "var(--bg-input)" }}>
               <p className="text-[10px] t-muted uppercase tracking-wider mb-1">🎯 Meta Julio</p>
               <p className="text-lg font-bold text-cyan-400">{fmt(playbookQ3.metaJulio.mov)}</p>
-              <p className="text-[11px] t-secondary">movilizadas · {fmt(playbookQ3.metaJulio.ing)} ing</p>
+              <p className="text-[11px] t-secondary">mov · {fmt(playbookQ3.metaJulio.ing)} ing</p>
             </div>
+            <div className="rounded-lg p-3 border border-purple-500/40" style={{ background: "var(--bg-input)" }}>
+              <p className="text-[10px] t-muted uppercase tracking-wider mb-1">📊 Tasa esperada</p>
+              <p className="text-lg font-bold text-purple-300">{(playbookQ3.tasaEsperada * 100).toFixed(0)}%</p>
+              <p className="text-[11px] t-secondary">
+                rango {(playbookQ3.tasaMin * 100).toFixed(0)}–{(playbookQ3.tasaMax * 100).toFixed(0)}%
+              </p>
+              <p className="text-[10px] mt-0.5" style={{ color: playbookQ3.dentroDelRango ? "#10b981" : "#fbbf24" }}>
+                Junio: {(playbookQ3.tasaJunio * 100).toFixed(1)}% {playbookQ3.dentroDelRango ? "✓" : "⚠"}
+              </p>
+            </div>
+          </div>
+
+          {/* Nota: cuántas ingresadas se necesitan para llegar a la meta con la tasa esperada */}
+          <div className="rounded-lg p-2 mb-3 border border-cyan-500/20 text-[11px] t-secondary" style={{ background: "rgba(6,182,212,0.05)" }}>
+            💡 <strong className="t-primary">Para llegar a {fmt(playbookQ3.metaJulio.mov)} movilizadas</strong> a la tasa histórica del {(playbookQ3.tasaEsperada * 100).toFixed(0)}%, necesitás <strong className="text-cyan-300">{fmt(playbookQ3.ingNecesariasParaMeta)} ingresadas</strong> en Julio.
+            {playbookQ3.tasaJunio > 0 && playbookQ3.tasaJunio < playbookQ3.tasaMin && (
+              <span className="block mt-1 text-amber-300">
+                ⚠ Junio cerró en {(playbookQ3.tasaJunio * 100).toFixed(1)}% (debajo del {(playbookQ3.tasaMin * 100).toFixed(0)}% esperado). Si julio replica esa tasa, necesitás <strong>{fmt(Math.round(playbookQ3.metaJulio.mov / playbookQ3.tasaJunio))} ingresadas</strong> — es {fmt(Math.round(playbookQ3.metaJulio.mov / playbookQ3.tasaJunio) - playbookQ3.ingNecesariasParaMeta)} más. Priorizar recuperar la tasa antes de solo empujar volumen.
+              </span>
+            )}
           </div>
 
           {/* Acciones rápidas — retorno inmediato */}
