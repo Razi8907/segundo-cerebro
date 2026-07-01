@@ -153,7 +153,7 @@ export default function ParaguayDashboard() {
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
-  const isPlanning = isAbril || isMayo || isJunio;
+  const isPlanning = isAbril || isMayo || isJunio || isJulio;
   const [comercialSub, setComercialSub] = useState<ComercialSub>("general");
   const [estrategiaSub, setEstrategiaSub] = useState<EstrategiaSub>("segmentos");
 

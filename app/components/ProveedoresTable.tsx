@@ -16,9 +16,12 @@ interface Proveedor {
 }
 
 function getData(p: Proveedor, mes: MesFilter) {
-  if (mes === "q1" || mes === "q2" || mes === "abril" || mes === "mayo" || mes === "junio") return { ing: p.total.ing, mov: p.total.mov, ent: p.total.ent, dev: p.total.dev };
-  const d = p[mes as "enero" | "febrero" | "marzo"];
-  return { ing: d.ing || 0, mov: d.mov || 0, ent: d.ent || 0, dev: d.dev || 0 };
+  const Q1_MESES = new Set(["enero", "febrero", "marzo"]);
+  if (Q1_MESES.has(mes as string)) {
+    const d = p[mes as "enero" | "febrero" | "marzo"];
+    return { ing: d?.ing || 0, mov: d?.mov || 0, ent: d?.ent || 0, dev: d?.dev || 0 };
+  }
+  return { ing: p.total.ing, mov: p.total.mov, ent: p.total.ent, dev: p.total.dev };
 }
 
 export default function ProveedoresTable({ proveedores, mesFilter }: { proveedores: Proveedor[]; mesFilter: MesFilter }) {

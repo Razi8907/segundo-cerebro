@@ -97,7 +97,7 @@ export default function OpsBreakdown({
   const [rangeFrom, setRangeFrom] = useState<number>(1);
   const [rangeTo, setRangeTo] = useState<number>(7);
 
-  const prevMes: Mes | null = mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
+  const prevMes: Mes | null = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
   const dataKey = category === "dropshipper" ? "by_dropshipper" : "by_proveedor";
   const catLabel = category === "dropshipper" ? "Dropshippers" : "Proveedores";
   const catSing = category === "dropshipper" ? "Dropshipper" : "Proveedor";

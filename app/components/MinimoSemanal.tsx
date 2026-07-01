@@ -84,7 +84,7 @@ function aggregateRange(
 }
 
 export default function MinimoSemanal({ country, mes }: { country: "ar" | "py"; mes: Mes }) {
-  const mesAnterior: Mes | null = mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
+  const mesAnterior: Mes | null = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
 
   const [opsTarget, setOpsTarget] = useState<ByDS[]>([]);
   const [opsBase, setOpsBase] = useState<ByDS[]>([]);
@@ -101,7 +101,7 @@ export default function MinimoSemanal({ country, mes }: { country: "ar" | "py"; 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const meses: Mes[] = ["abril", "mayo", "junio"];
+      const meses: Mes[] = ["abril", "mayo", "junio", "julio"];
       const results = await Promise.all(
         meses.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}`).then(r => r.json()).catch(() => null))
       );

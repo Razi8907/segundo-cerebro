@@ -322,11 +322,14 @@ export default function EstrategiaUsuarios({ country, mesFilter }: { country: "a
     const segs = data.segments_config;
     return data.usuarios.map((u) => {
       let mov = 0, ing = 0, movLife = 0;
-      for (const m in u.por_mes) {
-        movLife += u.por_mes[m].mov;
+      const porMes = u.por_mes || {};
+      for (const m in porMes) {
+        const md = porMes[m];
+        if (!md) continue;
+        movLife += md.mov || 0;
         if (windowMeses.includes(m)) {
-          mov += u.por_mes[m].mov;
-          ing += u.por_mes[m].ing;
+          mov += md.mov || 0;
+          ing += md.ing || 0;
         }
       }
       const c = classifyUser(mov, segs);

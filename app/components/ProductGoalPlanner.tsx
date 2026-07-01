@@ -126,12 +126,12 @@ export default function ProductGoalPlanner({
 
     const prepared = baseProveedores
       .map((p) => {
-        const eneMov = p.enero.mov || 0;
-        const febMov = p.febrero.mov || 0;
-        const marMov = p.marzo.mov || 0;
-        const eneIng = p.enero.ing || 0;
-        const febIng = p.febrero.ing || 0;
-        const marIng = p.marzo.ing || 0;
+        const eneMov = p.enero?.mov || 0;
+        const febMov = p.febrero?.mov || 0;
+        const marMov = p.marzo?.mov || 0;
+        const eneIng = p.enero?.ing || 0;
+        const febIng = p.febrero?.ing || 0;
+        const marIng = p.marzo?.ing || 0;
 
         // Datos de Abril y Mayo (si isMayo)
         const k = normalizeName(p.proveedor);
@@ -151,8 +151,8 @@ export default function ProductGoalPlanner({
           ? (abrIng > 0 ? abrIng : (may?.ing ?? marIng))
           : marIng;
 
-        const q1Mov = p.total.mov;
-        const q1Ing = p.total.ing;
+        const q1Mov = p.total?.mov || 0;
+        const q1Ing = p.total?.ing || 0;
         const avgMov = q1Mov / 3;
         const avgIng = q1Ing / 3;
 
@@ -177,10 +177,10 @@ export default function ProductGoalPlanner({
           : (q1Ing > 0 ? q1Mov / q1Ing : 0);
         const devRate = isMayo
           ? (abrMov > 0 ? abrDev / abrMov : 0)
-          : (q1Mov > 0 ? p.total.dev / q1Mov : 0);
+          : (q1Mov > 0 ? (p.total?.dev || 0) / q1Mov : 0);
         const entRate = isMayo
           ? (abrMov > 0 ? abrEnt / abrMov : 0)
-          : (q1Mov > 0 ? p.total.ent / q1Mov : 0);
+          : (q1Mov > 0 ? (p.total?.ent || 0) / q1Mov : 0);
 
         // Proyección realista: base + crecimiento orgánico cap +30%
         const realisticGrowth = Math.min(Math.max(trend * 0.4, 0), 0.30);

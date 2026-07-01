@@ -12,8 +12,11 @@ interface Seller {
 }
 
 function getSellerData(s: Seller, mes: MesFilter) {
-  if (mes === "q1" || mes === "q2" || mes === "abril" || mes === "mayo" || mes === "junio") return s.total;
-  return s[mes as "enero" | "febrero" | "marzo"];
+  const Q1_MESES = new Set(["enero", "febrero", "marzo"]);
+  if (Q1_MESES.has(mes as string)) {
+    return s[mes as "enero" | "febrero" | "marzo"] ?? s.total;
+  }
+  return s.total;
 }
 
 export default function SellersTable({ sellers, mesFilter }: { sellers: Seller[]; mesFilter: MesFilter }) {

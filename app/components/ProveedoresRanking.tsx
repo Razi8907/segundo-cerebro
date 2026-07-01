@@ -26,11 +26,12 @@ interface ProveedorData {
 }
 
 function getMesData(p: ProveedorData, mes: MesFilter) {
-  if (mes === "q1" || mes === "q2" || mes === "abril" || mes === "mayo" || mes === "junio") {
-    return { mov: p.total.mov, ent: p.total.ent, dev: p.total.dev, ing: p.total.ing };
+  const Q1_MESES = new Set(["enero", "febrero", "marzo"]);
+  if (Q1_MESES.has(mes as string)) {
+    const d = p[mes as "enero" | "febrero" | "marzo"];
+    return { mov: d?.mov || 0, ent: d?.ent || 0, dev: d?.dev || 0, ing: d?.ing || 0 };
   }
-  const d = p[mes as "enero" | "febrero" | "marzo"];
-  return { mov: d.mov || 0, ent: d.ent || 0, dev: d.dev || 0, ing: d.ing || 0 };
+  return { mov: p.total.mov, ent: p.total.ent, dev: p.total.dev, ing: p.total.ing };
 }
 
 export default function ProveedoresRanking({

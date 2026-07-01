@@ -175,13 +175,13 @@ export default function StrategicSimulator({
     // En Mayo: Abril si tiene > 0, sino Mayo actual, sino Marzo Q1
     // En Abril: Marzo Q1
     const refMonthlyMov = (p: ProveedorData): number => {
-      if (!isMayo) return p.marzo.mov || 0;
+      if (!isMayo) return p.marzo?.mov || 0;
       const k = normalizeName(p.proveedor);
       const abrM = abrilByProv.get(k)?.mov || 0;
       if (abrM > 0) return abrM;
       const mayM = mayoByProv.get(k)?.mov || 0;
       if (mayM > 0) return mayM;
-      return p.marzo.mov || 0;
+      return p.marzo?.mov || 0;
     };
 
     const activeProvs = workingProveedores.filter((p) => refMonthlyMov(p) > 0);
@@ -199,18 +199,19 @@ export default function StrategicSimulator({
         const abrilEntry = isMayo ? abrilByProv.get(k) : null;
         const mayoEntry = isMayo ? mayoByProv.get(k) : null;
         const marMov = refMonthlyMov(p);
-        const eneMov = p.enero.mov || 0;
-        const avgMov = p.total.mov / 3;
+        const eneMov = p.enero?.mov || 0;
+        const avgMov = (p.total?.mov || 0) / 3;
         // Tendencia: en Mayo compara Abril vs Marzo (si hay data de ambos),
         // sino crecimiento Mayo vs Q1 (si solo apareció ahora).
         // En Abril: Marzo vs Enero.
         let trend = 0;
+        const pMarMov = p.marzo?.mov;
         if (isMayo) {
-          if (abrilEntry && p.marzo.mov && p.marzo.mov > 0) {
-            trend = (abrilEntry.mov - p.marzo.mov) / p.marzo.mov;
-          } else if (mayoEntry && p.marzo.mov && p.marzo.mov > 0) {
-            trend = (mayoEntry.mov - p.marzo.mov) / p.marzo.mov;
-          } else if (mayoEntry && !p.marzo.mov) {
+          if (abrilEntry && pMarMov && pMarMov > 0) {
+            trend = (abrilEntry.mov - pMarMov) / pMarMov;
+          } else if (mayoEntry && pMarMov && pMarMov > 0) {
+            trend = (mayoEntry.mov - pMarMov) / pMarMov;
+          } else if (mayoEntry && !pMarMov) {
             // Provider nuevo: tendencia neutral pero positiva por ser nuevo activo
             trend = 0.2;
           }
@@ -221,12 +222,15 @@ export default function StrategicSimulator({
         const refEntry = isMayo
           ? (abrilEntry && abrilEntry.mov > 0 ? abrilEntry : mayoEntry && mayoEntry.mov > 0 ? mayoEntry : null)
           : null;
+        const totalMov = p.total?.mov || 0;
+        const totalDev = p.total?.dev || 0;
+        const totalEnt = p.total?.ent || 0;
         const pctDev = refEntry && refEntry.mov > 0
           ? refEntry.dev / refEntry.mov
-          : (p.total.mov > 0 ? p.total.dev / p.total.mov : 0);
+          : (totalMov > 0 ? totalDev / totalMov : 0);
         const pctEnt = refEntry && refEntry.mov > 0
           ? refEntry.ent / refEntry.mov
-          : (p.total.mov > 0 ? p.total.ent / p.total.mov : 0);
+          : (totalMov > 0 ? totalEnt / totalMov : 0);
 
         // Score: volume (50%, ahora basado en marMov real) + trend (25%) + low dev (15%) + high delivery (10%)
         const volumeScore = Math.min(marMov / volumeScale, 1) * 50;
