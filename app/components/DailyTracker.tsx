@@ -205,15 +205,15 @@ export default function DailyTracker({
     return () => { cancelled = true; };
   }, [country, ACTIVE_MES_KEY]);
 
-  // En meses de planificación (Mayo/Junio) traer la data real del mes
+  // En meses de planificación (Mayo/Junio/Julio) traer la data real del mes
   // anterior desde daily_tracking para que las referencias y el patrón por
   // día de semana usen los días reales en vez del fallback estático.
   useEffect(() => {
-    if (!isMayo && !isJunio) {
+    if (!isMayo && !isJunio && !isJulio) {
       setCompMonthLive(null);
       return;
     }
-    const compMes = isJunio ? "mayo" : "abril";
+    const compMes = isJulio ? "junio" : isJunio ? "mayo" : "abril";
     let cancelled = false;
     fetch(`/api/data/daily-tracking?country=${country}&mes=${compMes}`, { credentials: "include" })
       .then((r) => r.json())
@@ -224,10 +224,10 @@ export default function DailyTracker({
       })
       .catch(() => { if (!cancelled) setCompMonthLive([]); });
     return () => { cancelled = true; };
-  }, [isMayo, isJunio, country]);
+  }, [isMayo, isJunio, isJulio, country]);
 
-  // Data efectiva para la comparación (Marzo en Abril, Abril en Mayo, Mayo en Junio)
-  const effectiveCompData: DailyData[] = (isMayo || isJunio) && compMonthLive && compMonthLive.length > 0
+  // Data efectiva para la comparación (Marzo en Abril, Abril en Mayo, Mayo en Junio, Junio en Julio)
+  const effectiveCompData: DailyData[] = (isMayo || isJunio || isJulio) && compMonthLive && compMonthLive.length > 0
     ? compMonthLive
     : marzoData;
 
@@ -314,7 +314,7 @@ export default function DailyTracker({
     const diasRestantes = TOTAL_DAYS - diasCargados;
     const promedioAbril = diasCargados > 0 ? abrilTotal / diasCargados : 0;
     const proyeccionFinal = diasCargados > 0 ? Math.round(promedioAbril * TOTAL_DAYS) : 0;
-    const pctMeta = diasCargados > 0 ? (proyeccionFinal / META_TOTAL) * 100 : 0;
+    const pctMeta = diasCargados > 0 && META_TOTAL > 0 ? (proyeccionFinal / META_TOTAL) * 100 : 0;
     const necesarioPorDiaRestante = diasRestantes > 0 ? Math.round((META_TOTAL - abrilTotal) / diasRestantes) : 0;
 
     const coloredAbril = abrilData.map((d) => {
