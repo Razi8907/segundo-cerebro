@@ -19,7 +19,43 @@
       "devoluciones": 2629
     },
     "total_proveedores": 44,
-    "total_sellers": 881
+    "total_sellers": 881,
+    "abril": {
+      "ingresadas": 0,
+      "movilizadas": 0,
+      "entregados": 0,
+      "entregadas": 0,
+      "devoluciones": 0,
+      "devueltas": 0,
+      "en_proceso": 0
+    },
+    "mayo": {
+      "ingresadas": 0,
+      "movilizadas": 0,
+      "entregados": 0,
+      "entregadas": 0,
+      "devoluciones": 0,
+      "devueltas": 0,
+      "en_proceso": 0
+    },
+    "junio": {
+      "ingresadas": 0,
+      "movilizadas": 0,
+      "entregados": 0,
+      "entregadas": 0,
+      "devoluciones": 0,
+      "devueltas": 0,
+      "en_proceso": 0
+    },
+    "julio": {
+      "ingresadas": 0,
+      "movilizadas": 0,
+      "entregados": 0,
+      "entregadas": 0,
+      "devoluciones": 0,
+      "devueltas": 0,
+      "en_proceso": 0
+    }
   },
   "proveedores": [
     {
@@ -6089,7 +6125,10 @@
     "dias_mayo": 31,
     "promedio_diario_necesario_mayo": 424,
     "abril_total_ordenes": 1570,
-    "abril_promedio_diario": 392
+    "abril_promedio_diario": 392,
+    "meta_movilizadas_julio": 35242,
+    "meta_ingresadas_julio": 45180,
+    "dias_julio": 31
   },
   "dropshippers": [
     {

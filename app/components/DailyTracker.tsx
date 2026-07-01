@@ -186,6 +186,14 @@ export default function DailyTracker({
   // Para Mayo: data real de Abril (mes de comparación) traída de daily_tracking
   const [compMonthLive, setCompMonthLive] = useState<DailyData[] | null>(null);
 
+  // Reset inmediatamente cuando cambia el mes activo, para que no queden datos
+  // colgados del mes anterior mientras carga el nuevo (evita mostrar 30 días
+  // de junio bajo el label "Julio").
+  useEffect(() => {
+    setAbrilData([]);
+    setDbLoaded(false);
+  }, [ACTIVE_MES_KEY, country]);
+
   // Load from DB only (manual entries) — no auto-sync from operational data
   useEffect(() => {
     let cancelled = false;
@@ -196,7 +204,6 @@ export default function DailyTracker({
         if (Array.isArray(res.days) && res.days.length > 0) {
           setAbrilData(res.days);
         } else {
-          // Reset si cambiamos a un mes sin data
           setAbrilData([]);
         }
         setDbLoaded(true);
