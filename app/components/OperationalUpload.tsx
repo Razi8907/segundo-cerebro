@@ -547,7 +547,7 @@ function StockProjection({ country, aggData, mesLabel = "abril" }: { country: st
 }
 
 export default function OperationalUpload({ country, mes = "abril" }: { country: "py" | "ar"; mes?: "abril" | "mayo" | "junio" | "julio" }) {
-  const mesLabel = mes === "junio" ? "Junio" : mes === "mayo" ? "Mayo" : "Abril";
+  const mesLabel = mes === "julio" ? "Julio" : mes === "junio" ? "Junio" : mes === "mayo" ? "Mayo" : "Abril";
   const [rawRows, setRawRows] = useState<RawRow[]>([]);
   const [savedAgg, setSavedAgg] = useState<AggData | null>(null);
   const [uploadedAt, setUploadedAt] = useState<string | null>(null);
