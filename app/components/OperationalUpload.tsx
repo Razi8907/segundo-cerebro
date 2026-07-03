@@ -1173,7 +1173,7 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
         // Build DS daily data with trend detection
         const dsNames = Array.from(new Set(aggData.by_ds_daily.map((d) => d.ds)));
         // Filtrar fechas solo del mes activo (formato esperado DD-MM-YYYY o YYYY-MM-DD)
-        const mesNum = mes === "junio" ? "06" : mes === "mayo" ? "05" : "04";
+        const mesNum = mes === "julio" ? "07" : mes === "junio" ? "06" : mes === "mayo" ? "05" : "04";
         const belongsToMes = (f: string) => {
           // DD-MM-YYYY → middle is MM
           const m1 = /^\d{2}-(\d{2})-\d{4}$/.exec(f);
