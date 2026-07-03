@@ -12642,7 +12642,7 @@
   "productos_total": 1914,
   "meta_info": {
     "meta_movilizadas_abril": 30000,
-    "tasa_movilizacion": 0.78,
+    "tasa_movilizacion": 0.75,
     "meta_ingresadas_abril": 38462,
     "dias_abril": 30,
     "promedio_diario_necesario": 1282,
@@ -12655,7 +12655,7 @@
     "abril_total_ordenes": 4581,
     "abril_promedio_diario": 1145,
     "meta_movilizadas_julio": 30412,
-    "meta_ingresadas_julio": 45180,
+    "meta_ingresadas_julio": 40549,
     "dias_julio": 31
   },
   "dropshippers": [
