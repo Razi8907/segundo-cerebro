@@ -43,8 +43,6 @@ const LABEL: Record<string, string> = {
   junio: "Junio", julio: "Julio", agosto: "Agosto", septiembre: "Septiembre",
   octubre: "Octubre", noviembre: "Noviembre", diciembre: "Diciembre",
 };
-const ENTREGA_STATES = ["ENTREGADO"];
-const DEV_STATES = ["DEVOLUCION", "EN PROCESO DE DEVOLUCION", "RECHAZADO", "REINGRESO A BODEGA"];
 
 // ────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -53,9 +51,6 @@ const dayOf = (s: string): number => {
   const m = s?.match(/^(\d{1,2})-/);
   return m ? +m[1] : 0;
 };
-const sumStates = (estados: Record<string, number> | undefined, keys: string[]): number =>
-  keys.reduce((a, k) => a + (estados?.[k] || 0), 0);
-const cancel = (estados: Record<string, number> | undefined): number => estados?.["CANCELADO"] || 0;
 const fmt = (n: number): string => Math.round(n).toLocaleString("es-AR");
 const deltaPct = (curr: number, prev: number): number => {
   if (prev === 0) return curr > 0 ? 100 : 0;
@@ -63,18 +58,6 @@ const deltaPct = (curr: number, prev: number): number => {
 };
 
 interface Area { ing: number; mov: number; ent: number; dev: number }
-function areaTotals(snap: OpSnapshot | null, N: number): Area {
-  const r: Area = { ing: 0, mov: 0, ent: 0, dev: 0 };
-  for (const d of snap?.by_date || []) {
-    if (dayOf(d.fecha) > N || dayOf(d.fecha) < 1) continue;
-    const total = d.total || 0;
-    r.ing += total;
-    r.mov += total - cancel(d.estados);
-    r.ent += sumStates(d.estados, ENTREGA_STATES);
-    r.dev += sumStates(d.estados, DEV_STATES);
-  }
-  return r;
-}
 
 // Agrega órdenes por entidad (dropshipper/proveedor) hasta el día N
 function aggByDaily<T extends { fecha: string; ordenes: number }>(
@@ -95,6 +78,28 @@ function aggByDaily<T extends { fecha: string; ordenes: number }>(
 interface Reco { icon: string; text: string }
 interface DsReforzar { nombre: string; cur: number; prev: number; email?: string; celular?: string }
 
+// Desglose diario canónico (viene de /api/data/operations-daily → get_ops_daily)
+interface DailyRow {
+  dia: number;
+  ingresadas: number;
+  movilizadas: number;
+  entregadas: number;
+  devueltas: number;
+  canceladas: number;
+}
+function sumDaily(rows: DailyRow[], N: number): Area {
+  const r: Area = { ing: 0, mov: 0, ent: 0, dev: 0 };
+  for (const d of rows) {
+    const dia = Number(d.dia);
+    if (dia < 1 || dia > N) continue;
+    r.ing += Number(d.ingresadas) || 0;
+    r.mov += Number(d.movilizadas) || 0;
+    r.ent += Number(d.entregadas) || 0;
+    r.dev += Number(d.devueltas) || 0;
+  }
+  return r;
+}
+
 // ════════════════════════════════════════════════════════════════════════
 export default function AccionesUrgentes({
   country,
@@ -110,6 +115,8 @@ export default function AccionesUrgentes({
 
   const [opCurr, setOpCurr] = useState<OpSnapshot | null>(null);
   const [opPrev, setOpPrev] = useState<OpSnapshot | null>(null);
+  const [dailyCurr, setDailyCurr] = useState<DailyRow[]>([]);
+  const [dailyPrev, setDailyPrev] = useState<DailyRow[]>([]);
   const [comunidades, setComunidades] = useState<
     { comunidad: string; registrados: number; activos: number; pct_activacion: number }[] | null
   >(null);
@@ -118,13 +125,17 @@ export default function AccionesUrgentes({
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [cur, prev, us] = await Promise.all([
+      const [cur, prev, dCur, dPrev, us] = await Promise.all([
         fetch(`/api/data/operational?country=${country}&mes=${realMes}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/operational?country=${country}&mes=${mesPrev}`).then((r) => r.json()).catch(() => null),
+        fetch(`/api/data/operations-daily?country=${country}&mes=${realMes}`).then((r) => r.json()).catch(() => null),
+        fetch(`/api/data/operations-daily?country=${country}&mes=${mesPrev}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/usuarios?country=${country}`).then((r) => r.json()).catch(() => null),
       ]);
       setOpCurr(cur?.data || null);
       setOpPrev(prev?.data || null);
+      setDailyCurr(Array.isArray(dCur?.dias) ? dCur.dias : []);
+      setDailyPrev(Array.isArray(dPrev?.dias) ? dPrev.dias : []);
       if (us && !us.error) setComunidades(us.comunidades_globales || us?.data?.comunidades_globales || null);
     } finally {
       setLoading(false);
@@ -134,15 +145,16 @@ export default function AccionesUrgentes({
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
   const A = useMemo(() => {
-    if (!opCurr?.by_date?.length) return null;
+    if (!dailyCurr.length) return null;
 
-    // Rango de días a comparar (1 → N).
-    // N = último día con órdenes cargadas, PERO excluyendo el día en curso (hoy),
-    // porque hoy está incompleto. Así se compara solo hasta el último día completo
-    // (ej: hoy 12 → compara hasta el 11). Para meses pasados se usa toda la data.
-    const curDays = (opCurr.by_date || [])
-      .filter((d) => (d.total || 0) > 0)
-      .map((d) => dayOf(d.fecha))
+    // Rango de días a comparar (1 → N). Fuente: get_ops_daily (operations_data,
+    // última fecha_carga, regla oficial de Operaciones).
+    // N = último día con movilizadas/ingresadas, EXCLUYENDO el día en curso (hoy),
+    // porque hoy está incompleto. Ej: hoy 12 → compara hasta el 11.
+    // Para meses pasados se usa toda la data.
+    const curDays = dailyCurr
+      .filter((d) => (Number(d.movilizadas) || 0) > 0 || (Number(d.ingresadas) || 0) > 0)
+      .map((d) => Number(d.dia))
       .filter((d) => d >= 1);
     const lastDataDay = curDays.length ? Math.max(...curDays) : 0;
     const now = new Date();
@@ -151,9 +163,9 @@ export default function AccionesUrgentes({
     const diasMes = DIAS_MES[realMes] || 30;
     const diasRestantes = Math.max(0, diasMes - N);
 
-    // Totales por área en el mismo tramo 1→N
-    const cur = areaTotals(opCurr, N);
-    const prev = areaTotals(opPrev, N);
+    // Totales por área en el mismo tramo 1→N (movilizadas = regla oficial)
+    const cur = sumDaily(dailyCurr, N);
+    const prev = sumDaily(dailyPrev, N);
 
     // Meta (sobre movilizadas)
     const metaMov = Number(metaInfo?.[`meta_movilizadas_${realMes}`] ?? 0);
@@ -166,13 +178,13 @@ export default function AccionesUrgentes({
     // Serie diaria acumulada (movilizadas) para el gráfico
     const curByDay = new Map<number, number>();
     const prevByDay = new Map<number, number>();
-    for (const d of opCurr.by_date || []) {
-      const day = dayOf(d.fecha);
-      if (day >= 1) curByDay.set(day, (d.total || 0) - cancel(d.estados));
+    for (const d of dailyCurr) {
+      const day = Number(d.dia);
+      if (day >= 1) curByDay.set(day, Number(d.movilizadas) || 0);
     }
-    for (const d of opPrev?.by_date || []) {
-      const day = dayOf(d.fecha);
-      if (day >= 1) prevByDay.set(day, (d.total || 0) - cancel(d.estados));
+    for (const d of dailyPrev) {
+      const day = Number(d.dia);
+      if (day >= 1) prevByDay.set(day, Number(d.movilizadas) || 0);
     }
     let accCur = 0, accPrev = 0;
     const serie: { dia: number; actual: number; anterior: number; meta: number }[] = [];
@@ -196,7 +208,7 @@ export default function AccionesUrgentes({
     const tasaDevPrev = prev.mov > 0 ? (prev.dev / prev.mov) * 100 : 0;
 
     // ── Comercial: dropshippers y proveedores por el mismo tramo (daily) ──
-    const dsCur = aggByDaily(opCurr.by_ds_daily, N, (r) => r.ds);
+    const dsCur = aggByDaily(opCurr?.by_ds_daily, N, (r) => r.ds);
     const dsPrev = aggByDaily(opPrev?.by_ds_daily, N, (r) => r.ds);
     const dsNames = new Set<string>([...dsCur.keys(), ...dsPrev.keys()]);
     const dsActivosCur = [...dsCur.values()].filter((v) => v.orders > 0).length;
@@ -220,13 +232,13 @@ export default function AccionesUrgentes({
     reforzar.sort((a, b) => (b.prev - b.cur) - (a.prev - a.cur));
     enAlza.sort((a, b) => (b.cur - b.prev) - (a.cur - a.prev));
 
-    const provCur = aggByDaily(opCurr.by_prov_daily, N, (r) => r.proveedor);
+    const provCur = aggByDaily(opCurr?.by_prov_daily, N, (r) => r.proveedor);
     const provPrev = aggByDaily(opPrev?.by_prov_daily, N, (r) => r.proveedor);
     const provActivosCur = [...provCur.values()].filter((v) => v.orders > 0).length;
     const provActivosPrev = [...provPrev.values()].filter((v) => v.orders > 0).length;
 
     // Productos (agregado de mes, referencial)
-    const prodCur = (opCurr.by_producto || []).filter((p) => (p.ordenes || 0) > 0).length;
+    const prodCur = (opCurr?.by_producto || []).filter((p) => (p.ordenes || 0) > 0).length;
     const prodPrev = (opPrev?.by_producto || []).filter((p) => (p.ordenes || 0) > 0).length;
 
     // ── Lo que funcionó en el mes anterior (mismo tramo) para replicar ──
@@ -331,7 +343,7 @@ export default function AccionesUrgentes({
       refuerzos, mejoras, alertas, dMov,
       ritmoPrev, tasaEntCur, tasaEntPrev, topDsPrev, topProvPrev, topProdPrev,
     };
-  }, [opCurr, opPrev, metaInfo, realMes, mesPrev]);
+  }, [opCurr, opPrev, dailyCurr, dailyPrev, metaInfo, realMes, mesPrev]);
 
   // ── Estados de carga / sin data ──
   if (loading) {
