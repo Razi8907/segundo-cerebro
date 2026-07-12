@@ -34,6 +34,10 @@ const DIAS_MES: Record<string, number> = {
   enero: 31, febrero: 28, marzo: 31, abril: 30, mayo: 31, junio: 30,
   julio: 31, agosto: 31, septiembre: 30, octubre: 31, noviembre: 30, diciembre: 31,
 };
+const MES_NUM: Record<string, number> = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+  julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
 const LABEL: Record<string, string> = {
   enero: "Enero", febrero: "Febrero", marzo: "Marzo", abril: "Abril", mayo: "Mayo",
   junio: "Junio", julio: "Julio", agosto: "Agosto", septiembre: "Septiembre",
@@ -132,14 +136,18 @@ export default function AccionesUrgentes({
   const A = useMemo(() => {
     if (!opCurr?.by_date?.length) return null;
 
-    // Rango de días con data en el mes actual (1 → N).
-    // N = último día que realmente tiene órdenes cargadas (no la fecha de hoy),
-    // así se compara solo hasta donde llega la data cargada.
+    // Rango de días a comparar (1 → N).
+    // N = último día con órdenes cargadas, PERO excluyendo el día en curso (hoy),
+    // porque hoy está incompleto. Así se compara solo hasta el último día completo
+    // (ej: hoy 12 → compara hasta el 11). Para meses pasados se usa toda la data.
     const curDays = (opCurr.by_date || [])
       .filter((d) => (d.total || 0) > 0)
       .map((d) => dayOf(d.fecha))
       .filter((d) => d >= 1);
-    const N = curDays.length ? Math.max(...curDays) : 0;
+    const lastDataDay = curDays.length ? Math.max(...curDays) : 0;
+    const now = new Date();
+    const esMesEnCurso = now.getMonth() + 1 === MES_NUM[realMes];
+    const N = esMesEnCurso ? Math.max(0, Math.min(lastDataDay, now.getDate() - 1)) : lastDataDay;
     const diasMes = DIAS_MES[realMes] || 30;
     const diasRestantes = Math.max(0, diasMes - N);
 
