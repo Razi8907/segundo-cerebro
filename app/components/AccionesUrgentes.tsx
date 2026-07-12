@@ -216,6 +216,26 @@ export default function AccionesUrgentes({
     const prodCur = (opCurr.by_producto || []).filter((p) => (p.ordenes || 0) > 0).length;
     const prodPrev = (opPrev?.by_producto || []).filter((p) => (p.ordenes || 0) > 0).length;
 
+    // ── Lo que funcionó en el mes anterior (mismo tramo) para replicar ──
+    const ritmoPrev = N > 0 ? prev.mov / N : 0;
+    const tasaEntCur = cur.mov > 0 ? (cur.ent / cur.mov) * 100 : 0;
+    const tasaEntPrev = prev.mov > 0 ? (prev.ent / prev.mov) * 100 : 0;
+    const topDsPrev: DsReforzar[] = [...dsPrev.entries()]
+      .map(([nombre, v]) => ({ nombre, prev: v.orders, cur: dsCur.get(nombre)?.orders || 0, email: v.row?.dsEmail, celular: v.row?.dsCelular }))
+      .filter((d) => d.prev > 0)
+      .sort((a, b) => b.prev - a.prev)
+      .slice(0, 6);
+    const topProvPrev = [...provPrev.entries()]
+      .map(([nombre, v]) => ({ nombre, prev: v.orders, cur: provCur.get(nombre)?.orders || 0 }))
+      .filter((d) => d.prev > 0)
+      .sort((a, b) => b.prev - a.prev)
+      .slice(0, 5);
+    const topProdPrev = (opPrev?.by_producto || [])
+      .filter((p) => (p.ordenes || 0) > 0)
+      .sort((a, b) => (b.ordenes || 0) - (a.ordenes || 0))
+      .slice(0, 5)
+      .map((p) => ({ nombre: p.nombre, ordenes: p.ordenes || 0, proveedor: p.proveedor }));
+
     // ── Motor de recomendaciones ──
     const refuerzos: Reco[] = [];
     const mejoras: Reco[] = [];
@@ -238,6 +258,34 @@ export default function AccionesUrgentes({
           text: `Al ritmo actual (${fmt(ritmoActual)}/día) proyectás ${fmt(proyeccion)} movilizadas, por debajo de la meta de ${fmt(metaMov)}. Necesitás ${fmt(ritmoNecesario)}/día en los ${diasRestantes} días que quedan${ritmoActual > 0 ? ` (${deltaPct(ritmoNecesario, ritmoActual) > 0 ? "+" : ""}${deltaPct(ritmoNecesario, ritmoActual)}% sobre el ritmo de hoy)` : ""}. Hay que empujar volumen ya.`,
         });
       }
+    }
+
+    // Replicar lo que funcionó en el mes anterior (mismo tramo)
+    if (ritmoPrev > 0) {
+      refuerzos.push({
+        icon: "⏱️",
+        text: ritmoActual >= ritmoPrev
+          ? `En ${LABEL[mesPrev]} el tramo iba a ${fmt(ritmoPrev)} movilizadas/día y hoy vas a ${fmt(ritmoActual)}/día — ya lo estás igualando o superando. Sostené ese trabajo.`
+          : `En ${LABEL[mesPrev]} el tramo iba a ${fmt(ritmoPrev)} movilizadas/día; hoy vas a ${fmt(ritmoActual)}/día. Replicá lo que hacían en ${LABEL[mesPrev]} para volver a ese ritmo.`,
+      });
+    }
+    if (topDsPrev.length > 0) {
+      refuerzos.push({
+        icon: "🏅",
+        text: `En ${LABEL[mesPrev]} el tramo lo empujaron ${topDsPrev.slice(0, 3).map((d) => d.nombre).join(", ")}. Replicá el acompañamiento que funcionó con ellos (detalle abajo).`,
+      });
+    }
+    if (topProdPrev.length > 0) {
+      refuerzos.push({
+        icon: "🧴",
+        text: `Productos ganadores de ${LABEL[mesPrev]}: ${topProdPrev.slice(0, 3).map((p) => p.nombre).join(", ")}. Reforzá stock y pauta de estos en ${LABEL[realMes]}.`,
+      });
+    }
+    if (tasaEntPrev > 0 && tasaEntPrev > tasaEntCur + 2) {
+      refuerzos.push({
+        icon: "✅",
+        text: `En ${LABEL[mesPrev]} entregaban al ${tasaEntPrev.toFixed(1)}% y ahora vas al ${tasaEntCur.toFixed(1)}%. Volvé a la logística/gestión que daba esa entrega.`,
+      });
     }
 
     // Comparativa vs mes anterior
@@ -271,6 +319,7 @@ export default function AccionesUrgentes({
       dsActivosCur, dsActivosPrev, provActivosCur, provActivosPrev, prodCur, prodPrev,
       reforzar: reforzar.slice(0, 8), enAlza: enAlza.slice(0, 5),
       refuerzos, mejoras, alertas, dMov,
+      ritmoPrev, tasaEntCur, tasaEntPrev, topDsPrev, topProvPrev, topProdPrev,
     };
   }, [opCurr, opPrev, metaInfo, realMes, mesPrev]);
 
@@ -347,6 +396,88 @@ export default function AccionesUrgentes({
         <RecoColumn title="Mejorar para llegar a la meta" color="#f97316" recos={A.mejoras} empty="Vas bien, nada crítico por mejorar." />
         <RecoColumn title="Alertas" color="#ef4444" recos={A.alertas} empty="Sin alertas activas 🎉" />
       </div>
+
+      {/* Lo que funcionó en el mes anterior — replicar */}
+      {(A.topDsPrev.length > 0 || A.topProdPrev.length > 0 || A.topProvPrev.length > 0) && (
+        <div className="glass-card p-5" style={{ borderTop: "3px solid #10b981" }}>
+          <h3 className="text-sm font-bold" style={{ color: "#10b981" }}>
+            ✅ Lo que funcionó en {LABEL[mesPrev]} — replicá en {LABEL[realMes]}
+          </h3>
+          <p className="text-xs t-secondary mt-1">
+            Lo que movió el mismo tramo de días en {LABEL[mesPrev]}. Copiá este trabajo para fortalecer {LABEL[realMes]}.
+          </p>
+
+          {/* Benchmarks del tramo */}
+          <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="rounded-lg p-3" style={{ background: "var(--bg-kpi)" }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">Ritmo del tramo (mov/día)</div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-xl font-bold t-primary">{fmt(A.ritmoActual)}</span>
+                <span className="text-xs t-secondary">{LABEL[realMes]}</span>
+                <span className="text-xs t-muted">· {LABEL[mesPrev]} {fmt(A.ritmoPrev)}</span>
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: A.ritmoActual >= A.ritmoPrev ? "#10b981" : "#f97316" }}>
+                {A.ritmoActual >= A.ritmoPrev ? "Igualando o superando 👍" : `Replicá para recuperar ${fmt(A.ritmoPrev - A.ritmoActual)}/día`}
+              </div>
+            </div>
+            <div className="rounded-lg p-3" style={{ background: "var(--bg-kpi)" }}>
+              <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">Tasa de entrega del tramo</div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-xl font-bold t-primary">{A.tasaEntCur.toFixed(1)}%</span>
+                <span className="text-xs t-secondary">{LABEL[realMes]}</span>
+                <span className="text-xs t-muted">· {LABEL[mesPrev]} {A.tasaEntPrev.toFixed(1)}%</span>
+              </div>
+              <div className="text-xs mt-0.5" style={{ color: A.tasaEntCur >= A.tasaEntPrev ? "#10b981" : "#f97316" }}>
+                {A.tasaEntCur >= A.tasaEntPrev ? "Manteniendo la entrega 👍" : "Volvé a la gestión que daba esa entrega"}
+              </div>
+            </div>
+          </div>
+
+          {/* Dropshippers que lideraron el tramo en el mes anterior */}
+          {A.topDsPrev.length > 0 && (
+            <div className="mt-5">
+              <div className="text-xs font-semibold t-primary mb-2">Dropshippers que empujaron el tramo en {LABEL[mesPrev]}</div>
+              <DsTable rows={A.topDsPrev} mesPrev={LABEL[mesPrev]} mesCur={LABEL[realMes]} />
+            </div>
+          )}
+
+          {/* Top productos y proveedores del mes anterior */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mt-5">
+            {A.topProdPrev.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold t-primary mb-2">Productos ganadores de {LABEL[mesPrev]} <span className="t-muted font-normal">(mes, referencial)</span></div>
+                <ul className="space-y-1.5">
+                  {A.topProdPrev.map((p, i) => (
+                    <li key={i} className="flex items-center justify-between text-sm">
+                      <span className="t-secondary truncate pr-2">
+                        <span className="t-muted">#{i + 1}</span> {p.nombre}
+                        {p.proveedor ? <span className="t-muted text-xs"> · {p.proveedor}</span> : null}
+                      </span>
+                      <span className="font-semibold t-primary shrink-0">{fmt(p.ordenes)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {A.topProvPrev.length > 0 && (
+              <div>
+                <div className="text-xs font-semibold t-primary mb-2">Proveedores clave del tramo en {LABEL[mesPrev]}</div>
+                <ul className="space-y-1.5">
+                  {A.topProvPrev.map((p, i) => (
+                    <li key={i} className="flex items-center justify-between text-sm">
+                      <span className="t-secondary truncate pr-2"><span className="t-muted">#{i + 1}</span> {p.nombre}</span>
+                      <span className="shrink-0 t-secondary">
+                        <b className="t-primary">{fmt(p.prev)}</b>
+                        <span className="text-xs t-muted"> → {fmt(p.cur)} en {LABEL[realMes]}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
