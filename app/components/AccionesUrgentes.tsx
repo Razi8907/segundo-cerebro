@@ -132,8 +132,13 @@ export default function AccionesUrgentes({
   const A = useMemo(() => {
     if (!opCurr?.by_date?.length) return null;
 
-    // Rango de días con data en el mes actual (1 → N)
-    const curDays = (opCurr.by_date || []).map((d) => dayOf(d.fecha)).filter((d) => d >= 1);
+    // Rango de días con data en el mes actual (1 → N).
+    // N = último día que realmente tiene órdenes cargadas (no la fecha de hoy),
+    // así se compara solo hasta donde llega la data cargada.
+    const curDays = (opCurr.by_date || [])
+      .filter((d) => (d.total || 0) > 0)
+      .map((d) => dayOf(d.fecha))
+      .filter((d) => d >= 1);
     const N = curDays.length ? Math.max(...curDays) : 0;
     const diasMes = DIAS_MES[realMes] || 30;
     const diasRestantes = Math.max(0, diasMes - N);
@@ -307,9 +312,6 @@ export default function AccionesUrgentes({
 
     // Proveedores
     if (provActivosCur < provActivosPrev) alertas.push({ icon: "🏭", text: `Proveedores activos: ${provActivosCur} vs ${provActivosPrev} el mes pasado. Sumá proveedores para no depender de pocos y ampliar catálogo.` });
-
-    // Productos
-    if (prodPrev > 0 && prodCur < prodPrev) mejoras.push({ icon: "🧴", text: `Productos con ventas: ${prodCur} vs ${prodPrev} (referencial). Testeá más productos para ampliar el volumen.` });
 
     if (reforzar.length > 0) alertas.push({ icon: "🤝", text: `${reforzar.length} dropshippers que movían fuerte cayeron este mes. Contactalos para acompañamiento cercano y recuperarlos (datos abajo).` });
 
@@ -519,7 +521,11 @@ export default function AccionesUrgentes({
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <ActivityCard label="Dropshippers activos" cur={A.dsActivosCur} prev={A.dsActivosPrev} mesPrev={LABEL[mesPrev]} />
         <ActivityCard label="Proveedores activos" cur={A.provActivosCur} prev={A.provActivosPrev} mesPrev={LABEL[mesPrev]} />
-        <ActivityCard label="Productos con ventas" cur={A.prodCur} prev={A.prodPrev} mesPrev={LABEL[mesPrev]} />
+        <div className="glass-card p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">Productos con ventas</div>
+          <div className="mt-1 text-2xl font-bold t-primary">{fmt(A.prodCur)}</div>
+          <div className="text-xs mt-1 t-secondary">en el tramo 1–{A.N} de {LABEL[realMes]}</div>
+        </div>
         <div className="glass-card p-4">
           <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">Activación usuarios</div>
           <div className="mt-1 text-2xl font-bold t-primary">{comunidades ? `${pctAct.toFixed(1)}%` : "—"}</div>
