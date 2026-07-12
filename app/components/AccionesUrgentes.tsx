@@ -320,7 +320,8 @@ export default function AccionesUrgentes({
     if (dEnt > 0) refuerzos.push({ icon: "✅", text: `Entregas +${dEnt}% vs ${LABEL[mesPrev]} (${fmt(cur.ent)} vs ${fmt(prev.ent)}). La logística viene mejor.` });
     else if (dEnt < -5) mejoras.push({ icon: "📦", text: `Entregas ${dEnt}% vs ${LABEL[mesPrev]}. Revisá la operación logística y transportadoras.` });
 
-    if (dIng < 0) mejoras.push({ icon: "🛒", text: `Ingresadas ${dIng}% vs ${LABEL[mesPrev]} (${fmt(cur.ing)} vs ${fmt(prev.ing)}). Entran menos pedidos — más pauta, más activación y más productos para generar demanda.` });
+    if (dIng > 0) refuerzos.push({ icon: "🛒", text: `Ingresadas +${dIng}% vs ${LABEL[mesPrev]} (${fmt(cur.ing)} vs ${fmt(prev.ing)}). Entran más pedidos — sostené la generación de demanda (pauta/activación).` });
+    else if (dIng < 0) mejoras.push({ icon: "🛒", text: `Ingresadas ${dIng}% vs ${LABEL[mesPrev]} (${fmt(cur.ing)} vs ${fmt(prev.ing)}). Entran menos pedidos — más pauta, más activación y más productos para generar demanda.` });
 
     // Devoluciones
     if (tasaDevCur >= 30) alertas.push({ icon: "↩️", text: `Devoluciones al ${tasaDevCur.toFixed(1)}% de movilizadas (vs ${tasaDevPrev.toFixed(1)}% en ${LABEL[mesPrev]}). Alto — identificá productos y dropshippers que más devuelven y frená lo que peor entrega.` });
@@ -372,8 +373,33 @@ export default function AccionesUrgentes({
         <h2 className="text-lg font-bold flex items-center gap-2 t-primary">🚨 Acciones Urgentes — Seguimiento diario</h2>
         <p className="text-sm mt-1 t-secondary">
           Comparando <b className="t-primary">días 1 al {A.N} de {LABEL[realMes]}</b> contra el mismo tramo de{" "}
-          <b className="t-primary">{LABEL[mesPrev]}</b>. Se actualiza cuando cargás la operación en General.
+          <b className="t-primary">{LABEL[mesPrev]}</b>. Ingresadas de Seguimiento Diario · movilizadas de Operaciones.
         </p>
+      </div>
+
+      {/* KPIs del mes: ingresadas + movilizadas (lo más importante, arriba) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <ActivityCard label={`Ingresadas (1–${A.N} ${LABEL[realMes]})`} cur={A.cur.ing} prev={A.prev.ing} mesPrev={LABEL[mesPrev]} />
+        <ActivityCard label={`Movilizadas (1–${A.N} ${LABEL[realMes]})`} cur={A.cur.mov} prev={A.prev.mov} mesPrev={LABEL[mesPrev]} />
+        <div className="glass-card p-4">
+          <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">% Movilización</div>
+          {(() => {
+            const tCur = A.cur.ing > 0 ? (A.cur.mov / A.cur.ing) * 100 : 0;
+            const tPrev = A.prev.ing > 0 ? (A.prev.mov / A.prev.ing) * 100 : 0;
+            const dd = Math.round((tCur - tPrev) * 10) / 10;
+            return (
+              <>
+                <div className="mt-1 flex items-baseline gap-2">
+                  <span className="text-2xl font-bold t-primary">{tCur.toFixed(1)}%</span>
+                  <span className="text-xs font-semibold" style={{ color: dd >= 0 ? "#10b981" : "#ef4444" }}>
+                    {dd > 0 ? "+" : ""}{dd} pp
+                  </span>
+                </div>
+                <div className="text-xs mt-1 t-secondary">vs {tPrev.toFixed(1)}% en {LABEL[mesPrev]} · mov / ing</div>
+              </>
+            );
+          })()}
+        </div>
       </div>
 
       {/* Veredicto meta */}
