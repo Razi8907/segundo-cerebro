@@ -882,7 +882,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     return result;
   }, [prevDedupedRows, fComercial, fTransportadora, fDropshipper, fProveedor]);
 
-  const prevMes: MesOps = mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
+  const prevMes: MesOps = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
 
   // Rango "espejo" para mes anterior: mismos días pero en el mes anterior
   // (ej. dateFrom=2026-05-01 → prevDateFrom=2026-04-01).
