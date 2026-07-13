@@ -233,7 +233,7 @@ export default function ParaguayDashboard() {
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         {isQ2 && sector !== "estrategia" && (
-          <Q2Resumen country="py" />
+          <Q2Resumen country="py" proveedores={proveedores} />
         )}
 
         {!isQ2 && sector === "comercial" && <>

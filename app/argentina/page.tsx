@@ -233,7 +233,7 @@ export default function ArgentinaDashboard() {
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         {/* Q2 ocupa la vista completa: resumen consolidado de Abr+May+Jun, salvo estrategia que tiene su propia vista Q2 */}
         {isQ2 && sector !== "estrategia" && (
-          <Q2Resumen country="ar" />
+          <Q2Resumen country="ar" proveedores={proveedores} />
         )}
 
         {!isQ2 && sector === "comercial" && <>

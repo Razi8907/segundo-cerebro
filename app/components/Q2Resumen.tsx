@@ -1,9 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
+import StrategicSimulator from "./StrategicSimulator";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Legend,
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Legend, LabelList,
 } from "recharts";
+
+// Formato corto para etiquetas sobre barras (8523 -> "8.5k")
+const fmtBarLabel = (v: ReactNode): string => {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return "";
+  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
+  return String(n);
+};
 
 type Mes = "abril" | "mayo" | "junio";
 const MESES: Mes[] = ["abril", "mayo", "junio"];
@@ -53,7 +62,15 @@ function devolucionesFromEstados(estados: Record<string, number>): number {
   return (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
 }
 
-export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
+type SSProps = ComponentProps<typeof StrategicSimulator>;
+
+export default function Q2Resumen({
+  country,
+  proveedores,
+}: {
+  country: "ar" | "py";
+  proveedores?: SSProps["proveedores"];
+}) {
   const [snaps, setSnaps] = useState<Record<Mes, OpSnapshot | null>>({ abril: null, mayo: null, junio: null });
   const [metaInfo, setMetaInfo] = useState<MetaInfo>({});
   const [resumen, setResumen] = useState<Record<string, ResumenMes>>({});
@@ -441,10 +458,18 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
               <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} />
               <Tooltip contentStyle={{ background: "rgba(22,33,62,0.95)", border: "1px solid rgba(6,182,212,0.2)", borderRadius: 8, fontSize: 11 }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
-              <Bar dataKey="ingresadas" fill="#0891b2" name="Ingresadas" />
-              <Bar dataKey="movilizadas" fill="#10b981" name="Movilizadas" />
-              <Bar dataKey="entregados" fill="#22c55e" name="Entregadas" />
-              <Bar dataKey="devoluciones" fill="#dc2626" name="Devoluciones" />
+              <Bar dataKey="ingresadas" fill="#0891b2" name="Ingresadas">
+                <LabelList dataKey="ingresadas" position="top" fontSize={9} fill="#67e8f9" formatter={fmtBarLabel} />
+              </Bar>
+              <Bar dataKey="movilizadas" fill="#10b981" name="Movilizadas">
+                <LabelList dataKey="movilizadas" position="top" fontSize={9} fill="#6ee7b7" formatter={fmtBarLabel} />
+              </Bar>
+              <Bar dataKey="entregados" fill="#22c55e" name="Entregadas">
+                <LabelList dataKey="entregados" position="top" fontSize={9} fill="#86efac" formatter={fmtBarLabel} />
+              </Bar>
+              <Bar dataKey="devoluciones" fill="#dc2626" name="Devoluciones">
+                <LabelList dataKey="devoluciones" position="top" fontSize={9} fill="#fca5a5" formatter={fmtBarLabel} />
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -606,6 +631,17 @@ export default function Q2Resumen({ country }: { country: "ar" | "py" }) {
             })}
           </div>
         </div>
+      )}
+
+      {/* Recomendación: Con qué proveedores trabajar (mismo tablero que en los meses, apuntando a Julio) */}
+      {proveedores && proveedores.length > 0 && (
+        <StrategicSimulator
+          proveedores={proveedores}
+          resumen={resumen as unknown as SSProps["resumen"]}
+          metaInfo={metaInfo as unknown as SSProps["metaInfo"]}
+          mesFilter="julio"
+          country={country}
+        />
       )}
     </div>
   );
