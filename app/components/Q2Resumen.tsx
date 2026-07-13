@@ -1,7 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from "react";
-import StrategicSimulator from "./StrategicSimulator";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, LineChart, Line, Legend, LabelList,
 } from "recharts";
@@ -12,6 +11,25 @@ const fmtBarLabel = (v: ReactNode): string => {
   if (!Number.isFinite(n)) return "";
   if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
   return String(n);
+};
+
+// Normaliza nombre de proveedor para cruzar snapshots con la metadata (whatsapp/sellers)
+const normProv = (s: string) => (s || "")
+  .toLowerCase()
+  .normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/\s*\(\d+\)\s*$/, "")
+  .replace(/[^a-z0-9]/g, "");
+
+// Metadata de proveedor (subset de lo que pasa la página): WhatsApp / sellers / id
+interface ProvMeta { proveedor: string; sellers?: number; whatsapp?: string | null; dropi_id?: number | null }
+
+// Categorías de recomendación (score → acción sugerida)
+type ProvCat = "estrella" | "potencial" | "mantener" | "revisar";
+const CAT: Record<ProvCat, { color: string; label: string; accion: string }> = {
+  estrella:  { color: "#10b981", label: "Estrella",  accion: "Escalar: más sellers y stock" },
+  potencial: { color: "#0891b2", label: "Potencial", accion: "Impulsar con seguimiento cercano" },
+  mantener:  { color: "#f59e0b", label: "Mantener",  accion: "Sostener y vigilar entrega" },
+  revisar:   { color: "#9ca3af", label: "Revisar",   accion: "Revisar entrega/devolución" },
 };
 
 type Mes = "abril" | "mayo" | "junio";
@@ -62,14 +80,12 @@ function devolucionesFromEstados(estados: Record<string, number>): number {
   return (estados["DEVOLUCION"] || 0) + (estados["EN PROCESO DE DEVOLUCION"] || 0);
 }
 
-type SSProps = ComponentProps<typeof StrategicSimulator>;
-
 export default function Q2Resumen({
   country,
   proveedores,
 }: {
   country: "ar" | "py";
-  proveedores?: SSProps["proveedores"];
+  proveedores?: ProvMeta[];
 }) {
   const [snaps, setSnaps] = useState<Record<Mes, OpSnapshot | null>>({ abril: null, mayo: null, junio: null });
   const [metaInfo, setMetaInfo] = useState<MetaInfo>({});
@@ -82,6 +98,7 @@ export default function Q2Resumen({
   const [opsSummary, setOpsSummary] = useState<Record<Mes, { ingresadas: number; movilizadas: number; entregadas: number; devueltas: number; en_proceso: number; canceladas: number } | null>>({ abril: null, mayo: null, junio: null });
   const [usuariosQ2, setUsuariosQ2] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showAllProv, setShowAllProv] = useState(false);
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -270,6 +287,50 @@ export default function Q2Resumen({
       .sort((a, b) => b.mov - a.mov)
       .slice(0, 10);
   }, [snaps]);
+
+  // Recomendación consolidada de proveedores para todo el Q2 (abril+mayo+junio)
+  const provRecom = useMemo(() => {
+    const PM: Record<Mes, "abr" | "may" | "jun"> = { abril: "abr", mayo: "may", junio: "jun" };
+    const map = new Map<string, { nombre: string; abr: number; may: number; jun: number; mov: number; ent: number; dev: number }>();
+    MESES.forEach((m) => {
+      const s = snaps[m];
+      if (!s?.by_proveedor) return;
+      for (const r of s.by_proveedor) {
+        const key = normProv(r.nombre);
+        const cur = map.get(key) || { nombre: r.nombre.replace(/\s*\(\d+\)\s*$/, "").trim() || r.nombre, abr: 0, may: 0, jun: 0, mov: 0, ent: 0, dev: 0 };
+        const e = r.estados || {};
+        const mv = movFromEstados(e);
+        cur[PM[m]] += mv;
+        cur.mov += mv;
+        cur.ent += entregadasFromEstados(e);
+        cur.dev += devolucionesFromEstados(e);
+        map.set(key, cur);
+      }
+    });
+    const meta = new Map<string, ProvMeta>();
+    for (const p of proveedores || []) meta.set(normProv(p.proveedor), p);
+    const maxMov = Array.from(map.values()).reduce((mx, v) => Math.max(mx, v.mov), 0) || 1;
+    return Array.from(map.entries())
+      .filter(([, v]) => v.mov > 0)
+      .map(([key, v]) => {
+        const pctEnt = v.mov > 0 ? (v.ent / v.mov) * 100 : 0;
+        const pctDev = v.mov > 0 ? (v.dev / v.mov) * 100 : 0;
+        const trend = v.abr > 0 ? ((v.jun - v.abr) / v.abr) * 100 : (v.jun > 0 ? 100 : 0);
+        const volumeScore = Math.min(v.mov / maxMov, 1) * 50;
+        const trendScore = (Math.min(Math.max(trend / 100, -1), 2) / 2) * 25;
+        const devScore = (1 - Math.min(pctDev / 100, 1)) * 15;
+        const entScore = Math.min(pctEnt / 100, 1) * 10;
+        const score = Math.round(volumeScore + trendScore + devScore + entScore);
+        const category: ProvCat = score >= 60 ? "estrella" : score >= 40 ? "potencial" : score >= 20 ? "mantener" : "revisar";
+        const md = meta.get(key);
+        return {
+          key, nombre: v.nombre, abr: v.abr, may: v.may, jun: v.jun, mov: v.mov,
+          pctEnt, pctDev, trend, score, category,
+          sellers: md?.sellers ?? null, whatsapp: md?.whatsapp ?? null, dropi_id: md?.dropi_id ?? null,
+        };
+      })
+      .sort((a, b) => b.mov - a.mov);
+  }, [snaps, proveedores]);
 
   const topProductos = useMemo(() => {
     const map = new Map<string, { ordenes: number; cantidad: number; proveedor: string }>();
@@ -633,15 +694,65 @@ export default function Q2Resumen({
         </div>
       )}
 
-      {/* Recomendación: Con qué proveedores trabajar (mismo tablero que en los meses, apuntando a Julio) */}
-      {proveedores && proveedores.length > 0 && (
-        <StrategicSimulator
-          proveedores={proveedores}
-          resumen={resumen as unknown as SSProps["resumen"]}
-          metaInfo={metaInfo as unknown as SSProps["metaInfo"]}
-          mesFilter="julio"
-          country={country}
-        />
+      {/* Recomendación: Con qué proveedores trabajar — consolidado Q2 (abril+mayo+junio) */}
+      {provRecom.length > 0 && (
+        <div className="rounded-xl p-4 border border-cyan-500/20 overflow-x-auto" style={{ background: "var(--bg-card)" }}>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold t-primary">🤝 Recomendación: Con qué proveedores trabajar — Q2 consolidado</h3>
+            <button onClick={() => setShowAllProv(!showAllProv)} className="text-xs text-orange-400 hover:text-orange-300">
+              {showAllProv ? "Ver menos" : `Ver todos (${provRecom.length})`}
+            </button>
+          </div>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-gray-700 text-[10px] t-muted">
+                <th className="text-left py-2 px-2">Cat.</th>
+                <th className="text-left py-2 px-2">Proveedor</th>
+                <th className="text-right py-2 px-2">Sellers</th>
+                <th className="text-right py-2 px-2">Abr</th>
+                <th className="text-right py-2 px-2">May</th>
+                <th className="text-right py-2 px-2">Jun</th>
+                <th className="text-right py-2 px-2 text-orange-300">Mov Q2</th>
+                <th className="text-right py-2 px-2">% Entrega</th>
+                <th className="text-right py-2 px-2">% Dev</th>
+                <th className="text-right py-2 px-2">Tend. jun/abr</th>
+                <th className="text-right py-2 px-2">Score</th>
+                <th className="text-left py-2 px-2">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(showAllProv ? provRecom : provRecom.slice(0, 15)).map((p) => {
+                const c = CAT[p.category];
+                return (
+                  <tr key={p.key} className="border-b border-gray-800/40 hover:bg-orange-500/5">
+                    <td className="py-2 px-2"><span className="inline-block w-2 h-2 rounded-full" style={{ background: c.color }} title={c.label} /></td>
+                    <td className="py-2 px-2 max-w-[200px]">
+                      {p.whatsapp ? (
+                        <a href={`https://wa.me/${p.whatsapp.replace(/[^0-9]/g, "")}`} target="_blank" rel="noopener noreferrer" className="text-green-500 font-medium block truncate hover:underline" title={`WhatsApp: ${p.whatsapp}`}>{p.nombre}</a>
+                      ) : (
+                        <span className="t-primary font-medium block truncate">{p.nombre}</span>
+                      )}
+                      {p.dropi_id ? <span className="text-[10px] t-muted">ID: {p.dropi_id}</span> : null}
+                    </td>
+                    <td className="text-right py-2 px-2 t-secondary">{p.sellers ?? "—"}</td>
+                    <td className="text-right py-2 px-2 t-secondary font-mono">{p.abr.toLocaleString("es-AR")}</td>
+                    <td className="text-right py-2 px-2 t-secondary font-mono">{p.may.toLocaleString("es-AR")}</td>
+                    <td className="text-right py-2 px-2 t-secondary font-mono">{p.jun.toLocaleString("es-AR")}</td>
+                    <td className="text-right py-2 px-2 font-mono font-bold text-orange-300">{p.mov.toLocaleString("es-AR")}</td>
+                    <td className="text-right py-2 px-2 t-secondary">{p.pctEnt.toFixed(0)}%</td>
+                    <td className="text-right py-2 px-2 t-secondary">{p.pctDev.toFixed(0)}%</td>
+                    <td className="text-right py-2 px-2 font-mono" style={{ color: p.trend >= 0 ? "#10b981" : "#ef4444" }}>{p.trend > 0 ? "+" : ""}{p.trend.toFixed(0)}%</td>
+                    <td className="text-right py-2 px-2 font-mono">{p.score}</td>
+                    <td className="py-2 px-2" style={{ color: c.color }}>{c.accion}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-[10px] t-muted mt-2">
+            Movilizadas consolidadas de abril+mayo+junio · % entrega/dev sobre movilizadas Q2 · tendencia junio vs abril.
+          </p>
+        </div>
       )}
     </div>
   );
