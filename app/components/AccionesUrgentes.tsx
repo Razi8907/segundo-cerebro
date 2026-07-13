@@ -175,6 +175,14 @@ export default function AccionesUrgentes({
     const ritmoNecesario = diasRestantes > 0 ? Math.ceil(restanteMeta / diasRestantes) : 0;
     const onTrack = metaMov > 0 && proyeccion >= metaMov;
 
+    // Meta (sobre ingresadas — dato diario, no madura como movilizadas)
+    const metaIng = Number(metaInfo?.[`meta_ingresadas_${realMes}`] ?? 0);
+    const ritmoActualIng = N > 0 ? cur.ing / N : 0;
+    const proyeccionIng = Math.round(ritmoActualIng * diasMes);
+    const restanteMetaIng = Math.max(0, metaIng - cur.ing);
+    const ritmoNecesarioIng = diasRestantes > 0 ? Math.ceil(restanteMetaIng / diasRestantes) : 0;
+    const onTrackIng = metaIng > 0 && proyeccionIng >= metaIng;
+
     // Serie diaria acumulada (movilizadas) para el gráfico
     const curByDay = new Map<number, number>();
     const prevByDay = new Map<number, number>();
@@ -220,12 +228,12 @@ export default function AccionesUrgentes({
       const c = dsCur.get(nombre)?.orders || 0;
       const p = dsPrev.get(nombre)?.orders || 0;
       const contact = dsCur.get(nombre)?.row || dsPrev.get(nombre)?.row;
-      // Reforzar: movían bien el mes pasado (≥5) y cayeron ≥40% (o se apagaron)
-      if (p >= 5 && c < p * 0.6) {
+      // Reforzar: movían el mes pasado (≥3) y cayeron ≥40% (o se apagaron)
+      if (p >= 3 && c < p * 0.6) {
         reforzar.push({ nombre, cur: c, prev: p, email: contact?.dsEmail, celular: contact?.dsCelular });
       }
       // En alza: crecieron vs el mes pasado (para acompañar y empujar)
-      if (c > p && c >= 5) {
+      if (c > p && c >= 3) {
         enAlza.push({ nombre, cur: c, prev: p, email: contact?.dsEmail, celular: contact?.dsCelular });
       }
     }
@@ -340,8 +348,9 @@ export default function AccionesUrgentes({
       N, diasMes, diasRestantes, cur, prev, metaMov, ritmoActual, proyeccion,
       ritmoNecesario, restanteMeta, onTrack, serie, barras, tasaDevCur, tasaDevPrev,
       dsActivosCur, dsActivosPrev, provActivosCur, provActivosPrev, prodCur, prodPrev,
-      reforzar: reforzar.slice(0, 8), enAlza: enAlza.slice(0, 5),
+      reforzar, enAlza,
       refuerzos, mejoras, alertas, dMov,
+      metaIng, ritmoActualIng, proyeccionIng, restanteMetaIng, ritmoNecesarioIng, onTrackIng,
       ritmoPrev, tasaEntCur, tasaEntPrev, topDsPrev, topProvPrev, topProdPrev,
     };
   }, [opCurr, opPrev, dailyCurr, dailyPrev, metaInfo, realMes, mesPrev]);
@@ -402,39 +411,23 @@ export default function AccionesUrgentes({
         </div>
       </div>
 
-      {/* Veredicto meta */}
-      {A.metaMov > 0 && (
-        <div
-          className="rounded-xl p-5 border"
-          style={{
-            background: A.onTrack ? "rgba(16,185,129,0.12)" : "rgba(249,115,22,0.12)",
-            borderColor: A.onTrack ? "rgba(16,185,129,0.4)" : "rgba(249,115,22,0.4)",
-          }}
-        >
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">
-                {A.onTrack ? "En ritmo para la meta" : "Atrasado vs la meta"}
-              </div>
-              <div className="mt-1 text-2xl font-bold t-primary">
-                {fmt(A.cur.mov)} <span className="text-base t-secondary">/ {fmt(A.metaMov)} movilizadas</span>
-              </div>
-              <div className="text-sm mt-1 t-secondary">
-                Proyección al cierre: <b className="t-primary">{fmt(A.proyeccion)}</b> · Ritmo actual {fmt(A.ritmoActual)}/día
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">
-                {A.diasRestantes > 0 ? "Necesitás / día" : "Mes cerrado"}
-              </div>
-              <div className="text-2xl font-bold" style={{ color: A.onTrack ? "#10b981" : "#f97316" }}>
-                {A.diasRestantes > 0 ? `${fmt(A.ritmoNecesario)}/día` : "—"}
-              </div>
-              {A.diasRestantes > 0 && (
-                <div className="text-xs mt-1 t-secondary">faltan {A.diasRestantes} días · {fmt(A.restanteMeta)} movilizadas</div>
-              )}
-            </div>
-          </div>
+      {/* Veredicto meta: movilizadas + ingresadas */}
+      {(A.metaMov > 0 || A.metaIng > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {A.metaMov > 0 && (
+            <MetaCard
+              unidad="movilizadas" cur={A.cur.mov} meta={A.metaMov} proyeccion={A.proyeccion}
+              ritmoActual={A.ritmoActual} ritmoNecesario={A.ritmoNecesario} restante={A.restanteMeta}
+              diasRestantes={A.diasRestantes} onTrack={A.onTrack}
+            />
+          )}
+          {A.metaIng > 0 && (
+            <MetaCard
+              unidad="ingresadas" cur={A.cur.ing} meta={A.metaIng} proyeccion={A.proyeccionIng}
+              ritmoActual={A.ritmoActualIng} ritmoNecesario={A.ritmoNecesarioIng} restante={A.restanteMetaIng}
+              diasRestantes={A.diasRestantes} onTrack={A.onTrackIng}
+            />
+          )}
         </div>
       )}
 
@@ -601,6 +594,48 @@ export default function AccionesUrgentes({
 }
 
 // ────────────────────────────────────────────────────────────────────────
+function MetaCard({
+  unidad, cur, meta, proyeccion, ritmoActual, ritmoNecesario, restante, diasRestantes, onTrack,
+}: {
+  unidad: string; cur: number; meta: number; proyeccion: number; ritmoActual: number;
+  ritmoNecesario: number; restante: number; diasRestantes: number; onTrack: boolean;
+}) {
+  return (
+    <div
+      className="rounded-xl p-5 border"
+      style={{
+        background: onTrack ? "rgba(16,185,129,0.12)" : "rgba(249,115,22,0.12)",
+        borderColor: onTrack ? "rgba(16,185,129,0.4)" : "rgba(249,115,22,0.4)",
+      }}
+    >
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">
+            {onTrack ? `En ritmo para la meta · ${unidad}` : `Atrasado vs la meta · ${unidad}`}
+          </div>
+          <div className="mt-1 text-2xl font-bold t-primary">
+            {fmt(cur)} <span className="text-base t-secondary">/ {fmt(meta)} {unidad}</span>
+          </div>
+          <div className="text-sm mt-1 t-secondary">
+            Proyección al cierre: <b className="t-primary">{fmt(proyeccion)}</b> · Ritmo actual {fmt(ritmoActual)}/día
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-[11px] font-semibold uppercase tracking-wider t-muted">
+            {diasRestantes > 0 ? "Necesitás / día" : "Mes cerrado"}
+          </div>
+          <div className="text-2xl font-bold" style={{ color: onTrack ? "#10b981" : "#f97316" }}>
+            {diasRestantes > 0 ? `${fmt(ritmoNecesario)}/día` : "—"}
+          </div>
+          {diasRestantes > 0 && (
+            <div className="text-xs mt-1 t-secondary">faltan {diasRestantes} días · {fmt(restante)} {unidad}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function RecoColumn({ title, color, recos, empty }: { title: string; color: string; recos: Reco[]; empty: string }) {
   return (
     <div className="glass-card p-4" style={{ borderTop: `3px solid ${color}` }}>
