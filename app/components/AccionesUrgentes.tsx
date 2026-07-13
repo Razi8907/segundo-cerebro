@@ -237,8 +237,10 @@ export default function AccionesUrgentes({
         enAlza.push({ nombre, cur: c, prev: p, email: contact?.dsEmail, celular: contact?.dsCelular });
       }
     }
-    reforzar.sort((a, b) => (b.prev - b.cur) - (a.prev - a.cur));
-    enAlza.sort((a, b) => (b.cur - b.prev) - (a.cur - a.prev));
+    // Orden mayor a menor: reforzar por lo que movían antes (prioridad de recuperación),
+    // en alza por lo que mueven ahora (los más fuertes hoy).
+    reforzar.sort((a, b) => b.prev - a.prev);
+    enAlza.sort((a, b) => b.cur - a.cur);
 
     const provCur = aggByDaily(opCurr?.by_prov_daily, N, (r) => r.proveedor);
     const provPrev = aggByDaily(opPrev?.by_prov_daily, N, (r) => r.proveedor);
