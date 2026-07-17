@@ -52,6 +52,7 @@ const dayOf = (s: string): number => {
   return m ? +m[1] : 0;
 };
 const fmt = (n: number): string => Math.round(n).toLocaleString("es-AR");
+const fmt1 = (n: number): string => n.toLocaleString("es-AR", { maximumFractionDigits: 1 });
 const deltaPct = (curr: number, prev: number): number => {
   if (prev === 0) return curr > 0 ? 100 : 0;
   return Math.round(((curr - prev) / prev) * 1000) / 10;
@@ -251,6 +252,37 @@ export default function AccionesUrgentes({
     const prodCur = (opCurr?.by_producto || []).filter((p) => (p.ordenes || 0) > 0).length;
     const prodPrev = (opPrev?.by_producto || []).filter((p) => (p.ordenes || 0) > 0).length;
 
+    // ── Seguimiento a usuario para alcanzar meta (ingresadas) ──
+    // Faltante diario de ingresadas = necesario/día − actual/día. Se reparte:
+    // 55% a paretos (top DS que juntan 80% de las órdenes) y 45% al resto (≥5 órd),
+    // y dentro de cada grupo proporcional a lo que ya mueve cada uno.
+    const PARETO_CUT = 0.8;
+    const PARETO_GAP_SHARE = 0.55;
+    const gapDiaIng = Math.max(0, ritmoNecesarioIng - ritmoActualIng);
+    const dsRanked = [...dsCur.entries()]
+      .map(([nombre, v]) => ({ nombre, orders: v.orders, email: v.row?.dsEmail, celular: v.row?.dsCelular }))
+      .filter((d) => d.orders > 0)
+      .sort((a, b) => b.orders - a.orders);
+    const totalDsOrders = dsRanked.reduce((s, d) => s + d.orders, 0);
+    const paretoNames = new Set<string>();
+    let accPar = 0;
+    for (const d of dsRanked) {
+      if (accPar < totalDsOrders * PARETO_CUT) { paretoNames.add(d.nombre); accPar += d.orders; }
+    }
+    const paretosList = dsRanked.filter((d) => paretoNames.has(d.nombre));
+    const restoList = dsRanked.filter((d) => !paretoNames.has(d.nombre) && d.orders >= 5);
+    const paretoPool = gapDiaIng * PARETO_GAP_SHARE;
+    const restoPool = gapDiaIng * (1 - PARETO_GAP_SHARE);
+    const sumPar = paretosList.reduce((s, d) => s + d.orders, 0) || 1;
+    const sumRes = restoList.reduce((s, d) => s + d.orders, 0) || 1;
+    const segRow = (d: { nombre: string; orders: number; email?: string; celular?: string }, pool: number, sum: number) => {
+      const actualDia = N > 0 ? d.orders / N : 0;
+      const extraDia = pool * (d.orders / sum);
+      return { nombre: d.nombre, email: d.email, celular: d.celular, actualDia, extraDia, objetivoDia: actualDia + extraDia };
+    };
+    const segParetos = paretosList.map((d) => segRow(d, paretoPool, sumPar));
+    const segResto = restoList.map((d) => segRow(d, restoPool, sumRes));
+
     // ── Lo que funcionó en el mes anterior (mismo tramo) para replicar ──
     const ritmoPrev = N > 0 ? prev.mov / N : 0;
     const tasaEntCur = cur.mov > 0 ? (cur.ent / cur.mov) * 100 : 0;
@@ -354,6 +386,7 @@ export default function AccionesUrgentes({
       refuerzos, mejoras, alertas, dMov,
       metaIng, ritmoActualIng, proyeccionIng, restanteMetaIng, ritmoNecesarioIng, onTrackIng,
       ritmoPrev, tasaEntCur, tasaEntPrev, topDsPrev, topProvPrev, topProdPrev,
+      gapDiaIng, paretoPool, restoPool, segParetos, segResto,
     };
   }, [opCurr, opPrev, dailyCurr, dailyPrev, metaInfo, realMes, mesPrev]);
 
@@ -430,6 +463,29 @@ export default function AccionesUrgentes({
               diasRestantes={A.diasRestantes} onTrack={A.onTrackIng}
             />
           )}
+        </div>
+      )}
+
+      {/* Seguimiento a usuario para alcanzar meta (ingresadas) */}
+      {A.gapDiaIng > 0 && (A.segParetos.length > 0 || A.segResto.length > 0) && (
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary">🎯 Seguimiento a usuario para alcanzar meta (ingresadas)</h3>
+          <p className="text-xs t-secondary mt-1">
+            Necesitás <b className="t-primary">{fmt(A.ritmoNecesarioIng)}/día</b> · hoy vas a{" "}
+            <b className="t-primary">{fmt(A.ritmoActualIng)}/día</b> → faltan{" "}
+            <b style={{ color: "#f97316" }}>{fmt(A.gapDiaIng)}/día</b>. Repartido:{" "}
+            <b className="t-primary">paretos +{fmt(A.paretoPool)}/día</b> ({A.segParetos.length}) ·{" "}
+            <b className="t-primary">resto ≥5 órd +{fmt(A.restoPool)}/día</b> ({A.segResto.length}). Cada meta extra es proporcional a lo que ya mueve el usuario.
+          </p>
+
+          <div className="mt-4">
+            <div className="text-xs font-semibold mb-2" style={{ color: "#10b981" }}>⭐ Paretos — juntan el 80% de las órdenes ({A.segParetos.length})</div>
+            <SegTable rows={A.segParetos} />
+          </div>
+          <div className="mt-5">
+            <div className="text-xs font-semibold mb-2" style={{ color: "#0891b2" }}>👥 Resto — con ≥5 órdenes hasta hoy ({A.segResto.length})</div>
+            <SegTable rows={A.segResto} />
+          </div>
         </div>
       )}
 
@@ -634,6 +690,50 @@ function MetaCard({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function SegTable({
+  rows,
+}: {
+  rows: { nombre: string; email?: string; celular?: string; actualDia: number; extraDia: number; objetivoDia: number }[];
+}) {
+  if (rows.length === 0) return <p className="text-xs t-muted">Sin usuarios en este grupo.</p>;
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="t-muted text-[11px] uppercase tracking-wider">
+            <th className="text-left py-2 pr-3">Dropshipper</th>
+            <th className="text-right py-2 px-2">Órd/día hoy</th>
+            <th className="text-right py-2 px-2">+ Extra/día</th>
+            <th className="text-right py-2 px-2">Objetivo/día</th>
+            <th className="text-left py-2 pl-3">Contacto</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => {
+            const wa = r.celular ? r.celular.replace(/[^0-9]/g, "") : "";
+            return (
+              <tr key={i} className="border-t" style={{ borderColor: "var(--bg-card-border)" }}>
+                <td className="py-2 pr-3 t-primary font-medium">{r.nombre}</td>
+                <td className="text-right py-2 px-2 t-secondary">{fmt1(r.actualDia)}</td>
+                <td className="text-right py-2 px-2 font-semibold" style={{ color: "#f97316" }}>+{fmt1(r.extraDia)}</td>
+                <td className="text-right py-2 px-2 font-bold t-primary">{fmt1(r.objetivoDia)}</td>
+                <td className="py-2 pl-3 text-xs">
+                  {wa ? (
+                    <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="text-green-500 hover:underline">{r.celular}</a>
+                  ) : null}
+                  {r.celular && r.email ? <span className="t-muted"> · </span> : null}
+                  {r.email ? <span className="t-muted">{r.email}</span> : null}
+                  {!r.celular && !r.email ? <span className="t-muted">—</span> : null}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
