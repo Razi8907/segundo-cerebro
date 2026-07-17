@@ -52,7 +52,6 @@ const dayOf = (s: string): number => {
   return m ? +m[1] : 0;
 };
 const fmt = (n: number): string => Math.round(n).toLocaleString("es-AR");
-const fmt1 = (n: number): string => n.toLocaleString("es-AR", { maximumFractionDigits: 1 });
 const deltaPct = (curr: number, prev: number): number => {
   if (prev === 0) return curr > 0 ? 100 : 0;
   return Math.round(((curr - prev) / prev) * 1000) / 10;
@@ -715,12 +714,15 @@ function SegTable({
         <tbody>
           {rows.map((r, i) => {
             const wa = r.celular ? r.celular.replace(/[^0-9]/g, "") : "";
+            const actual = Math.round(r.actualDia);
+            const extra = Math.ceil(r.extraDia);
+            const objetivo = actual + extra;
             return (
               <tr key={i} className="border-t" style={{ borderColor: "var(--bg-card-border)" }}>
                 <td className="py-2 pr-3 t-primary font-medium">{r.nombre}</td>
-                <td className="text-right py-2 px-2 t-secondary">{fmt1(r.actualDia)}</td>
-                <td className="text-right py-2 px-2 font-semibold" style={{ color: "#f97316" }}>+{fmt1(r.extraDia)}</td>
-                <td className="text-right py-2 px-2 font-bold t-primary">{fmt1(r.objetivoDia)}</td>
+                <td className="text-right py-2 px-2 t-secondary">{fmt(actual)}</td>
+                <td className="text-right py-2 px-2 font-semibold" style={{ color: "#f97316" }}>+{fmt(extra)}</td>
+                <td className="text-right py-2 px-2 font-bold t-primary">{fmt(objetivo)}</td>
                 <td className="py-2 pl-3 text-xs">
                   {wa ? (
                     <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="text-green-500 hover:underline">{r.celular}</a>
