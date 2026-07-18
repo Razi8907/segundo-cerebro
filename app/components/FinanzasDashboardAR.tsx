@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LineChart,
   Line,
@@ -140,7 +140,7 @@ const C = {
   gray: "#6B7280",
 };
 
-type View = "salud" | "caja" | "pnl" | "fulfillment" | "liquidaciones";
+type View = "salud" | "caja" | "pnl" | "fulfillment" | "liquidaciones" | "punto_equilibrio";
 
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -157,6 +157,7 @@ export default function FinanzasDashboardAR() {
     { key: "pnl", label: "📊 Resultado P&L" },
     { key: "fulfillment", label: "📦 Fulfillment" },
     { key: "liquidaciones", label: "🏦 Liquidaciones Fixy" },
+    { key: "punto_equilibrio", label: "⚖️ Punto de equilibrio" },
   ];
 
   const handleSave = async (next: FinanzasARData) => {
@@ -207,6 +208,7 @@ export default function FinanzasDashboardAR() {
       {!loading && view === "pnl" && <PnlView d={d} />}
       {!loading && view === "fulfillment" && <FulfillmentView d={d} />}
       {!loading && view === "liquidaciones" && <LiquidacionesView d={d} />}
+      {!loading && view === "punto_equilibrio" && <PuntoEquilibrioView />}
 
       {editing && (
         <FinanzasEditor
@@ -216,6 +218,32 @@ export default function FinanzasDashboardAR() {
           onSave={handleSave}
         />
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// VIEW: PUNTO DE EQUILIBRIO (simulador HTML embebido)
+// ═══════════════════════════════════════════════════════════════════
+function PuntoEquilibrioView() {
+  const [height, setHeight] = useState(2800);
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      const data = e.data as { type?: string; height?: number } | null;
+      if (data && data.type === "pe-sim-height" && typeof data.height === "number") {
+        setHeight(Math.max(600, Math.min(data.height + 24, 12000)));
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+  return (
+    <div className="rounded-xl overflow-hidden border border-gray-700">
+      <iframe
+        src="/simulador-punto-equilibrio-ar.html"
+        title="Simulador — Punto de equilibrio Dropi Argentina"
+        style={{ width: "100%", height, border: 0, display: "block", background: "#F4F5F7" }}
+      />
     </div>
   );
 }

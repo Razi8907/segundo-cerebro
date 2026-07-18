@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Simulador Financiero — Dropi Argentina</title>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@400;700;900&family=DM+Sans:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --dark:#1C1C1E; --or:#E8692A; --or-dk:#C8521A; --or-lt:#FFF3EE;
+    --grn:#00A86B; --grn-lt:#E8F5EE; --red:#C62828; --red-lt:#FFEBEE;
+    --gray:#546E7A; --gray-lt:#ECEFF1; --bg:#F4F5F7;
+    --font:'Source Serif 4',Georgia,serif; --sans:'DM Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:var(--sans);background:var(--bg);color:#333;}
+
+  .header{background:var(--dark);padding:28px 40px;display:flex;justify-content:space-between;align-items:flex-start;}
+  .header h1{font-family:var(--font);font-size:26px;font-weight:900;color:#fff;}
+  .header p{font-size:12.5px;color:#888;margin-top:6px;}
+  .badge{background:var(--or);color:#fff;font-size:11px;font-weight:700;letter-spacing:.5px;padding:8px 16px;border-radius:99px;white-space:nowrap;}
+
+  .wrap{padding:24px 40px 48px;max-width:1400px;margin:0 auto;}
+  .card{background:#fff;border-radius:12px;padding:22px 26px;box-shadow:0 1px 5px rgba(0,0,0,0.07);margin-bottom:18px;}
+  .card-title{font-family:var(--font);font-size:16px;font-weight:700;margin-bottom:16px;color:#222;}
+
+  /* Escenarios rápidos */
+  .sc-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;}
+  .sc-card{border-radius:10px;padding:16px 14px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all .15s;}
+  .sc-card:hover{transform:translateY(-2px);}
+  .sc-card.active{border-color:var(--or-dk);box-shadow:0 2px 8px rgba(200,82,26,0.15);}
+  .sc-n{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;}
+  .sc-v{font-family:var(--font);font-size:22px;font-weight:900;margin-bottom:4px;}
+  .sc-m{font-size:11px;color:#888;}
+
+  /* Sliders */
+  .sliders-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:28px 32px;}
+  .slider-wrap label{font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--gray);}
+  .slider-val{font-family:var(--font);font-size:24px;font-weight:700;color:var(--or-dk);margin:4px 0 10px;}
+  input[type=range]{width:100%;accent-color:var(--or-dk);height:4px;}
+  .slider-minmax{display:flex;justify-content:space-between;font-size:10px;color:#aaa;margin-top:4px;}
+
+  /* Resultados KPI */
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:14px;}
+  .kpi{border-top:4px solid var(--gray);border-radius:8px;background:#fafafa;padding:16px 18px;}
+  .kpi .l{font-size:10.5px;color:#999;letter-spacing:.5px;text-transform:uppercase;margin-bottom:6px;}
+  .kpi .v{font-family:var(--font);font-size:22px;font-weight:700;}
+  .kpi .s{font-size:11px;color:#999;margin-top:4px;}
+
+  .sub-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;}
+  .sub{background:#fafafa;border-radius:8px;padding:14px 16px;}
+  .sub .l{font-size:10.5px;color:#999;text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;}
+  .sub .v{font-family:var(--mono);font-size:16px;font-weight:700;color:#333;}
+
+  /* Barras */
+  .bar-row{margin-bottom:14px;}
+  .bar-label{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;}
+  .bar-track{background:#EEE;border-radius:6px;height:22px;overflow:hidden;}
+  .bar-fill{height:100%;border-radius:6px;transition:width .2s;display:flex;align-items:center;padding-left:8px;color:#fff;font-family:var(--mono);font-size:11px;font-weight:700;white-space:nowrap;}
+
+  .eq-row{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:10px;margin:10px 0;}
+  .eq-box{background:#fff;border:2px solid #E0E0E0;border-radius:10px;padding:12px 16px;text-align:center;min-width:110px;}
+  .eq-box .n{font-family:var(--font);font-size:20px;font-weight:900;color:#222;}
+  .eq-box .l{font-size:10px;color:#999;margin-top:3px;letter-spacing:.3px;}
+  .eq-op{font-family:var(--font);font-size:26px;font-weight:900;color:var(--or-dk);}
+  .eq-result{background:var(--or-lt);border:2px solid var(--or-dk);}
+  .eq-result .n{color:var(--or-dk);}
+  .eq-line{border-top:2px dashed #ccc;width:100%;margin:14px 0;}
+  .eq-final{background:var(--dark);color:#fff;border-radius:10px;padding:16px 20px;display:flex;justify-content:space-between;align-items:center;margin-top:10px;}
+  .eq-final .n{font-family:var(--font);font-size:24px;font-weight:900;}
+  .eq-editable{border-color:var(--or);background:var(--or-lt);}
+  .eq-input{width:100%;border:none;background:transparent;text-align:center;font-family:var(--font);font-size:20px;font-weight:900;color:#222;outline:none;}
+  .eq-input::-webkit-inner-spin-button{opacity:1}
+
+  .note{font-size:12px;color:#777;line-height:1.6;background:var(--or-lt);border-radius:8px;padding:12px 16px;margin-bottom:18px;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>Simulador Financiero — Dropi Argentina</h1>
+    <p>Movés los controles y ves en tiempo real cómo cambian los resultados</p>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:10px;letter-spacing:1.5px;color:#999;font-weight:700;margin-bottom:2px">PUNTO DE EQUILIBRIO — ÓRDENES/MES</div>
+    <div id="header-be" style="font-family:var(--font);font-size:34px;font-weight:900;color:var(--or)">—</div>
+    <div id="header-be-sub" style="font-size:10.5px;color:#888">utilidad = gastos</div>
+  </div>
+</div>
+
+<div style="background:#1C1C1E;padding:22px 40px 30px">
+  <div style="max-width:1400px;margin:0 auto;background:#fff;border-radius:14px;padding:22px 26px;box-shadow:0 4px 20px rgba(0,0,0,0.25)">
+    <div style="font-family:var(--font);font-size:16px;font-weight:700;margin-bottom:4px">🧮 Calculadora en vivo — escribí en las cajas y se multiplica solo</div>
+    <div style="font-size:11.5px;color:#999;margin-bottom:16px">Es una calculadora independiente para probar combinaciones rápido. El resto del simulador, más abajo, sigue usando los datos reales que ya cargaste.</div>
+
+    <div style="text-align:center;font-size:11px;color:#777;font-weight:700;letter-spacing:.5px;margin-bottom:6px">PASO 1 — MARGEN FIJO (se gana entregada o devuelta)</div>
+    <div class="eq-row">
+      <div class="eq-box eq-editable"><input type="number" id="calc-ordenes" value="26074" class="eq-input" oninput="calcTop()"><div class="l">órdenes del mes (punto de equilibrio)</div></div>
+      <div class="eq-op">×</div>
+      <div class="eq-box eq-editable"><input type="number" id="calc-margen" value="1500" class="eq-input" oninput="calcTop()"><div class="l">margen fijo/orden ($)</div></div>
+      <div class="eq-op">=</div>
+      <div class="eq-box eq-result"><div class="n" id="calc-margentotal">—</div><div class="l">margen total</div></div>
+    </div>
+
+    <div style="text-align:center;font-size:11px;color:#777;font-weight:700;letter-spacing:.5px;margin:18px 0 6px">PASO 2 — COMISIÓN (solo si es COD Y fue entregada)</div>
+    <div class="eq-row">
+      <div class="eq-box eq-editable"><input type="number" id="calc-pctcod" value="50" class="eq-input" oninput="calcTop()"><div class="l">% son COD (ejemplo)</div></div>
+      <div class="eq-op">×</div>
+      <div class="eq-box eq-editable"><input type="number" id="calc-pctentregada" value="51.5" class="eq-input" oninput="calcTop()"><div class="l">% entregadas (real jun)</div></div>
+      <div class="eq-op">×</div>
+      <div class="eq-box eq-editable"><input type="number" id="calc-ticket" value="57808" class="eq-input" oninput="calcTop()"><div class="l">ticket promedio ($)</div></div>
+      <div class="eq-op">×</div>
+      <div class="eq-box eq-editable"><input type="number" id="calc-comision" value="1.5" step="0.1" class="eq-input" oninput="calcTop()"><div class="l">% comisión</div></div>
+      <div class="eq-op">=</div>
+      <div class="eq-box eq-result"><div class="n" id="calc-comisiontotal">—</div><div class="l">comisión total</div></div>
+    </div>
+    <div style="text-align:center;margin-top:10px">
+      <div class="eq-box eq-result" style="display:inline-block;border-color:var(--grn);background:var(--grn-lt)">
+        <div class="n" id="calc-guiasentregadas" style="color:var(--grn)">—</div>
+        <div class="l">de esas órdenes, tienen que llegar ENTREGADAS (al % de entrega actual)</div>
+      </div>
+    </div>
+
+    <div class="eq-line"></div>
+    <div class="eq-row">
+      <div class="eq-box eq-result"><div class="n" id="calc-margentotal2">—</div><div class="l">margen total</div></div>
+      <div class="eq-op">+</div>
+      <div class="eq-box eq-result"><div class="n" id="calc-comisiontotal2">—</div><div class="l">comisión total</div></div>
+      <div class="eq-op">=</div>
+      <div class="eq-box eq-result" style="border-color:var(--grn);background:var(--grn-lt)"><div class="n" id="calc-utilidadtotal" style="color:var(--grn)">—</div><div class="l">utilidad total generada</div></div>
+    </div>
+
+    <div class="eq-final" style="margin-top:18px">
+      <div><div style="font-size:11px;color:#aaa;letter-spacing:.5px">UTILIDAD GENERADA</div><div class="n" style="color:#4ADE80" id="calc-final-utilidad">—</div></div>
+      <div style="font-size:22px;color:#666">vs</div>
+      <div>
+        <div style="font-size:11px;color:#aaa;letter-spacing:.5px">GASTOS DEL MES</div>
+        <input type="number" id="calc-gastos" value="44932980" class="eq-input" style="color:#FFA94D;background:transparent;border:none;font-family:var(--font);font-size:24px;font-weight:900;width:140px" oninput="calcTop()">
+      </div>
+      <div style="font-size:22px;color:#666">=</div>
+      <div style="text-align:right"><div style="font-size:11px;color:#aaa;letter-spacing:.5px">DIFERENCIA</div><div class="n" id="calc-final-diff">—</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="note">
+    💡 Basado en los datos reales Ene–Abr 2026: flete $1.500/orden + 0,5% de comisión COD sobre un ticket promedio de $60.000.
+    Ajustá cualquier variable — este simulador es tuyo, no tiene que quedar cerrado: seguí mandándome datos reales y lo recalibramos.
+  </div>
+
+  <div class="card" style="border:2px solid var(--or-dk)">
+    <div class="card-title">🎯 Punto de equilibrio real — Junio 2026</div>
+    <div class="note" style="margin-bottom:12px">
+      Utilidad por guía = <strong>margen logístico</strong> (por transportadora) <strong>+ comisión COD</strong> (aparte, tarjeta de abajo).
+      En el modelo real: la comisión solo se gana si la guía es <strong>COD Y además fue entregada</strong> — se multiplican esos dos %, nunca se aplican sobre el total de guías.
+      OPEX real de junio: $22.657.319 caja + $22.275.661 banco = $44.932.980.
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:18px">
+      <button id="btn-modo-dashboard" onclick="setModo('dashboard')" style="flex:1;padding:10px;border:2px solid var(--or-dk);border-radius:8px;background:var(--or-dk);color:#fff;font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer">📋 Modelo dashboard — $ fijo por guía</button>
+      <button id="btn-modo-pct" onclick="setModo('pct')" style="flex:1;padding:10px;border:2px solid var(--or-dk);border-radius:8px;background:#fff;color:var(--or-dk);font-family:var(--sans);font-size:12px;font-weight:700;cursor:pointer">📊 Modelo real: $1.500 fijo + % si entregada</button>
+    </div>
+    <div class="sliders-grid" style="margin-bottom:8px">
+      <div class="slider-wrap">
+        <label>Gastos totales del mes (OPEX)</label>
+        <div class="slider-val" id="v-opex">$44.9M</div>
+        <input type="range" id="s-opex" min="10000000" max="80000000" step="500000" value="44932980" oninput="updateBE()">
+        <div class="slider-minmax"><span>$10M</span><span>$80M</span></div>
+      </div>
+      <div class="slider-wrap" id="wrap-ufixy">
+        <label>Margen logístico por guía — Fixy</label>
+        <div class="slider-val" id="v-ufixy">$1.917</div>
+        <input type="range" id="s-ufixy" min="500" max="5000" step="10" value="1917" oninput="updateBE()">
+        <div class="slider-minmax"><span>$500</span><span>$5.000</span></div>
+      </div>
+      <div class="slider-wrap" id="wrap-uurbano">
+        <label>Margen logístico por guía — Urbano</label>
+        <div class="slider-val" id="v-uurbano">$3.284</div>
+        <input type="range" id="s-uurbano" min="500" max="6000" step="10" value="3284" oninput="updateBE()">
+        <div class="slider-minmax"><span>$500</span><span>$6.000</span></div>
+      </div>
+      <div class="slider-wrap" id="wrap-fijoars" style="display:none">
+        <label>Margen fijo por orden (ARS)</label>
+        <div class="slider-val" id="v-fijoars">$1.500</div>
+        <input type="range" id="s-fijoars" min="500" max="5000" step="50" value="1500" oninput="updateBE()">
+        <div class="slider-minmax"><span>$500</span><span>$5.000</span></div>
+        <div style="font-size:10px;color:#999;margin-top:4px">Se gana entregada o devuelta, misma para Fixy y Urbano</div>
+      </div>
+      <div class="slider-wrap" id="wrap-pctentregadafixy" style="display:none">
+        <label>% entregada (movilizadas) — Fixy</label>
+        <div class="slider-val" id="v-pctentregadafixy">55.8%</div>
+        <input type="range" id="s-pctentregadafixy" min="0" max="100" step="0.1" value="55.8" oninput="updateBE()">
+        <div class="slider-minmax"><span>0%</span><span>100%</span></div>
+        <div style="font-size:10px;color:#999;margin-top:4px">Real jun'26 — Dashboard Operacional (46,1% se devuelve, 2,2% en proceso)</div>
+      </div>
+      <div class="slider-wrap" id="wrap-pctentregadaurbano" style="display:none">
+        <label>% entregada (movilizadas) — Urbano</label>
+        <div class="slider-val" id="v-pctentregadaurbano">38.7%</div>
+        <input type="range" id="s-pctentregadaurbano" min="0" max="100" step="0.1" value="38.7" oninput="updateBE()">
+        <div class="slider-minmax"><span>0%</span><span>100%</span></div>
+        <div style="font-size:10px;color:#999;margin-top:4px">Real jun'26 — Urbano devuelve mucho más (53,3%)</div>
+      </div>
+      <div class="slider-wrap" id="wrap-pctcodmodelo" style="display:none">
+        <label>% de guías que son COD (del total movilizadas)</label>
+        <div class="slider-val" id="v-pctcodmodelo">50%</div>
+        <input type="range" id="s-pctcodmodelo" min="0" max="100" step="1" value="50" oninput="updateBE()">
+        <div class="slider-minmax"><span>0%</span><span>100%</span></div>
+        <div style="font-size:10px;color:#999;margin-top:4px">Ejemplo — no aplicar % COD sobre el total, sino sobre movilizadas. Independiente de si se entrega o no.</div>
+      </div>
+      <div class="slider-wrap" id="wrap-comisionvisible" style="display:none;background:var(--or-lt);border-radius:8px;padding:10px 12px">
+        <label>Comisión COD aplicada (Fixy / Urbano)</label>
+        <div class="slider-val" id="v-comisionvisible" style="font-size:20px">1.5% / 1.5%</div>
+        <div style="font-size:10px;color:#999;margin-top:4px">Se ajusta en la tarjeta 💳 Comisión COD, más abajo</div>
+      </div>
+    </div>
+    <div class="slider-wrap" style="margin-bottom:18px">
+      <label>Mix Fixy / Urbano (% Fixy)</label>
+      <div class="slider-val" id="v-mix">73%</div>
+      <input type="range" id="s-mix" min="0" max="100" step="1" value="73" oninput="updateBE()">
+      <div class="slider-minmax"><span>0% Fixy (todo Urbano)</span><span>100% Fixy</span></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi" style="border-top-color:var(--or)">
+        <div class="l">Con Fixy exclusivo</div>
+        <div class="v" id="be-fixy" style="color:var(--or)">—</div>
+        <div class="s" id="be-fixy-sub">guías/mes para cubrir gastos</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--grn)">
+        <div class="l">Con Urbano exclusivo</div>
+        <div class="v" id="be-urbano" style="color:var(--grn)">—</div>
+        <div class="s" id="be-urbano-sub">guías/mes para cubrir gastos</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--or-dk)">
+        <div class="l">Con el mix actual</div>
+        <div class="v" id="be-mix" style="color:var(--or-dk)">—</div>
+        <div class="s" id="be-mix-sub">guías/mes para cubrir gastos</div>
+      </div>
+    </div>
+
+    <div style="margin-top:22px;display:flex;gap:20px">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--or)">Datos reales mensuales — Fixy</div>
+        <div style="font-size:11px;color:#999;margin-bottom:10px">Directo del Informe Utilidad Gerencial (Power BI), filtrado por Fixy — dato exacto mes a mes, no estimado.</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#FFF3EE"><th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--or)">Mes</th><th style="padding:7px 10px;text-align:right;font-size:11px;color:var(--or)">Guías</th><th style="padding:7px 10px;text-align:right;font-size:11px;color:var(--or)">Utilidad/guía</th><th></th></tr></thead>
+          <tbody id="fixy-hist-body"></tbody>
+        </table>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;margin-bottom:8px;color:var(--grn)">Datos reales mensuales — Urbano</div>
+        <div style="font-size:11px;color:#999;margin-bottom:10px">Directo del Informe Utilidad Gerencial (Power BI), filtrado por Urbano. La utilidad por guía varía mes a mes por mix de zonas/tickets y volumen.</div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#E8F5EE"><th style="padding:7px 10px;text-align:left;font-size:11px;color:var(--grn)">Mes</th><th style="padding:7px 10px;text-align:right;font-size:11px;color:var(--grn)">Guías</th><th style="padding:7px 10px;text-align:right;font-size:11px;color:var(--grn)">Utilidad/guía</th><th></th></tr></thead>
+          <tbody id="urbano-hist-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="border:2px solid var(--or)">
+    <div class="card-title">💳 Comisión COD — aparte del margen logístico</div>
+    <div class="note" style="margin-bottom:16px">
+      Esto se suma <em>solo</em> en las guías que son COD (pago contra entrega). Fulfillment no la genera. 1,5% para ambas transportadoras, sobre el ticket, siempre que la orden haya sido entregada.
+    </div>
+    <div class="sliders-grid" style="margin-bottom:18px">
+      <div class="slider-wrap">
+        <label>Ticket promedio COD (ARS)</label>
+        <div class="slider-val" id="v-ticketbe">$57.808</div>
+        <input type="range" id="s-ticketbe" min="30000" max="120000" step="1000" value="57808" oninput="updateBE()">
+        <div class="slider-minmax"><span>$30K</span><span>$120K</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Comisión COD — Fixy (%)</label>
+        <div class="slider-val" id="v-comisionfixy">1.5%</div>
+        <input type="range" id="s-comisionfixy" min="0.1" max="3" step="0.1" value="1.5" oninput="updateBE()">
+        <div class="slider-minmax"><span>0.1%</span><span>3%</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Comisión COD — Urbano (%)</label>
+        <div class="slider-val" id="v-comisionurbano">1.5%</div>
+        <input type="range" id="s-comisionurbano" min="0.1" max="3" step="0.1" value="1.5" oninput="updateBE()">
+        <div class="slider-minmax"><span>0.1%</span><span>3%</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>% de guías que son COD</label>
+        <div class="slider-val" id="v-pctcod">50%</div>
+        <input type="range" id="s-pctcod" min="0" max="100" step="1" value="50" oninput="updateBE()">
+        <div class="slider-minmax"><span>0% (todo FF)</span><span>100% COD</span></div>
+      </div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi" style="border-top-color:var(--or)">
+        <div class="l">Comisión COD/guía — Fixy</div>
+        <div class="v" id="cod-porguia-fixy" style="color:var(--or)">—</div>
+        <div class="s">ticket × comisión Fixy</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--grn)">
+        <div class="l">Comisión COD/guía — Urbano</div>
+        <div class="v" id="cod-porguia-urbano" style="color:var(--grn)">—</div>
+        <div class="s">ticket × comisión Urbano</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--or-dk)">
+        <div class="l">De las guías del mix, deben ser COD</div>
+        <div class="v" id="cod-necesarias" style="color:var(--or-dk)">—</div>
+        <div class="s" id="cod-necesarias-sub">guías/mes</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--gray)">
+        <div class="l">El resto puede ser Fulfillment</div>
+        <div class="v" id="cod-ff" style="color:var(--gray)">—</div>
+        <div class="s">guías/mes (sin comisión, solo margen)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="border:2px solid var(--dark)">
+    <div class="card-title">⚖️ Comparación — Modelo dashboard vs. Modelo real</div>
+    <div class="note" style="margin-bottom:16px">
+      Los dos modelos se recalculan en simultáneo con el mismo OPEX y mix, tomando los valores que tengas cargados en cada tarjeta de arriba — no hace falta tener uno activo para ver al otro acá.
+    </div>
+    <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi" style="border-top-color:var(--or-dk)">
+        <div class="l">📋 Modelo dashboard</div>
+        <div class="v" id="cmp-dash-be" style="color:var(--or-dk)">—</div>
+        <div class="s" id="cmp-dash-uguia">guías/mes</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--gray)">
+        <div class="l">📊 Modelo real ($ fijo + %)</div>
+        <div class="v" id="cmp-real-be" style="color:var(--gray)">—</div>
+        <div class="s" id="cmp-real-uguia">guías/mes</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--dark)">
+        <div class="l">Diferencia</div>
+        <div class="v" id="cmp-diff" style="color:var(--dark)">—</div>
+        <div class="s" id="cmp-diff-sub">guías de diferencia</div>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <div class="bar-row">
+        <div class="bar-label"><span>📋 Modelo dashboard</span></div>
+        <div class="bar-track"><div class="bar-fill" id="cmp-bar-dash" style="background:var(--or-dk);width:0%"></div></div>
+      </div>
+      <div class="bar-row">
+        <div class="bar-label"><span>📊 Modelo real</span></div>
+        <div class="bar-track"><div class="bar-fill" id="cmp-bar-real" style="background:var(--gray);width:0%"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="border:2px solid var(--red)">
+    <div class="card-title">📅 Junio (cerrado) vs. Objetivo Julio</div>
+    <div class="note" style="margin-bottom:16px">
+      Junio ya pasó — esto es una <strong>reconstrucción del resultado real</strong> con los datos disponibles (margen logístico exacto + comisión COD estimada − OPEX real), no una meta. Falta sumar D&A, gastos financieros y ajustes de conciliación pendientes para el cierre contable definitivo.
+      Julio sí está abierto — ese es el objetivo a lograr, partiendo del mismo OPEX y márgenes de junio (editables arriba; actualizalos con los datos reales de julio en cuanto los tengas).
+    </div>
+    <div class="sliders-grid" style="margin-bottom:18px">
+      <div class="slider-wrap">
+        <label>Guías reales junio — Fixy</label>
+        <div class="slider-val" id="v-realfixy">10.268</div>
+        <input type="range" id="s-realfixy" min="0" max="30000" step="50" value="10268" oninput="updateBE()">
+        <div class="slider-minmax"><span>0</span><span>30.000</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Guías reales junio — Urbano</label>
+        <div class="slider-val" id="v-realurbano">3.779</div>
+        <input type="range" id="s-realurbano" min="0" max="15000" step="50" value="3779" oninput="updateBE()">
+        <div class="slider-minmax"><span>0</span><span>15.000</span></div>
+      </div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi" style="border-top-color:var(--gray)">
+        <div class="l">Junio (cerrado, total)</div>
+        <div class="v" id="real-total" style="color:var(--gray)">—</div>
+        <div class="s">guías facturadas</div>
+      </div>
+      <div class="kpi" id="kpi-real-res" style="border-top-color:var(--red)">
+        <div class="l">Resultado real estimado — Junio</div>
+        <div class="v" id="real-resultado" style="color:var(--red)">—</div>
+        <div class="s">utilidad real − OPEX (aprox.)</div>
+      </div>
+      <div class="kpi" id="kpi-real-gap" style="border-top-color:var(--red)">
+        <div class="l">Faltó en junio vs. el equilibrio</div>
+        <div class="v" id="real-gap" style="color:var(--red)">—</div>
+        <div class="s">guías por debajo del objetivo</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--or-dk)">
+        <div class="l">Objetivo Julio (abierto)</div>
+        <div class="v" id="julio-obj" style="color:var(--or-dk)">—</div>
+        <div class="s">guías/mes, mismo OPEX que junio</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="border:2px solid var(--grn)">
+    <div class="card-title">🚀 Julio en curso — seguimiento en vivo</div>
+    <div class="note" style="margin-bottom:16px">
+      Andá subiendo estos sliders a medida que avanza el mes: el día en que estás, las órdenes que ya entraron, y los gastos que se van pagando (arrancando de una base proporcional a junio). El simulador te dice el ritmo que necesitás en lo que queda del mes para llegar al objetivo.
+    </div>
+    <div class="sliders-grid" style="margin-bottom:18px">
+      <div class="slider-wrap">
+        <label>Día del mes en el que estamos</label>
+        <div class="slider-val" id="v-diahoy">17</div>
+        <input type="range" id="s-diahoy" min="1" max="31" step="1" value="17" oninput="updateBE()">
+        <div class="slider-minmax"><span>1</span><span>31</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Órdenes acumuladas julio — Fixy</label>
+        <div class="slider-val" id="v-julioFixy">0</div>
+        <input type="range" id="s-julioFixy" min="0" max="30000" step="50" value="0" oninput="updateBE()">
+        <div class="slider-minmax"><span>0</span><span>30.000</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Órdenes acumuladas julio — Urbano</label>
+        <div class="slider-val" id="v-julioUrbano">0</div>
+        <input type="range" id="s-julioUrbano" min="0" max="15000" step="50" value="0" oninput="updateBE()">
+        <div class="slider-minmax"><span>0</span><span>15.000</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Gastos acumulados de julio (hasta hoy)</label>
+        <div class="slider-val" id="v-juliogastos">$24.6M</div>
+        <input type="range" id="s-juliogastos" min="0" max="80000000" step="500000" value="24632000" oninput="updateBE()">
+        <div class="slider-minmax"><span>$0</span><span>$80M</span></div>
+        <div style="font-size:10px;color:#999;margin-top:4px">Base: OPEX de junio ÷ 31 × día del mes — ajustalo con los pagos reales</div>
+      </div>
+    </div>
+
+    <div class="bar-row">
+      <div class="bar-label"><span>Progreso del mes (días)</span><span id="julio-diasN">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="julio-bar-dias" style="background:var(--gray);width:0%"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span>Progreso hacia el objetivo (órdenes)</span><span id="julio-ordN">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="julio-bar-ord" style="background:var(--grn);width:0%"></div></div>
+    </div>
+
+    <div class="kpi-grid" style="margin-top:16px">
+      <div class="kpi" style="border-top-color:var(--gray)">
+        <div class="l">Ritmo actual</div>
+        <div class="v" id="julio-ritmo" style="color:var(--gray)">—</div>
+        <div class="s">órdenes/día promedio hasta hoy</div>
+      </div>
+      <div class="kpi" id="kpi-julio-proy" style="border-top-color:var(--grn)">
+        <div class="l">Proyección a fin de mes</div>
+        <div class="v" id="julio-proyeccion" style="color:var(--grn)">—</div>
+        <div class="s">si seguís a este ritmo</div>
+      </div>
+      <div class="kpi" id="kpi-julio-necesario" style="border-top-color:var(--or)">
+        <div class="l">Ritmo necesario (días restantes)</div>
+        <div class="v" id="julio-necesario" style="color:var(--or)">—</div>
+        <div class="s" id="julio-necesario-sub">órdenes/día para llegar al objetivo</div>
+      </div>
+      <div class="kpi" id="kpi-julio-resultado" style="border-top-color:var(--gray)">
+        <div class="l">Resultado acumulado a hoy</div>
+        <div class="v" id="julio-resultado" style="color:var(--gray)">—</div>
+        <div class="s">utilidad acumulada − gastos acumulados</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Escenarios rápidos — hacé clic para cargar</div>
+    <div class="sc-grid">
+      <div class="sc-card active" style="background:var(--gray-lt)" onclick="loadScenario(14047,22000000,23000000)" id="sc0">
+        <div class="sc-n" style="color:var(--gray)">Actual</div>
+        <div class="sc-v" style="color:var(--gray)">14.047</div>
+        <div class="sc-m">real jun'26 · margen -78%*</div>
+      </div>
+      <div class="sc-card" style="background:var(--grn-lt)" onclick="loadScenario(25000,24000000,30000000)" id="sc1">
+        <div class="sc-n" style="color:var(--grn)">Corto plazo</div>
+        <div class="sc-v" style="color:var(--grn)">25.000</div>
+        <div class="sc-m">margen -20%*</div>
+      </div>
+      <div class="sc-card" style="background:var(--or-lt)" onclick="loadScenario(40000,26000000,42000000)" id="sc2">
+        <div class="sc-n" style="color:var(--or)">Mediano</div>
+        <div class="sc-v" style="color:var(--or)">40.000</div>
+        <div class="sc-m">margen ~6%*</div>
+      </div>
+      <div class="sc-card" style="background:var(--or-lt)" onclick="loadScenario(60000,28000000,55000000)" id="sc3">
+        <div class="sc-n" style="color:var(--or-dk)">Meta 60K</div>
+        <div class="sc-v" style="color:var(--or-dk)">60.000</div>
+        <div class="sc-m">margen ~23%*</div>
+      </div>
+      <div class="sc-card" style="background:var(--grn-lt)" onclick="loadScenario(100000,32000000,75000000)" id="sc4">
+        <div class="sc-n" style="color:var(--grn)">Largo plazo</div>
+        <div class="sc-v" style="color:var(--grn)">100.000</div>
+        <div class="sc-m">margen ~41%*</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:#999;margin-top:12px">*Margen bajo el modelo flete fijo $1.500 + 0,5% comisión COD (sliders de abajo). Con el OPEX real de junio este modelo da negativo hasta ~35.000 órdenes — usá la sección "Punto de equilibrio real" de arriba, calibrada con el Informe Utilidad Gerencial, que es la que refleja la economía real por guía hoy.</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Parámetros del modelo — ajustá cada variable</div>
+    <div class="sliders-grid">
+      <div class="slider-wrap">
+        <label>Órdenes COD por mes</label>
+        <div class="slider-val" id="v-ordenes">30.000</div>
+        <input type="range" id="s-ordenes" min="1000" max="60000" step="500" value="30000" oninput="update()">
+        <div class="slider-minmax"><span>1.000</span><span>60.000</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Gastos fijos mensuales</label>
+        <div class="slider-val" id="v-fijos">$13.0M</div>
+        <input type="range" id="s-fijos" min="8000000" max="30000000" step="250000" value="13000000" oninput="update()">
+        <div class="slider-minmax"><span>$8M</span><span>$30M</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Gastos variables mensuales</label>
+        <div class="slider-val" id="v-var">$19.0M</div>
+        <input type="range" id="s-var" min="2000000" max="40000000" step="250000" value="19000000" oninput="update()">
+        <div class="slider-minmax"><span>$2M</span><span>$40M</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Tarifa flete (ARS por orden)</label>
+        <div class="slider-val" id="v-flete">$1.500</div>
+        <input type="range" id="s-flete" min="1000" max="5000" step="50" value="1500" oninput="update()">
+        <div class="slider-minmax"><span>$1.000</span><span>$5.000</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Ticket promedio COD (ARS)</label>
+        <div class="slider-val" id="v-ticket">$60.000</div>
+        <input type="range" id="s-ticket" min="30000" max="120000" step="1000" value="60000" oninput="update()">
+        <div class="slider-minmax"><span>$30K</span><span>$120K</span></div>
+      </div>
+      <div class="slider-wrap">
+        <label>Comisión COD (%)</label>
+        <div class="slider-val" id="v-comision">0.5%</div>
+        <input type="range" id="s-comision" min="0.1" max="2" step="0.1" value="0.5" oninput="update()">
+        <div class="slider-minmax"><span>0.1%</span><span>2%</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Resultado del escenario</div>
+    <div class="kpi-grid">
+      <div class="kpi" style="border-top-color:var(--gray)">
+        <div class="l">Ingreso total</div>
+        <div class="v" id="r-ing" style="color:var(--gray)">—</div>
+        <div class="s">Flete + comisión COD</div>
+      </div>
+      <div class="kpi" style="border-top-color:var(--or)">
+        <div class="l">Egresos totales</div>
+        <div class="v" id="r-egr" style="color:var(--or)">—</div>
+        <div class="s">Fijos + variables</div>
+      </div>
+      <div class="kpi" id="kpi-res" style="border-top-color:var(--grn)">
+        <div class="l">Resultado (utilidad)</div>
+        <div class="v" id="r-res" style="color:var(--grn)">—</div>
+        <div class="s" id="r-anual">—</div>
+      </div>
+      <div class="kpi" id="kpi-margen" style="border-top-color:var(--grn)">
+        <div class="l">Margen</div>
+        <div class="v" id="r-margen" style="color:var(--grn)">—</div>
+        <div class="s">sobre ingreso total</div>
+      </div>
+    </div>
+
+    <div class="sub-grid">
+      <div class="sub"><div class="l">Ingreso por flete</div><div class="v" id="r-flete">—</div></div>
+      <div class="sub"><div class="l">Ingreso por comisión COD</div><div class="v" id="r-cod">—</div></div>
+      <div class="sub"><div class="l">Resultado anualizado</div><div class="v" id="r-anual2">—</div></div>
+      <div class="sub"><div class="l">Punto de equilibrio</div><div class="v" id="r-break">—</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Ingresos vs. egresos vs. resultado</div>
+    <div class="bar-row">
+      <div class="bar-label"><span>Ingreso total</span><span id="bar-ing-n">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="bar-ing" style="background:var(--gray);width:0%"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span>Egresos totales</span><span id="bar-egr-n">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="bar-egr" style="background:var(--or);width:0%"></div></div>
+    </div>
+    <div class="bar-row">
+      <div class="bar-label"><span id="bar-res-lbl">Resultado</span><span id="bar-res-n">—</span></div>
+      <div class="bar-track"><div class="bar-fill" id="bar-res" style="background:var(--grn);width:0%"></div></div>
+    </div>
+  </div>
+
+  <div class="card" style="border:2px solid var(--or-dk)">
+    <div class="card-title">🧮 La cuenta, paso a paso</div>
+    <div class="note" style="margin-bottom:10px">Explica cómo se arma el punto de equilibrio de arriba, con el modelo que tengas activo (dashboard o real). Se recalcula solo con cualquier cambio que hagas en el simulador.</div>
+    <div id="explicacion-cuenta" style="background:#FAFAFA;border-radius:10px;padding:20px 18px"></div>
+  </div>
+
+</div>
+
+<script>
+const fmtM = n => { const a=Math.abs(n), s=n<0?'-':''; return a>=1000000?`${s}$${(a/1e6).toFixed(1)}M`:`${s}$${(a/1000).toFixed(0)}K`; };
+const fmt = n => new Intl.NumberFormat('es-AR',{maximumFractionDigits:0}).format(n);
+
+function update() {
+  const ordenes = +document.getElementById('s-ordenes').value;
+  const fijos   = +document.getElementById('s-fijos').value;
+  const vars    = +document.getElementById('s-var').value;
+  const flete   = +document.getElementById('s-flete').value;
+  const ticket  = +document.getElementById('s-ticket').value;
+  const com     = +document.getElementById('s-comision').value;
+
+  document.getElementById('v-ordenes').textContent = fmt(ordenes);
+  document.getElementById('v-fijos').textContent = fmtM(fijos);
+  document.getElementById('v-var').textContent = fmtM(vars);
+  document.getElementById('v-flete').textContent = '$' + fmt(flete);
+  document.getElementById('v-ticket').textContent = '$' + fmt(ticket);
+  document.getElementById('v-comision').textContent = com + '%';
+
+  const ingFlete = ordenes * flete;
+  const ingCod   = ordenes * ticket * (com / 100);
+  const ingTotal = ingFlete + ingCod;
+  const egrTotal = fijos + vars;
+  const res      = ingTotal - egrTotal;
+  const margen   = ingTotal > 0 ? ((res / ingTotal) * 100) : 0;
+  const anual    = res * 12;
+  const ingPorOrden = flete + ticket * (com / 100);
+  const breakeven = ingPorOrden > 0 ? Math.ceil(egrTotal / ingPorOrden) : 0;
+
+  document.getElementById('r-flete').textContent = fmtM(ingFlete);
+  document.getElementById('r-cod').textContent = fmtM(ingCod);
+  document.getElementById('r-ing').textContent = fmtM(ingTotal);
+  document.getElementById('r-egr').textContent = fmtM(egrTotal);
+
+  const resEl = document.getElementById('r-res');
+  resEl.textContent = (res >= 0 ? '+' : '') + fmtM(res);
+  resEl.style.color = res >= 0 ? 'var(--grn)' : 'var(--red)';
+  document.getElementById('kpi-res').style.borderTopColor = res >= 0 ? 'var(--grn)' : 'var(--red)';
+
+  document.getElementById('r-anual').textContent = (anual >= 0 ? 'Anual: +' : 'Anual: ') + fmtM(anual);
+  document.getElementById('r-anual2').textContent = (anual >= 0 ? '+' : '') + fmtM(anual);
+
+  const marEl = document.getElementById('r-margen');
+  marEl.textContent = margen.toFixed(1) + '%';
+  marEl.style.color = margen >= 0 ? 'var(--grn)' : 'var(--red)';
+  document.getElementById('kpi-margen').style.borderTopColor = margen >= 0 ? 'var(--grn)' : 'var(--red)';
+
+  document.getElementById('r-break').textContent = fmt(breakeven) + ' órd./mes';
+
+  const maxVal = Math.max(ingTotal, egrTotal, Math.abs(res)) * 1.15 || 1;
+  document.getElementById('bar-ing').style.width = Math.min(100,(ingTotal / maxVal * 100)) + '%';
+  document.getElementById('bar-ing-n').textContent = fmtM(ingTotal);
+  document.getElementById('bar-egr').style.width = Math.min(100,(egrTotal / maxVal * 100)) + '%';
+  document.getElementById('bar-egr-n').textContent = fmtM(egrTotal);
+
+  const resBar = document.getElementById('bar-res');
+  resBar.style.width = Math.min(100,(Math.abs(res) / maxVal * 100)) + '%';
+  resBar.style.background = res >= 0 ? 'var(--grn)' : 'var(--red)';
+  document.getElementById('bar-res-n').textContent = (res>=0?'+':'') + fmtM(res);
+  document.getElementById('bar-res-lbl').textContent = res >= 0 ? 'Resultado (ganancia)' : 'Resultado (pérdida)';
+
+  document.querySelectorAll('.sc-card').forEach(c => c.classList.remove('active'));
+}
+
+const URBANO_HIST = [
+  { mes:"Enero '26",   guias:6,    utilidad:2393 },
+  { mes:"Febrero '26", guias:358,  utilidad:2887 },
+  { mes:"Marzo '26",   guias:1506, utilidad:2515 },
+  { mes:"Abril '26",   guias:4393, utilidad:2680 },
+  { mes:"Mayo '26",    guias:4253, utilidad:2719 },
+  { mes:"Junio '26",   guias:3779, utilidad:3284 },
+];
+const FIXY_HIST = [
+  { mes:"Enero '26",   guias:8274,  utilidad:1353 },
+  { mes:"Febrero '26", guias:6476,  utilidad:1394 },
+  { mes:"Marzo '26",   guias:4683,  utilidad:1425 },
+  { mes:"Abril '26",   guias:4689,  utilidad:1868 },
+  { mes:"Mayo '26",    guias:11871, utilidad:1859 },
+  { mes:"Junio '26",   guias:10268, utilidad:1917 },
+];
+
+function histRow(m, i, color, bg, fn) {
+  return `<tr style="background:${i%2===0?'#fff':'#FAFAFA'};border-bottom:1px solid #F0F0F0">
+      <td style="padding:7px 10px;font-size:12px">${m.mes}</td>
+      <td style="padding:7px 10px;text-align:right;font-size:12px">${fmt(m.guias)}</td>
+      <td style="padding:7px 10px;text-align:right;font-size:12px;font-family:var(--mono);font-weight:700">$${fmt(m.utilidad)}</td>
+      <td style="padding:7px 10px;text-align:right"><button onclick="${fn}(${m.utilidad})" style="background:${bg};color:${color};border:none;border-radius:5px;padding:4px 10px;font-size:11px;font-weight:700;cursor:pointer">Usar</button></td>
+    </tr>`;
+}
+function renderUrbanoHist() {
+  document.getElementById('urbano-hist-body').innerHTML = URBANO_HIST.map((m,i) => histRow(m,i,'var(--grn)','var(--grn-lt)','useUrbanoMonth')).join('');
+}
+function renderFixyHist() {
+  document.getElementById('fixy-hist-body').innerHTML = FIXY_HIST.map((m,i) => histRow(m,i,'var(--or-dk)','var(--or-lt)','useFixyMonth')).join('');
+}
+function useUrbanoMonth(val) {
+  if (MODO !== 'dashboard') setModo('dashboard');
+  document.getElementById('s-uurbano').value = val;
+  updateBE();
+}
+function useFixyMonth(val) {
+  if (MODO !== 'dashboard') setModo('dashboard');
+  document.getElementById('s-ufixy').value = val;
+  updateBE();
+}
+
+let MODO = 'dashboard';
+function setModo(m) {
+  MODO = m;
+  const dash = m==='dashboard';
+  document.getElementById('wrap-ufixy').style.display = dash ? '' : 'none';
+  document.getElementById('wrap-uurbano').style.display = dash ? '' : 'none';
+  document.getElementById('wrap-fijoars').style.display = dash ? 'none' : '';
+  document.getElementById('wrap-pctentregadafixy').style.display = dash ? 'none' : '';
+  document.getElementById('wrap-pctentregadaurbano').style.display = dash ? 'none' : '';
+  document.getElementById('wrap-pctcodmodelo').style.display = dash ? 'none' : '';
+  document.getElementById('wrap-comisionvisible').style.display = dash ? 'none' : '';
+  const bD = document.getElementById('btn-modo-dashboard'), bP = document.getElementById('btn-modo-pct');
+  bD.style.background = dash ? 'var(--or-dk)' : '#fff';
+  bD.style.color = dash ? '#fff' : 'var(--or-dk)';
+  bP.style.background = dash ? '#fff' : 'var(--or-dk)';
+  bP.style.color = dash ? 'var(--or-dk)' : '#fff';
+  updateBE();
+}
+
+function calcTop() {
+  const ordenes = +document.getElementById('calc-ordenes').value || 0;
+  const margen = +document.getElementById('calc-margen').value || 0;
+  const pctCod = +document.getElementById('calc-pctcod').value || 0;
+  const pctEntregada = +document.getElementById('calc-pctentregada').value || 0;
+  const ticket = +document.getElementById('calc-ticket').value || 0;
+  const comision = +document.getElementById('calc-comision').value || 0;
+  const gastos = +document.getElementById('calc-gastos').value || 0;
+
+  const margenTotal = Math.round(ordenes * margen);
+  const comisionTotal = Math.round(ordenes * (pctCod/100) * (pctEntregada/100) * ticket * (comision/100));
+  const utilidadTotal = margenTotal + comisionTotal;
+  const diferencia = utilidadTotal - gastos;
+
+  document.getElementById('calc-margentotal').textContent = '$' + fmt(margenTotal);
+  document.getElementById('calc-margentotal2').textContent = '$' + fmt(margenTotal);
+  document.getElementById('calc-comisiontotal').textContent = '$' + fmt(comisionTotal);
+  document.getElementById('calc-comisiontotal2').textContent = '$' + fmt(comisionTotal);
+  document.getElementById('calc-guiasentregadas').textContent = fmt(Math.round(ordenes * (pctEntregada/100)));
+  document.getElementById('calc-utilidadtotal').textContent = '$' + fmt(utilidadTotal);
+  document.getElementById('calc-final-utilidad').textContent = '$' + fmt(utilidadTotal);
+
+  const diffEl = document.getElementById('calc-final-diff');
+  const enEquilibrio = Math.abs(diferencia) < Math.max(gastos*0.01, 1);
+  diffEl.textContent = (diferencia>=0?'+':'') + '$' + fmt(diferencia) + (enEquilibrio ? ' ✓' : '');
+  diffEl.style.color = enEquilibrio ? '#4ADE80' : (diferencia>=0 ? '#4ADE80' : '#FF6B6B');
+}
+
+function updateBE() {
+  const opex   = +document.getElementById('s-opex').value;
+  const ticket = +document.getElementById('s-ticketbe').value;
+  const comFixy   = +document.getElementById('s-comisionfixy').value;
+  const comUrbano = +document.getElementById('s-comisionurbano').value;
+  const pctCod = +document.getElementById('s-pctcod').value;
+  const mixPct = +document.getElementById('s-mix').value;
+
+  let uFixy, uUrb;
+  if (MODO === 'dashboard') {
+    uFixy = +document.getElementById('s-ufixy').value;
+    uUrb  = +document.getElementById('s-uurbano').value;
+    document.getElementById('v-ufixy').textContent = '$' + fmt(uFixy);
+    document.getElementById('v-uurbano').textContent = '$' + fmt(uUrb);
+  } else {
+    const fijoArs = +document.getElementById('s-fijoars').value;
+    const pctEntregadaFixy = +document.getElementById('s-pctentregadafixy').value;
+    const pctEntregadaUrb  = +document.getElementById('s-pctentregadaurbano').value;
+    const pctCodModelo = +document.getElementById('s-pctcodmodelo').value;
+    // Margen fijo por orden (se gana entregada o devuelta, sobre TODAS las movilizadas)
+    // + comisión COD: solo si la guía es COD (% del total movilizadas) Y fue entregada — se multiplican, no se suman contra el total
+    uFixy = fijoArs + (pctEntregadaFixy/100) * (pctCodModelo/100) * (ticket * (comFixy/100));
+    uUrb  = fijoArs + (pctEntregadaUrb/100)  * (pctCodModelo/100) * (ticket * (comUrbano/100));
+    document.getElementById('v-fijoars').textContent = '$' + fmt(fijoArs);
+    document.getElementById('v-pctentregadafixy').textContent = pctEntregadaFixy + '%';
+    document.getElementById('v-pctentregadaurbano').textContent = pctEntregadaUrb + '%';
+    document.getElementById('v-pctcodmodelo').textContent = pctCodModelo + '%';
+    document.getElementById('v-comisionvisible').textContent = comFixy + '% / ' + comUrbano + '%';
+  }
+
+  document.getElementById('v-opex').textContent = fmtM(opex);
+  document.getElementById('v-ticketbe').textContent = '$' + fmt(ticket);
+  document.getElementById('v-comisionfixy').textContent = comFixy + '%';
+  document.getElementById('v-comisionurbano').textContent = comUrbano + '%';
+  document.getElementById('v-pctcod').textContent = pctCod + '%';
+  document.getElementById('v-mix').textContent = mixPct + '%';
+
+  // Comisión COD promedio por guía = solo se cobra en las guías COD, distinta por transportadora
+  // (en modo % ya está embebida arriba, condicionada a "entregada" — no se vuelve a sumar acá)
+  const comisionFixyPorGuia   = MODO==='dashboard' ? (pctCod/100) * (ticket * (comFixy/100)) : 0;
+  const comisionUrbanoPorGuia = MODO==='dashboard' ? (pctCod/100) * (ticket * (comUrbano/100)) : 0;
+
+  const uFixyTotal = uFixy + comisionFixyPorGuia;
+  const uUrbTotal  = uUrb + comisionUrbanoPorGuia;
+  const uMixTotal  = (mixPct/100)*uFixyTotal + (1-mixPct/100)*uUrbTotal;
+
+  const beFixy = uFixyTotal>0 ? Math.ceil(opex/uFixyTotal) : 0;
+  const beUrb  = uUrbTotal>0 ? Math.ceil(opex/uUrbTotal) : 0;
+  const beMix  = uMixTotal>0 ? Math.ceil(opex/uMixTotal) : 0;
+
+  document.getElementById('be-fixy').textContent = fmt(beFixy);
+  document.getElementById('be-fixy-sub').textContent = `guías/mes · $${fmt(Math.round(uFixyTotal))}/guía (margen + COD)`;
+  document.getElementById('be-urbano').textContent = fmt(beUrb);
+  document.getElementById('be-urbano-sub').textContent = `guías/mes · $${fmt(Math.round(uUrbTotal))}/guía (margen + COD)`;
+  document.getElementById('be-mix').textContent = fmt(beMix);
+  document.getElementById('be-mix-sub').textContent = `guías/mes · $${fmt(Math.round(uMixTotal))}/guía (mix ${mixPct}/${100-mixPct})`;
+
+  // La cuenta, paso a paso — ecuación visual, se arma distinto según el modelo activo
+  function eqBox(n, l, extra) { return `<div class="eq-box${extra?' '+extra:''}"><div class="n">${n}</div><div class="l">${l}</div></div>`; }
+  function eqOp(s) { return `<div class="eq-op">${s}</div>`; }
+
+  let html = '';
+  let totalUtilidad, guiasEtiqueta;
+  if (MODO === 'dashboard') {
+    const comisionPonderada = (mixPct/100)*comisionFixyPorGuia + (1-mixPct/100)*comisionUrbanoPorGuia;
+    const margenPuroPonderado = uMixTotal - comisionPonderada;
+    const totalMargen = Math.round(margenPuroPonderado * beMix);
+    const guiasCod = Math.round(beMix * (pctCod/100));
+    const totalComision = Math.round(comisionPonderada * beMix);
+    totalUtilidad = totalMargen + totalComision;
+
+    html += `<div style="text-align:center;font-size:12px;color:#777;margin-bottom:4px">Paso 1 — Margen logístico (dashboard, ya neto de costo de transporte)</div>`;
+    html += `<div class="eq-row">${eqBox(fmt(beMix),'guías necesarias')}${eqOp('×')}${eqBox('$'+fmt(Math.round(margenPuroPonderado)),'margen promedio/guía')}${eqOp('=')}${eqBox('$'+fmt(totalMargen),'margen total','eq-result')}</div>`;
+    html += `<div style="text-align:center;font-size:12px;color:#777;margin:16px 0 4px">Paso 2 — Comisión COD (${pctCod}% de esas guías son COD)</div>`;
+    html += `<div class="eq-row">${eqBox(fmt(guiasCod),pctCod+'% de '+fmt(beMix)+' = guías COD')}${eqOp('×')}${eqBox('$'+fmt(ticket),'ticket promedio')}${eqOp('×')}${eqBox(comFixy+'% / '+comUrbano+'%','comisión Fixy/Urbano')}${eqOp('=')}${eqBox('$'+fmt(totalComision),'comisión total','eq-result')}</div>`;
+    html += `<div class="eq-line"></div>`;
+    html += `<div class="eq-row">${eqBox('$'+fmt(totalMargen),'margen total')}${eqOp('+')}${eqBox('$'+fmt(totalComision),'comisión total')}${eqOp('=')}${eqBox('$'+fmt(totalUtilidad),'utilidad total generada','eq-result')}</div>`;
+  } else {
+    const fijoArs = +document.getElementById('s-fijoars').value;
+    const pctEntregadaFixy = +document.getElementById('s-pctentregadafixy').value;
+    const pctEntregadaUrb  = +document.getElementById('s-pctentregadaurbano').value;
+    const pctCodModelo = +document.getElementById('s-pctcodmodelo').value;
+    const totalFijo = Math.round(beMix * fijoArs);
+    const comisionPerGuiaMix = uMixTotal - fijoArs;
+    const totalComision = Math.round(comisionPerGuiaMix * beMix);
+    totalUtilidad = totalFijo + totalComision;
+    const pctGeneraComisionMix = (mixPct/100)*(pctEntregadaFixy*pctCodModelo/100) + (1-mixPct/100)*(pctEntregadaUrb*pctCodModelo/100);
+    const guiasGeneranComision = Math.round(beMix * pctGeneraComisionMix/100);
+
+    html += `<div style="text-align:center;font-size:12px;color:#777;margin-bottom:4px">Paso 1 — Margen fijo (se gana entregada o devuelta, todas las guías)</div>`;
+    html += `<div class="eq-row">${eqBox(fmt(beMix),'guías necesarias')}${eqOp('×')}${eqBox('$'+fmt(fijoArs),'margen fijo/orden')}${eqOp('=')}${eqBox('$'+fmt(totalFijo),'margen total','eq-result')}</div>`;
+    html += `<div style="text-align:center;font-size:12px;color:#777;margin:16px 0 4px">Paso 2 — Comisión COD (solo si es COD Y fue entregada — Fixy ${pctEntregadaFixy}% entregada, Urbano ${pctEntregadaUrb}% entregada, ${pctCodModelo}% COD)</div>`;
+    html += `<div class="eq-row">${eqBox(fmt(guiasGeneranComision),'guías COD + entregadas (aprox. mix)')}${eqOp('×')}${eqBox('$'+fmt(ticket),'ticket promedio')}${eqOp('×')}${eqBox(comFixy+'% / '+comUrbano+'%','comisión Fixy/Urbano')}${eqOp('=')}${eqBox('$'+fmt(totalComision),'comisión total','eq-result')}</div>`;
+    html += `<div class="eq-line"></div>`;
+    html += `<div class="eq-row">${eqBox('$'+fmt(totalFijo),'margen total')}${eqOp('+')}${eqBox('$'+fmt(totalComision),'comisión total')}${eqOp('=')}${eqBox('$'+fmt(totalUtilidad),'utilidad total generada','eq-result')}</div>`;
+  }
+
+  const diffFinal = totalUtilidad - opex;
+  html += `<div class="eq-final">
+    <div><div style="font-size:11px;color:#aaa;letter-spacing:.5px">UTILIDAD GENERADA</div><div class="n" style="color:var(--grn)">$${fmt(totalUtilidad)}</div></div>
+    <div style="font-size:22px;color:#666">vs</div>
+    <div><div style="font-size:11px;color:#aaa;letter-spacing:.5px">GASTOS DEL MES</div><div class="n" style="color:var(--or)">$${fmt(opex)}</div></div>
+    <div style="font-size:22px;color:#666">=</div>
+    <div style="text-align:right"><div style="font-size:11px;color:#aaa;letter-spacing:.5px">DIFERENCIA</div><div class="n" style="color:${Math.abs(diffFinal)<opex*0.01?'#4ADE80':'#FF6B6B'}">${diffFinal>=0?'+':''}$${fmt(diffFinal)} ${Math.abs(diffFinal)<opex*0.01?'✓ EQUILIBRIO':''}</div></div>
+  </div>`;
+
+  document.getElementById('explicacion-cuenta').innerHTML = html;
+
+  // Header — punto de equilibrio siempre visible arriba de todo
+  document.getElementById('header-be').textContent = fmt(beMix);
+  document.getElementById('header-be-sub').textContent = `${MODO==='dashboard'?'modelo dashboard':'modelo real'} · OPEX ${fmtM(opex)}`;
+
+  // Tarjeta comisión COD — desglose de la mezcla de equilibrio
+  document.getElementById('cod-porguia-fixy').textContent = '$' + fmt(Math.round(ticket*(comFixy/100)));
+  document.getElementById('cod-porguia-urbano').textContent = '$' + fmt(Math.round(ticket*(comUrbano/100)));
+  const guiasCod = Math.round(beMix * (pctCod/100));
+  const guiasFF  = beMix - guiasCod;
+  document.getElementById('cod-necesarias').textContent = fmt(guiasCod);
+  document.getElementById('cod-necesarias-sub').textContent = `de las ${fmt(beMix)} guías/mes del mix (${pctCod}%)`;
+  document.getElementById('cod-ff').textContent = fmt(guiasFF);
+
+  // Panorama real junio vs objetivo julio
+  const realFixy = +document.getElementById('s-realfixy').value;
+  const realUrb  = +document.getElementById('s-realurbano').value;
+  document.getElementById('v-realfixy').textContent = fmt(realFixy);
+  document.getElementById('v-realurbano').textContent = fmt(realUrb);
+
+  const realTotal = realFixy + realUrb;
+  const utilidadReal = realFixy*uFixyTotal + realUrb*uUrbTotal;
+  const resultadoReal = utilidadReal - opex;
+  document.getElementById('real-total').textContent = fmt(realTotal);
+
+  const resEl = document.getElementById('real-resultado');
+  resEl.textContent = (resultadoReal>=0?'+':'') + fmtM(resultadoReal);
+  resEl.style.color = resultadoReal>=0 ? 'var(--grn)' : 'var(--red)';
+  document.getElementById('kpi-real-res').style.borderTopColor = resultadoReal>=0 ? 'var(--grn)' : 'var(--red)';
+
+  const gap = beMix - realTotal;
+  const gapEl = document.getElementById('real-gap');
+  gapEl.textContent = (gap>0 ? '-' + fmt(gap) : '+' + fmt(-gap));
+  gapEl.style.color = gap>0 ? 'var(--red)' : 'var(--grn)';
+  document.getElementById('kpi-real-gap').style.borderTopColor = gap>0 ? 'var(--red)' : 'var(--grn)';
+
+  document.getElementById('julio-obj').textContent = fmt(beMix);
+
+  // Tarjeta comparativa — recalcula los DOS modelos siempre, sin importar cuál está activo
+  const opex2 = opex; // mismo OPEX para ambos modelos
+  // Modelo dashboard
+  const dUFixy = +document.getElementById('s-ufixy').value;
+  const dUUrb  = +document.getElementById('s-uurbano').value;
+  const dCodFixy = (pctCod/100) * (ticket * (comFixy/100));
+  const dCodUrb  = (pctCod/100) * (ticket * (comUrbano/100));
+  const dUFixyT = dUFixy + dCodFixy, dUUrbT = dUUrb + dCodUrb;
+  const dUMixT  = (mixPct/100)*dUFixyT + (1-mixPct/100)*dUUrbT;
+  const dBeMix  = dUMixT>0 ? Math.ceil(opex2/dUMixT) : 0;
+  // Modelo real ($ fijo + % si entregada)
+  const rFijo = +document.getElementById('s-fijoars').value;
+  const rPctEntregadaFixy = +document.getElementById('s-pctentregadafixy').value;
+  const rPctEntregadaUrb  = +document.getElementById('s-pctentregadaurbano').value;
+  const rPctCodModelo = +document.getElementById('s-pctcodmodelo').value;
+  const rUFixyT = rFijo + (rPctEntregadaFixy/100)*(rPctCodModelo/100)*(ticket*(comFixy/100));
+  const rUUrbT  = rFijo + (rPctEntregadaUrb/100)*(rPctCodModelo/100)*(ticket*(comUrbano/100));
+  const rUMixT  = (mixPct/100)*rUFixyT + (1-mixPct/100)*rUUrbT;
+  const rBeMix  = rUMixT>0 ? Math.ceil(opex2/rUMixT) : 0;
+
+  document.getElementById('cmp-dash-uguia').textContent = '$' + fmt(Math.round(dUMixT));
+  document.getElementById('cmp-dash-be').textContent = fmt(dBeMix);
+  document.getElementById('cmp-real-uguia').textContent = '$' + fmt(Math.round(rUMixT));
+  document.getElementById('cmp-real-be').textContent = fmt(rBeMix);
+  const diff = dBeMix - rBeMix;
+  const diffEl = document.getElementById('cmp-diff');
+  diffEl.textContent = (diff>=0?'+':'') + fmt(diff) + ' guías';
+  document.getElementById('cmp-diff-sub').textContent = diff>=0
+    ? 'el modelo dashboard pide más volumen que el modelo real'
+    : 'el modelo real pide más volumen que el modelo dashboard';
+
+  // Barras comparativas
+  const maxBar = Math.max(dBeMix, rBeMix) * 1.15 || 1;
+  document.getElementById('cmp-bar-dash').style.width = Math.min(100, dBeMix/maxBar*100) + '%';
+  document.getElementById('cmp-bar-real').style.width = Math.min(100, rBeMix/maxBar*100) + '%';
+
+  // Julio en curso — seguimiento en vivo
+  const diaHoy = +document.getElementById('s-diahoy').value;
+  const diasMes = 31;
+  const julioFixy = +document.getElementById('s-julioFixy').value;
+  const julioUrb  = +document.getElementById('s-julioUrbano').value;
+  const julioGastos = +document.getElementById('s-juliogastos').value;
+
+  document.getElementById('v-diahoy').textContent = diaHoy;
+  document.getElementById('v-julioFixy').textContent = fmt(julioFixy);
+  document.getElementById('v-julioUrbano').textContent = fmt(julioUrb);
+  document.getElementById('v-juliogastos').textContent = fmtM(julioGastos);
+
+  const julioTotal = julioFixy + julioUrb;
+  const julioUtilidad = julioFixy*uFixyTotal + julioUrb*uUrbTotal; // usa el modelo activo (arriba)
+  const julioResultado = julioUtilidad - julioGastos;
+
+  const pctDias = Math.min(100, (diaHoy/diasMes)*100);
+  const pctOrd  = beMix>0 ? Math.min(100, (julioTotal/beMix)*100) : 0;
+  document.getElementById('julio-diasN').textContent = `día ${diaHoy} de ${diasMes} (${pctDias.toFixed(0)}%)`;
+  document.getElementById('julio-bar-dias').style.width = pctDias + '%';
+  document.getElementById('julio-ordN').textContent = `${fmt(julioTotal)} de ${fmt(beMix)} (${pctOrd.toFixed(0)}%)`;
+  document.getElementById('julio-bar-ord').style.width = pctOrd + '%';
+
+  const ritmoActual = diaHoy>0 ? julioTotal/diaHoy : 0;
+  const proyeccion = Math.round(ritmoActual * diasMes);
+  document.getElementById('julio-ritmo').textContent = fmt(Math.round(ritmoActual)) + '/día';
+
+  const proyEl = document.getElementById('julio-proyeccion');
+  proyEl.textContent = fmt(proyeccion);
+  const vaBien = proyeccion >= beMix;
+  proyEl.style.color = vaBien ? 'var(--grn)' : 'var(--red)';
+  document.getElementById('kpi-julio-proy').style.borderTopColor = vaBien ? 'var(--grn)' : 'var(--red)';
+
+  const diasRestantes = Math.max(1, diasMes - diaHoy);
+  const faltante = Math.max(0, beMix - julioTotal);
+  const ritmoNecesario = Math.ceil(faltante / diasRestantes);
+  document.getElementById('julio-necesario').textContent = fmt(ritmoNecesario) + '/día';
+  document.getElementById('julio-necesario-sub').textContent = `${fmt(faltante)} órdenes en los ${diasRestantes} días que quedan`;
+
+  const jResEl = document.getElementById('julio-resultado');
+  jResEl.textContent = (julioResultado>=0?'+':'') + fmtM(julioResultado);
+  jResEl.style.color = julioResultado>=0 ? 'var(--grn)' : 'var(--red)';
+  document.getElementById('kpi-julio-resultado').style.borderTopColor = julioResultado>=0 ? 'var(--grn)' : 'var(--red)';
+}
+
+function loadScenario(ordenes, fijos_abs, vars_abs) {
+  document.getElementById('s-ordenes').value = ordenes;
+  document.getElementById('s-fijos').value = fijos_abs;
+  document.getElementById('s-var').value = vars_abs;
+  document.getElementById('s-flete').value = 1500;
+  document.getElementById('s-ticket').value = 60000;
+  document.getElementById('s-comision').value = 0.5;
+  update();
+}
+
+function addNumberInputs() {
+  document.querySelectorAll('input[type=range]').forEach(range => {
+    if (range.dataset.hasNumBox) return; // evita duplicar si se llama dos veces
+    range.dataset.hasNumBox = '1';
+    const num = document.createElement('input');
+    num.type = 'number';
+    num.value = range.value;
+    num.step = range.step || 1;
+    num.min = range.min;
+    num.max = range.max;
+    num.className = 'num-box';
+    num.style.cssText = 'width:100px;margin:6px 0 2px;padding:5px 8px;border:1.5px solid var(--or-lt);border-radius:6px;font-family:var(--mono);font-size:12px;font-weight:700;text-align:right;color:#333;background:#fff;display:block';
+    num.addEventListener('input', () => {
+      range.value = num.value;
+      range.dispatchEvent(new Event('input', {bubbles:true}));
+    });
+    num.addEventListener('blur', () => {
+      // al salir del campo, clampeamos a los límites del slider
+      let v = +num.value;
+      if (v < +range.min) v = +range.min;
+      if (v > +range.max) v = +range.max;
+      num.value = v;
+      range.value = v;
+      range.dispatchEvent(new Event('input', {bubbles:true}));
+    });
+    range.addEventListener('input', () => {
+      if (document.activeElement !== num) num.value = range.value;
+    });
+    range.insertAdjacentElement('afterend', num);
+  });
+}
+
+loadScenario(14047,22000000,23000000);
+document.getElementById('sc0').classList.add('active');
+setModo('pct');
+renderUrbanoHist();
+renderFixyHist();
+addNumberInputs();
+calcTop();
+</script>
+<script>
+/* Notifica la altura al contenedor (React) para auto-ajustar el iframe sin doble scroll */
+(function(){
+  function postH(){
+    var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+    try { parent.postMessage({ type: 'pe-sim-height', height: h }, '*'); } catch(e){}
+  }
+  window.addEventListener('load', postH);
+  window.addEventListener('resize', postH);
+  document.addEventListener('input', function(){ setTimeout(postH, 50); }, true);
+  if (window.ResizeObserver) { try { new ResizeObserver(postH).observe(document.body); } catch(e){} }
+  setTimeout(postH, 300); setTimeout(postH, 1200);
+})();
+</script>
+</body>
+</html>
