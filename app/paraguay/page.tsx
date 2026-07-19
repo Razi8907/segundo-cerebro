@@ -28,6 +28,7 @@ import OpsBreakdown from "../components/OpsBreakdown";
 import ProveedorManager from "../components/ProveedorManager";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboard from "../components/FinanzasDashboard";
+import FinanzasDashboardPY_H1 from "../components/FinanzasDashboardPY_H1";
 import FinanzasDashboardPY_Q1 from "../components/FinanzasDashboardPY_Q1";
 import SeguimientoComercial from "../components/SeguimientoComercial";
 import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
@@ -437,7 +438,15 @@ export default function ParaguayDashboard() {
 
         {!isQ2 && sector === "finanzas" && (
           <div className="space-y-8">
-            <FinanzasDashboardPY_Q1 />
+            <FinanzasDashboardPY_H1 />
+            <details className="glass-card p-4">
+              <summary className="cursor-pointer text-sm font-medium t-secondary hover:text-orange-400">
+                📊 Ver informe histórico Q1 2026 (detalle)
+              </summary>
+              <div className="mt-4">
+                <FinanzasDashboardPY_Q1 />
+              </div>
+            </details>
             <FinanzasDashboard country="py" />
           </div>
         )}
