@@ -403,7 +403,7 @@ function ResumenView() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
               <XAxis dataKey="mes" stroke="#888" fontSize={11} />
               <YAxis stroke="#888" fontSize={10} tickFormatter={(v) => (mode === "monto" ? `${v}M` : `${v}%`)} />
-              <Tooltip contentStyle={tipStyle} formatter={(v) => (mode === "monto" ? `Gs ${v}M` : `${v}%`)} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => (mode === "monto" ? `Gs ${v}M` : `${v}%`)} />
               <Bar dataKey={mode} radius={[4, 4, 0, 0]}>
                 {DATA.resumen.ebitdaMensual.map((d, i) => <Cell key={i} fill={d[mode] >= 0 ? C.green : C.red} />)}
               </Bar>
@@ -469,7 +469,7 @@ function MargenesView() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
               <XAxis dataKey="mes" stroke="#888" fontSize={11} />
               <YAxis stroke="#888" fontSize={10} domain={[10, 32]} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={tipStyle} formatter={(v) => `${v}%`} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `${v}%`} />
               <Line type="monotone" dataKey="value" stroke={C.orange} strokeWidth={2.5} dot={{ fill: C.orange, r: 5 }} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -481,7 +481,7 @@ function MargenesView() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
               <XAxis dataKey="mes" stroke="#888" fontSize={11} />
               <YAxis stroke="#888" fontSize={10} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={tipStyle} formatter={(v) => `${v}%`} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `${v}%`} />
               <Line type="monotone" dataKey="value" stroke={C.green} strokeWidth={2.5} dot={{ fill: C.green, r: 5 }} />
             </ComposedChart>
           </ResponsiveContainer>
@@ -547,7 +547,7 @@ function OperativoView() {
               <XAxis dataKey="mes" stroke="#888" fontSize={11} />
               <YAxis yAxisId="left" stroke="#888" fontSize={10} tickFormatter={(v) => v.toLocaleString("es-AR")} />
               <YAxis yAxisId="right" orientation="right" stroke="#888" fontSize={10} domain={[10, 35]} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={tipStyle} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar yAxisId="left" dataKey="guias" name="Guías" fill={C.green} radius={[4, 4, 0, 0]} />
               <Line yAxisId="right" type="monotone" dataKey="rentab" name="Rentab. %" stroke={C.amber} strokeWidth={2} dot={{ fill: C.amber, r: 4 }} />
@@ -561,7 +561,7 @@ function OperativoView() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
               <XAxis dataKey="mes" stroke="#888" fontSize={11} />
               <YAxis stroke="#888" fontSize={10} tickFormatter={(v) => `${v}M`} />
-              <Tooltip contentStyle={tipStyle} formatter={(v) => `Gs ${v}M`} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `Gs ${v}M`} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar dataKey="ingreso" name="Ingreso" fill={C.blueLt} radius={[3, 3, 0, 0]} />
               <Bar dataKey="costo" name="Costo" fill={C.orange} radius={[3, 3, 0, 0]} />
@@ -586,7 +586,7 @@ function FulfillmentView() {
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
               <XAxis dataKey="mes" stroke="#888" fontSize={11} />
               <YAxis stroke="#888" fontSize={10} tickFormatter={(v) => `${v}M`} />
-              <Tooltip contentStyle={tipStyle} formatter={(v) => `Gs ${v}M`} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `Gs ${v}M`} />
               <Bar dataKey="resultado" radius={[4, 4, 0, 0]}>
                 {DATA.fulfillment.bar.map((d, i) => <Cell key={i} fill={d.resultado >= 0 ? C.green : C.red} />)}
               </Bar>
@@ -641,7 +641,7 @@ function TransportadorasView() {
               <XAxis dataKey="trans" stroke="#888" fontSize={10} />
               <YAxis yAxisId="left" stroke="#888" fontSize={10} domain={[0, 45]} tickFormatter={(v) => `${v}%`} />
               <YAxis yAxisId="right" orientation="right" stroke="#888" fontSize={10} domain={[0, 70]} tickFormatter={(v) => `${v}%`} />
-              <Tooltip contentStyle={tipStyle} formatter={(v) => `${v}%`} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `${v}%`} />
               <Legend wrapperStyle={{ fontSize: 11 }} />
               <Bar yAxisId="left" dataKey="rentab" name="Rentabilidad %" radius={[4, 4, 0, 0]}>
                 {DATA.transportadoras.chart.map((d, i) => <Cell key={i} fill={d.rentab < 25 ? C.red : C.green} />)}
@@ -743,7 +743,7 @@ function ObligacionesView() {
               <Pie data={DATA.obligaciones.wallets} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={80}>
                 {DATA.obligaciones.wallets.map((d, i) => <Cell key={i} fill={d.color} />)}
               </Pie>
-              <Tooltip contentStyle={tipStyle} formatter={(v) => `Gs ${v}M`} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `Gs ${v}M`} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
             </PieChart>
           </ResponsiveContainer>
@@ -774,7 +774,7 @@ function JunioView() {
               <Pie data={DATA.junio.donut} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={45} outerRadius={80}>
                 {DATA.junio.donut.map((d, i) => <Cell key={i} fill={d.color} />)}
               </Pie>
-              <Tooltip contentStyle={tipStyle} formatter={(v) => `Gs ${v}M`} />
+              <Tooltip contentStyle={tipStyle} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `Gs ${v}M`} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
             </PieChart>
           </ResponsiveContainer>
