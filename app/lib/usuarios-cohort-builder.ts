@@ -7,6 +7,9 @@ const NO_MOV = new Set([
 
 const Q1 = ["enero","febrero","marzo"] as const;
 const Q2 = ["abril","mayo","junio"] as const;
+const Q3 = ["julio","agosto","septiembre"] as const;
+// Meses con data operacional desde operational_snapshots (Q2 en adelante).
+const OPS_MESES = [...Q2, ...Q3] as const;
 const MES_NUM: Record<number, string> = {
   1:"enero",2:"febrero",3:"marzo",4:"abril",5:"mayo",6:"junio",
   7:"julio",8:"agosto",9:"septiembre",10:"octubre",11:"noviembre",12:"diciembre",
@@ -40,6 +43,7 @@ interface UserWithOps extends RegisteredUser {
   ops: Record<string, OpsPerMonth>;
   q1_ing: number; q1_mov: number;
   q2_ing: number; q2_mov: number;
+  q3_ing: number; q3_mov: number;
   cohort_ing: number; cohort_mov: number;
 }
 
@@ -104,7 +108,7 @@ export function buildOpsByMonth(
   q2Snapshots: OperationalSnapshot[],
 ): Record<string, Record<string, OpsPerMonth>> {
   const ops: Record<string, Record<string, OpsPerMonth>> = {};
-  for (const m of [...Q1, ...Q2]) ops[m] = {};
+  for (const m of [...Q1, ...Q2, ...Q3]) ops[m] = {};
 
   // Q1 from legacy dropshippers list
   for (const d of legacyDropshippers) {
@@ -115,9 +119,9 @@ export function buildOpsByMonth(
     if (d.mar) ops.marzo[email] = { ing: d.mar.ing ?? 0, mov: d.mar.mov ?? 0 };
   }
 
-  // Q2 from operational_snapshots
+  // Q2/Q3 from operational_snapshots
   for (const snap of q2Snapshots) {
-    if (!Q2.includes(snap.mes as typeof Q2[number])) continue;
+    if (!OPS_MESES.includes(snap.mes as typeof OPS_MESES[number])) continue;
     const nameToEmail = new Map<string, string>();
     for (const r of snap.by_ds_daily || []) {
       const nm = r.ds || "";
@@ -144,20 +148,22 @@ export function buildOpsByMonth(
 function enrichUsers(users: RegisteredUser[], opsByMonth: Record<string, Record<string, OpsPerMonth>>): UserWithOps[] {
   return users.map((u) => {
     const ops: Record<string, OpsPerMonth> = {};
-    for (const m of [...Q1, ...Q2]) ops[m] = opsByMonth[m]?.[u.email] || { ing: 0, mov: 0 };
+    for (const m of [...Q1, ...Q2, ...Q3]) ops[m] = opsByMonth[m]?.[u.email] || { ing: 0, mov: 0 };
     const q1_ing = Q1.reduce((s, m) => s + ops[m].ing, 0);
     const q1_mov = Q1.reduce((s, m) => s + ops[m].mov, 0);
     const q2_ing = Q2.reduce((s, m) => s + ops[m].ing, 0);
     const q2_mov = Q2.reduce((s, m) => s + ops[m].mov, 0);
+    const q3_ing = Q3.reduce((s, m) => s + ops[m].ing, 0);
+    const q3_mov = Q3.reduce((s, m) => s + ops[m].mov, 0);
     const cohort_ing = ops[u.reg_mes]?.ing ?? 0;
     const cohort_mov = ops[u.reg_mes]?.mov ?? 0;
-    return { ...u, ops, q1_ing, q1_mov, q2_ing, q2_mov, cohort_ing, cohort_mov };
+    return { ...u, ops, q1_ing, q1_mov, q2_ing, q2_mov, q3_ing, q3_mov, cohort_ing, cohort_mov };
   });
 }
 
-function buildCohort(cu: UserWithOps[], useQTotal?: "q1" | "q2"): CohortOut {
-  const getMov = useQTotal === "q1" ? (u: UserWithOps) => u.q1_mov : useQTotal === "q2" ? (u: UserWithOps) => u.q2_mov : (u: UserWithOps) => u.cohort_mov;
-  const getIng = useQTotal === "q1" ? (u: UserWithOps) => u.q1_ing : useQTotal === "q2" ? (u: UserWithOps) => u.q2_ing : (u: UserWithOps) => u.cohort_ing;
+function buildCohort(cu: UserWithOps[], useQTotal?: "q1" | "q2" | "q3"): CohortOut {
+  const getMov = useQTotal === "q1" ? (u: UserWithOps) => u.q1_mov : useQTotal === "q2" ? (u: UserWithOps) => u.q2_mov : useQTotal === "q3" ? (u: UserWithOps) => u.q3_mov : (u: UserWithOps) => u.cohort_mov;
+  const getIng = useQTotal === "q1" ? (u: UserWithOps) => u.q1_ing : useQTotal === "q2" ? (u: UserWithOps) => u.q2_ing : useQTotal === "q3" ? (u: UserWithOps) => u.q3_ing : (u: UserWithOps) => u.cohort_ing;
 
   const us = [...cu].sort((a, b) => getMov(b) - getMov(a));
   const totalMov = us.reduce((s, u) => s + getMov(u), 0);
@@ -282,7 +288,7 @@ export function buildUsuariosSegmentados(
   const users = enrichUsers(registered, opsByMonth);
 
   const cohorts: Record<string, CohortOut> = {};
-  for (const m of [...Q1, ...Q2]) {
+  for (const m of [...Q1, ...Q2, ...Q3]) {
     const cu = users.filter((u) => u.reg_mes === m);
     cohorts[m] = buildCohort(cu);
     cohorts[m].windows_note = `orders solo de ${m}`;
@@ -295,13 +301,17 @@ export function buildUsuariosSegmentados(
   cohorts.q2 = buildCohort(q2u, "q2");
   cohorts.q2.windows_note = "orders acumulados Abr+May+Jun para registrados en Q2";
 
+  const q3u = users.filter((u) => (Q3 as readonly string[]).includes(u.reg_mes));
+  cohorts.q3 = buildCohort(q3u, "q3");
+  cohorts.q3.windows_note = "orders acumulados Jul+Ago+Sep para registrados en Q3";
+
   // Comunidades globales
   const cg: Record<string, { registrados: number; activos: number }> = {};
   for (const u of users) {
     const com = u.comunidad || "SIN COMUNIDAD";
     if (!cg[com]) cg[com] = { registrados: 0, activos: 0 };
     cg[com].registrados++;
-    if (u.q1_mov + u.q2_mov > 0) cg[com].activos++;
+    if (u.q1_mov + u.q2_mov + u.q3_mov > 0) cg[com].activos++;
   }
   const comunidades_globales = Object.entries(cg)
     .sort((a, b) => b[1].registrados - a[1].registrados)

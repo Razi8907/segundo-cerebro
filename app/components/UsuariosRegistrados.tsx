@@ -62,9 +62,9 @@ interface Payload {
 }
 
 // "q2" se ubica al inicio como vista acumulada de Q2 (Abr+May+Jun).
-const MESES_ORDER = ["q1","q2","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const MESES_ORDER = ["q1","q2","q3","enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
 const MES_LABEL: Record<string, string> = {
-  q1: "Q1 (acum)", q2: "Q2 (acum)",
+  q1: "Q1 (acum)", q2: "Q2 (acum)", q3: "Q3 (acum)",
   enero:"Enero", febrero:"Febrero", marzo:"Marzo", abril:"Abril",
   mayo:"Mayo", junio:"Junio", julio:"Julio", agosto:"Agosto",
   septiembre:"Septiembre", octubre:"Octubre", noviembre:"Noviembre", diciembre:"Diciembre",
@@ -82,12 +82,15 @@ type SegmentKey = "seg1" | "seg2" | "seg3" | "segIntent" | "seg4";
 // - q2/undefined → mostrar todo
 const Q2_MESES = new Set(["abril", "mayo", "junio"]);
 const Q1_MESES = new Set(["enero", "febrero", "marzo"]);
+const Q3_MESES = new Set(["julio", "agosto", "septiembre"]);
 
 function allowedCohorts(mes?: string | null): string[] | null {
   if (!mes) return null;
   if (mes === "q1") return ["enero", "febrero", "marzo", "q1"];
   if (mes === "q2") return ["abril", "mayo", "junio", "q2"];
+  if (mes === "q3") return ["julio", "agosto", "septiembre", "q3"];
   if (Q2_MESES.has(mes)) return [mes, "q2"];
+  if (Q3_MESES.has(mes)) return [mes, "q3"];
   if (Q1_MESES.has(mes)) return [mes];
   return null;
 }

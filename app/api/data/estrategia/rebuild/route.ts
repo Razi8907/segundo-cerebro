@@ -21,7 +21,7 @@ export async function rebuildEstrategia(country: "ar" | "py") {
   const supabase = getSupabase();
   const [snapRes, opsRes] = await Promise.all([
     supabase.from("dashboard_snapshots").select("data").eq("country", country).maybeSingle(),
-    supabase.from("operational_snapshots").select("mes, data").eq("country", country).in("mes", ["abril","mayo","junio"]),
+    supabase.from("operational_snapshots").select("mes, data").eq("country", country).in("mes", ["abril","mayo","junio","julio","agosto","septiembre"]),
   ]);
   if (snapRes.error) return NextResponse.json({ error: "Read dashboard failed: " + snapRes.error.message }, { status: 500 });
   if (opsRes.error) return NextResponse.json({ error: "Read operational failed: " + opsRes.error.message }, { status: 500 });

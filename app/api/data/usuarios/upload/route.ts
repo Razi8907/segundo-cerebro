@@ -13,6 +13,11 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 const Q2 = ["abril", "mayo", "junio"];
+const Q3 = ["julio", "agosto", "septiembre"];
+// Meses con data operacional (Q2 en adelante) que se leen de operational_snapshots.
+const OPS_MESES = [...Q2, ...Q3];
+// Meses mensuales válidos para reconstruir la base previa de usuarios.
+const MESES_VALIDOS = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre"];
 
 interface Cell { v?: unknown }
 
@@ -204,7 +209,7 @@ export async function POST(req: NextRequest) {
   const supabase = getSupabase();
   const [snapRes, opsRes] = await Promise.all([
     supabase.from("dashboard_snapshots").select("data").eq("country", country).maybeSingle(),
-    supabase.from("operational_snapshots").select("mes, data").eq("country", country).in("mes", Q2),
+    supabase.from("operational_snapshots").select("mes, data").eq("country", country).in("mes", OPS_MESES),
   ]);
   if (snapRes.error) return NextResponse.json({ error: "Supabase read failed: " + snapRes.error.message }, { status: 500 });
   if (opsRes.error) return NextResponse.json({ error: "operational read failed: " + opsRes.error.message }, { status: 500 });
@@ -226,8 +231,8 @@ export async function POST(req: NextRequest) {
   const previousReg = new Map<string, RegisteredUser>();
   if (previousUS?.cohorts) {
     for (const [mes, c] of Object.entries(previousUS.cohorts)) {
-      // Solo nos importan los cohorts mensuales (no q1/q2 que son acumulados)
-      if (!["enero","febrero","marzo","abril","mayo","junio"].includes(mes)) continue;
+      // Solo nos importan los cohorts mensuales (no q1/q2/q3 que son acumulados)
+      if (!MESES_VALIDOS.includes(mes)) continue;
       const pools: { email: string; nombre?: string; telefono?: string; comunidad?: string | null }[][] = [];
       for (const k of ["segmento_1_pareto75","segmento_3_1_a_19","segmento_intentaron","segmento_4_cero"] as const) {
         const seg = c?.[k];

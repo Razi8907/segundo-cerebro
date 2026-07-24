@@ -6,6 +6,9 @@ const NO_MOV = new Set([
 ]);
 
 const Q2 = ["abril","mayo","junio"] as const;
+const Q3 = ["julio","agosto","septiembre"] as const;
+// Meses con data operacional desde operational_snapshots (Q2 en adelante).
+const OPS_MESES = [...Q2, ...Q3] as const;
 
 export const SEGMENTS_BY_COUNTRY: Record<"py" | "ar", SegmentConfig[]> = {
   py: [
@@ -141,9 +144,9 @@ export function buildEstrategia(
     }
   }
 
-  // Q2 from operational_snapshots — si onlyCurrentMonth, filtramos solo el mes corriente
+  // Q2/Q3 from operational_snapshots — si onlyCurrentMonth, filtramos solo el mes corriente
   for (const snap of q2Snapshots) {
-    if (!Q2.includes(snap.mes as typeof Q2[number])) continue;
+    if (!OPS_MESES.includes(snap.mes as typeof OPS_MESES[number])) continue;
     if (onlyCurrentMonth && snap.mes !== currentMes) continue;
     const nameToEmail = new Map<string, string>();
     const nameToPhone = new Map<string, string>();
@@ -235,7 +238,7 @@ export function buildEstrategia(
       ? `Solo el mes corriente (${currentMes}) se recalcula. Meses cerrados quedan congelados.`
       : "mov/ing por mes — segmentos se calculan en cliente según el filtro del header.",
     segments_config: SEGMENTS_BY_COUNTRY[country],
-    meses_disponibles: ["enero","febrero","marzo","abril","mayo","junio"],
+    meses_disponibles: ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre"],
     usuarios,
   };
 }
