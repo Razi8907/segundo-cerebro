@@ -69,30 +69,35 @@ export default function DropshipperManager({
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
   const isJulio = mesFilter === "julio";
-  const isPlanning = isMayo || isJunio || isJulio;
+  const isAgosto = mesFilter === "agosto";
+  const isPlanning = isMayo || isJunio || isJulio || isAgosto;
   // Cuando hay un mes en planificación, opsAbril guarda la data del mes
   // COMPARATIVO (anterior) y opsMayo la del mes ACTIVO (target).
-  const TARGET_MES = isJulio ? "julio" : isJunio ? "junio" : "mayo";
-  const COMP_MES = isJulio ? "junio" : isJunio ? "mayo" : "abril";
+  const TARGET_MES = isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : "mayo";
+  const COMP_MES = isAgosto ? "julio" : isJulio ? "junio" : isJunio ? "mayo" : "abril";
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "escalar" | "reactivar" | "nuevos_provs" | "alto_dev">("all");
   const [selectedDS, setSelectedDS] = useState<string | null>(null);
 
   // Etiquetas dinámicas
-  const TARGET_LABEL = isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
-  const HIST_LABEL = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Q1";
+  const TARGET_LABEL = isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const HIST_LABEL = isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Q1";
 
   // Metas del mes target
   const mi = metaInfo as any;
-  const META_MOV_ABRIL = isJulio
+  const META_MOV_ABRIL = isAgosto
+    ? (mi?.meta_movilizadas_agosto ?? mi?.meta_movilizadas_julio ?? 40000)
+    : isJulio
     ? (mi?.meta_movilizadas_julio ?? mi?.meta_movilizadas_junio ?? 40000)
     : isJunio
     ? (mi?.meta_movilizadas_junio ?? metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : isMayo
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
-  const META_ING_ABRIL = isJulio
+  const META_ING_ABRIL = isAgosto
+    ? (mi?.meta_ingresadas_agosto ?? mi?.meta_ingresadas_julio ?? 51283)
+    : isJulio
     ? (mi?.meta_ingresadas_julio ?? mi?.meta_ingresadas_junio ?? 51283)
     : isJunio
     ? (mi?.meta_ingresadas_junio ?? metaInfo?.meta_ingresadas_mayo ?? metaInfo?.meta_ingresadas_abril ?? 51283)

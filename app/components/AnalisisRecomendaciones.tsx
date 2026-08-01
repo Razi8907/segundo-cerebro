@@ -39,11 +39,11 @@ interface MetaInfo {
   [k: string]: number | undefined;
 }
 
-type MesQ2 = "abril" | "mayo" | "junio" | "julio";
-const MESES_Q2: MesQ2[] = ["abril", "mayo", "junio", "julio"];
-const MES_LABEL: Record<string, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio" };
-const MES_DIAS: Record<MesQ2, number> = { abril: 30, mayo: 31, junio: 30, julio: 31 };
-const MES_NUM: Record<MesQ2, number> = { abril: 4, mayo: 5, junio: 6, julio: 7 };
+type MesQ2 = "abril" | "mayo" | "junio" | "julio" | "agosto";
+const MESES_Q2: MesQ2[] = ["abril", "mayo", "junio", "julio", "agosto"];
+const MES_LABEL: Record<string, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio", agosto: "Agosto" };
+const MES_DIAS: Record<MesQ2, number> = { abril: 30, mayo: 31, junio: 30, julio: 31, agosto: 31 };
+const MES_NUM: Record<MesQ2, number> = { abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8 };
 
 // Day of month from "DD-MM-YYYY"
 function dayOf(s: string): number {
@@ -75,7 +75,7 @@ export default function AnalisisRecomendaciones({ country }: { country: "ar" | "
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
 
-  const mesPrev: MesQ2 = mesActual === "julio" ? "junio" : mesActual === "junio" ? "mayo" : mesActual === "mayo" ? "abril" : "abril";
+  const mesPrev: MesQ2 = mesActual === "agosto" ? "julio" : mesActual === "julio" ? "junio" : mesActual === "junio" ? "mayo" : mesActual === "mayo" ? "abril" : "abril";
 
   const [estrategia, setEstrategia] = useState<{
     usuarios?: { por_mes: Record<string, { ing: number; mov: number }> }[];

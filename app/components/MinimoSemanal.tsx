@@ -7,14 +7,14 @@ const NO_MOV = new Set([
   "CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA",
 ]);
 
-type Mes = "abril" | "mayo" | "junio" | "julio";
+type Mes = "abril" | "mayo" | "junio" | "julio" | "agosto";
 type ByDS = { nombre: string; total: number; estados: Record<string, number> };
 type ByDSDaily = { ds: string; fecha: string; ordenes: number };
 type ByDate = { fecha: string; total: number; estados: Record<string, number> };
 
-const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio" };
-const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31 };
-const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7 };
+const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio", agosto: "Agosto" };
+const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31, agosto: 31 };
+const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8 };
 
 function dayOfMonth(s: string): number | null {
   const m = s.match(/^(\d{1,2})[-/]/);
@@ -84,7 +84,7 @@ function aggregateRange(
 }
 
 export default function MinimoSemanal({ country, mes }: { country: "ar" | "py"; mes: Mes }) {
-  const mesAnterior: Mes | null = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
+  const mesAnterior: Mes | null = mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
 
   const [opsTarget, setOpsTarget] = useState<ByDS[]>([]);
   const [opsBase, setOpsBase] = useState<ByDS[]>([]);
@@ -101,7 +101,7 @@ export default function MinimoSemanal({ country, mes }: { country: "ar" | "py"; 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const meses: Mes[] = ["abril", "mayo", "junio", "julio"];
+      const meses: Mes[] = ["abril", "mayo", "junio", "julio", "agosto"];
       const results = await Promise.all(
         meses.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}`).then(r => r.json()).catch(() => null))
       );

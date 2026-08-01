@@ -75,6 +75,15 @@ const DIAS_SEMANA_JULIO = [
   "MIÉRCOLES","JUEVES","VIERNES",
 ];
 
+// Agosto 2026 — día 1 es sábado (31 días)
+const DIAS_SEMANA_AGOSTO = [
+  "SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES","VIERNES",
+  "SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES","VIERNES",
+  "SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES","VIERNES",
+  "SÁBADO","DOMINGO","LUNES","MARTES","MIÉRCOLES","JUEVES","VIERNES",
+  "SÁBADO","DOMINGO","LUNES",
+];
+
 interface ResumenMes {
   ingresadas: number;
   movilizadas: number;
@@ -111,53 +120,64 @@ export default function DailyTracker({
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
   const isJulio = mesFilter === "julio";
-  const isPlanning = isAbril || isMayo || isJunio || isJulio;
+  const isAgosto = mesFilter === "agosto";
+  const isPlanning = isAbril || isMayo || isJunio || isJulio || isAgosto;
   const mi = metaInfo as any;
 
   // Configuración del mes activo — todo lo "actual" se resuelve dinámicamente
-  const META_DIARIA = isJulio
+  const META_DIARIA = isAgosto
+    ? (mi.promedio_diario_necesario_agosto ?? Math.round(((mi.meta_ingresadas_agosto || 0) / 31)))
+    : isJulio
     ? (mi.promedio_diario_necesario_julio ?? Math.round(((mi.meta_ingresadas_julio || 0) / 31)))
     : isJunio
     ? (mi.promedio_diario_necesario_junio ?? mi.promedio_diario_necesario_mayo ?? mi.promedio_diario_necesario)
     : isMayo
     ? (metaInfo.promedio_diario_necesario_mayo ?? metaInfo.promedio_diario_necesario)
     : metaInfo.promedio_diario_necesario;
-  const META_TOTAL = isJulio
+  const META_TOTAL = isAgosto
+    ? (mi.meta_ingresadas_agosto ?? mi.meta_ingresadas_julio ?? metaInfo.meta_ingresadas_abril)
+    : isJulio
     ? (mi.meta_ingresadas_julio ?? mi.meta_ingresadas_junio ?? metaInfo.meta_ingresadas_abril)
     : isJunio
     ? (mi.meta_ingresadas_junio ?? mi.meta_ingresadas_mayo ?? metaInfo.meta_ingresadas_abril)
     : isMayo
     ? (metaInfo.meta_ingresadas_mayo ?? metaInfo.meta_ingresadas_abril)
     : metaInfo.meta_ingresadas_abril;
-  const META_MOV_ACTIVE = isJulio
+  const META_MOV_ACTIVE = isAgosto
+    ? (mi.meta_movilizadas_agosto ?? mi.meta_movilizadas_julio ?? metaInfo.meta_movilizadas_abril)
+    : isJulio
     ? (mi.meta_movilizadas_julio ?? mi.meta_movilizadas_junio ?? metaInfo.meta_movilizadas_abril)
     : isJunio
     ? (mi.meta_movilizadas_junio ?? mi.meta_movilizadas_mayo ?? metaInfo.meta_movilizadas_abril)
     : isMayo
     ? (metaInfo.meta_movilizadas_mayo ?? metaInfo.meta_movilizadas_abril)
     : metaInfo.meta_movilizadas_abril;
-  const TOTAL_DAYS = isJulio ? (mi.dias_julio ?? 31) : isJunio ? (mi.dias_junio ?? 30) : isMayo ? (metaInfo.dias_mayo ?? 31) : (metaInfo.dias_abril ?? 30);
-  const DIAS_SEMANA_ACTIVE = isJulio ? DIAS_SEMANA_JULIO : isJunio ? DIAS_SEMANA_JUNIO : isMayo ? DIAS_SEMANA_MAYO : DIAS_SEMANA_ABRIL;
-  const ACTIVE_LABEL = isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const ACTIVE_LABEL_FULL = isJulio ? "Julio 2026" : isJunio ? "Junio 2026" : isMayo ? "Mayo 2026" : "Abril 2026";
-  const COMP_LABEL = isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
-  const COMP_LABEL_FULL = isJulio ? "Junio 2026" : isJunio ? "Mayo 2026" : isMayo ? "Abril 2026" : "Marzo 2026";
-  const COMP_TOTAL_REF = isJulio
+  const TOTAL_DAYS = isAgosto ? (mi.dias_agosto ?? 31) : isJulio ? (mi.dias_julio ?? 31) : isJunio ? (mi.dias_junio ?? 30) : isMayo ? (metaInfo.dias_mayo ?? 31) : (metaInfo.dias_abril ?? 30);
+  const DIAS_SEMANA_ACTIVE = isAgosto ? DIAS_SEMANA_AGOSTO : isJulio ? DIAS_SEMANA_JULIO : isJunio ? DIAS_SEMANA_JUNIO : isMayo ? DIAS_SEMANA_MAYO : DIAS_SEMANA_ABRIL;
+  const ACTIVE_LABEL = isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const ACTIVE_LABEL_FULL = isAgosto ? "Agosto 2026" : isJulio ? "Julio 2026" : isJunio ? "Junio 2026" : isMayo ? "Mayo 2026" : "Abril 2026";
+  const COMP_LABEL = isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const COMP_LABEL_FULL = isAgosto ? "Julio 2026" : isJulio ? "Junio 2026" : isJunio ? "Mayo 2026" : isMayo ? "Abril 2026" : "Marzo 2026";
+  const COMP_TOTAL_REF = isAgosto
+    ? (mi.julio_total_ordenes ?? 0)
+    : isJulio
     ? (mi.junio_total_ordenes ?? 0)
     : isJunio
     ? (mi.mayo_total_ordenes ?? 0)
     : isMayo
     ? (metaInfo.abril_total_ordenes ?? 0)
     : metaInfo.marzo_total_ordenes;
-  const COMP_PROMEDIO_REF = isJulio
+  const COMP_PROMEDIO_REF = isAgosto
+    ? (mi.julio_promedio_diario ?? 0)
+    : isJulio
     ? (mi.junio_promedio_diario ?? 0)
     : isJunio
     ? (mi.mayo_promedio_diario ?? 0)
     : isMayo
     ? (metaInfo.abril_promedio_diario ?? 0)
     : metaInfo.marzo_promedio_diario;
-  const ACTIVE_MES_KEY = isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril";
-  const COMP_DAYS = isJulio ? (mi.dias_junio ?? 30) : isJunio ? (metaInfo.dias_mayo ?? 31) : isMayo ? (metaInfo.dias_abril ?? 30) : 31;
+  const ACTIVE_MES_KEY = isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril";
+  const COMP_DAYS = isAgosto ? (mi.dias_julio ?? 31) : isJulio ? (mi.dias_junio ?? 30) : isJunio ? (metaInfo.dias_mayo ?? 31) : isMayo ? (metaInfo.dias_abril ?? 30) : 31;
 
   const STORAGE_KEY = `segundo-cerebro-${ACTIVE_MES_KEY}-${country}`;
 
@@ -216,11 +236,11 @@ export default function DailyTracker({
   // anterior desde daily_tracking para que las referencias y el patrón por
   // día de semana usen los días reales en vez del fallback estático.
   useEffect(() => {
-    if (!isMayo && !isJunio && !isJulio) {
+    if (!isMayo && !isJunio && !isJulio && !isAgosto) {
       setCompMonthLive(null);
       return;
     }
-    const compMes = isJulio ? "junio" : isJunio ? "mayo" : "abril";
+    const compMes = isAgosto ? "julio" : isJulio ? "junio" : isJunio ? "mayo" : "abril";
     let cancelled = false;
     fetch(`/api/data/daily-tracking?country=${country}&mes=${compMes}`, { credentials: "include" })
       .then((r) => r.json())
@@ -231,10 +251,10 @@ export default function DailyTracker({
       })
       .catch(() => { if (!cancelled) setCompMonthLive([]); });
     return () => { cancelled = true; };
-  }, [isMayo, isJunio, isJulio, country]);
+  }, [isMayo, isJunio, isJulio, isAgosto, country]);
 
-  // Data efectiva para la comparación (Marzo en Abril, Abril en Mayo, Mayo en Junio, Junio en Julio)
-  const effectiveCompData: DailyData[] = (isMayo || isJunio || isJulio) && compMonthLive && compMonthLive.length > 0
+  // Data efectiva para la comparación (Marzo en Abril, Abril en Mayo, Mayo en Junio, Junio en Julio, Julio en Agosto)
+  const effectiveCompData: DailyData[] = (isMayo || isJunio || isJulio || isAgosto) && compMonthLive && compMonthLive.length > 0
     ? compMonthLive
     : marzoData;
 

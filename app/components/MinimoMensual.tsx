@@ -7,13 +7,13 @@ const NO_MOV = new Set([
   "CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA",
 ]);
 
-type Mes = "abril" | "mayo" | "junio" | "julio";
+type Mes = "abril" | "mayo" | "junio" | "julio" | "agosto";
 type ByDS = { nombre: string; total: number; estados: Record<string, number> };
 type ByDSDaily = { ds: string; fecha: string; ordenes: number };
 type ByDate = { fecha: string; total: number; estados: Record<string, number> };
 
-const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio" };
-const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31 };
+const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio", agosto: "Agosto" };
+const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31, agosto: 31 };
 
 function dayOfMonth(s: string): number | null {
   const m = s.match(/^(\d{1,2})[-/]/);
@@ -70,8 +70,8 @@ function aggregateRange(
 }
 
 export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; mes: Mes }) {
-  const mesAnterior: Mes | null = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
-  const mesAntAnt: Mes | null = mes === "julio" ? "mayo" : mes === "junio" ? "abril" : null;
+  const mesAnterior: Mes | null = mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
+  const mesAntAnt: Mes | null = mes === "agosto" ? "junio" : mes === "julio" ? "mayo" : mes === "junio" ? "abril" : null;
 
   const [opsTarget, setOpsTarget] = useState<ByDS[]>([]);
   const [opsBase, setOpsBase] = useState<ByDS[]>([]);
@@ -94,14 +94,14 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const meses: Mes[] = ["abril", "mayo", "junio", "julio"];
+      const meses: Mes[] = ["abril", "mayo", "junio", "julio", "agosto"];
       const results = await Promise.all(
         meses.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}`).then(r => r.json()).catch(() => null))
       );
       const dash = await fetch(`/api/data/${country}`).then(r => r.json()).catch(() => null);
-      const map: Record<Mes, ByDS[]> = { abril: [], mayo: [], junio: [], julio: [] };
-      const dailyMap: Record<Mes, ByDSDaily[]> = { abril: [], mayo: [], junio: [], julio: [] };
-      const byDateMap: Record<Mes, ByDate[]> = { abril: [], mayo: [], junio: [], julio: [] };
+      const map: Record<Mes, ByDS[]> = { abril: [], mayo: [], junio: [], julio: [], agosto: [] };
+      const dailyMap: Record<Mes, ByDSDaily[]> = { abril: [], mayo: [], junio: [], julio: [], agosto: [] };
+      const byDateMap: Record<Mes, ByDate[]> = { abril: [], mayo: [], junio: [], julio: [], agosto: [] };
       meses.forEach((m, i) => {
         map[m] = Array.isArray(results[i]?.data?.by_dropshipper) ? results[i].data.by_dropshipper : [];
         dailyMap[m] = Array.isArray(results[i]?.data?.by_ds_daily) ? results[i].data.by_ds_daily : [];
@@ -124,7 +124,7 @@ export default function MinimoMensual({ country, mes }: { country: "ar" | "py"; 
 
   // Determinar mes en curso
   const today = new Date();
-  const isCurrent = today.getFullYear() === 2026 && (today.getMonth() + 1) === ({ abril: 4, mayo: 5, junio: 6, julio: 7 }[mes]);
+  const isCurrent = today.getFullYear() === 2026 && (today.getMonth() + 1) === ({ abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8 }[mes]);
   const diasMes = (metaInfo[`dias_${mes}`] as number) ?? MES_DIAS[mes];
   const diasTranscurridos = isCurrent ? today.getDate() : diasMes;
 

@@ -113,11 +113,11 @@ function toIsoDate(s: string): string {
 }
 
 // Mes numérico de cada MesOps. Hardcoded a 2026 (los meses cubiertos por el dashboard).
-const MES_MONTH_NUM: Record<"abril" | "mayo" | "junio" | "julio", number> = { abril: 4, mayo: 5, junio: 6, julio: 7 };
+const MES_MONTH_NUM: Record<"abril" | "mayo" | "junio" | "julio" | "agosto", number> = { abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8 };
 
 // Convierte una fecha ISO a la misma fecha pero en el mes objetivo (mismo día).
 // Si el día no existe (31 de un mes con 30), lo recorta al último día válido.
-function shiftDateToMes(iso: string, targetMes: "abril" | "mayo" | "junio" | "julio"): string {
+function shiftDateToMes(iso: string, targetMes: "abril" | "mayo" | "junio" | "julio" | "agosto"): string {
   if (!iso) return "";
   const m = iso.match(/^(\d{4})-\d{2}-(\d{2})$/);
   if (!m) return iso;
@@ -608,8 +608,8 @@ function DataTable({ rows, columns, highlightHours }: {
 }
 
 /* ───────── MAIN COMPONENT ───────── */
-type MesOps = "abril" | "mayo" | "junio" | "julio" | "julio";
-const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026", julio: "Julio 2026" };
+type MesOps = "abril" | "mayo" | "junio" | "julio" | "agosto";
+const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026", julio: "Julio 2026", agosto: "Agosto 2026" };
 
 export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
@@ -682,7 +682,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     setDailyCurr([]);
     setDailyPrev([]);
     setServerUploadHistory([]);
-    const prevMes: MesOps = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
+    const prevMes: MesOps = mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
     try {
       const [resCur, resPrev, resOpCur, resOpPrev, resDailyCur, resDailyPrev] = await Promise.all([
         fetch(`/api/data/operations?country=${country}&mes=${mes}`),
@@ -882,7 +882,7 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     return result;
   }, [prevDedupedRows, fComercial, fTransportadora, fDropshipper, fProveedor]);
 
-  const prevMes: MesOps = mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
+  const prevMes: MesOps = mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
 
   // Rango "espejo" para mes anterior: mismos días pero en el mes anterior
   // (ej. dateFrom=2026-05-01 → prevDateFrom=2026-04-01).
@@ -1780,6 +1780,7 @@ function MesSwitcher({ mes, setMes }: { mes: MesOps; setMes: (m: MesOps) => void
     { key: "mayo", label: "Mayo 2026" },
     { key: "junio", label: "Junio 2026" },
     { key: "julio", label: "Julio 2026" },
+    { key: "agosto", label: "Agosto 2026" },
   ];
   return (
     <div className="inline-flex rounded-lg border border-cyan-500/30 overflow-hidden">

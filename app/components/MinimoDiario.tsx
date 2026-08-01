@@ -11,7 +11,7 @@ const NO_MOV = new Set([
   "CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA",
 ]);
 
-type Mes = "abril" | "mayo" | "junio" | "julio";
+type Mes = "abril" | "mayo" | "junio" | "julio" | "agosto";
 type ByDS = { nombre: string; total: number; estados: Record<string, number> };
 type ByDSDaily = { ds: string; fecha: string; ordenes: number };
 type ByDate = { fecha: string; total: number; estados: Record<string, number> };
@@ -31,11 +31,12 @@ function movFromEstados(estados: Record<string, number>): number {
   return Math.max(total - noMov, 0);
 }
 
-const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7 };
-const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio" };
-const MES_DIAS_DEFAULT: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31 };
+const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8 };
+const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio", agosto: "Agosto" };
+const MES_DIAS_DEFAULT: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31, agosto: 31 };
 
 function prevMes(m: Mes): Mes | null {
+  if (m === "agosto") return "julio";
   if (m === "julio") return "junio";
   if (m === "junio") return "mayo";
   if (m === "mayo") return "abril";
