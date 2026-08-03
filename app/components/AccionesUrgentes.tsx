@@ -6,6 +6,7 @@ import {
   Tooltip, ResponsiveContainer, Legend,
 } from "recharts";
 import type { MesFilter } from "../types";
+import GestionDropshippers from "./GestionDropshippers";
 
 // ────────────────────────────────────────────────────────────────────────
 // Tipos del snapshot operacional (subset que consumimos)
@@ -378,7 +379,7 @@ export default function AccionesUrgentes({
     if (reforzar.length > 0) alertas.push({ icon: "🤝", text: `${reforzar.length} dropshippers que movían fuerte cayeron este mes. Contactalos para acompañamiento cercano y recuperarlos (datos abajo).` });
 
     return {
-      N, diasMes, diasRestantes, cur, prev, metaMov, ritmoActual, proyeccion,
+      N, diasMes, diasRestantes, esMesEnCurso, cur, prev, metaMov, ritmoActual, proyeccion,
       ritmoNecesario, restanteMeta, onTrack, serie, barras, tasaDevCur, tasaDevPrev,
       dsActivosCur, dsActivosPrev, provActivosCur, provActivosPrev, prodCur, prodPrev,
       reforzar, enAlza,
@@ -487,6 +488,19 @@ export default function AccionesUrgentes({
           </div>
         </div>
       )}
+
+      {/* Gestión de dropshippers: nivel + cambio de nivel + gestión comercial + filtros */}
+      <GestionDropshippers
+        country={country}
+        realMes={realMes}
+        mesPrev={mesPrev}
+        labelMes={LABEL[realMes]}
+        labelPrev={LABEL[mesPrev]}
+        diasMes={A.diasMes}
+        esMesEnCurso={A.esMesEnCurso}
+        dsCurDaily={opCurr?.by_ds_daily || []}
+        dsPrevDaily={opPrev?.by_ds_daily || []}
+      />
 
       {/* Recomendaciones */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
