@@ -32,13 +32,23 @@ const NIVELES = [
   { n: 4, label: "Experto", emoji: "🟣", color: "#a855f7" },
   { n: 5, label: "Élite", emoji: "🔵", color: "#3b82f6" },
 ];
-function nivelDe(mov: number): number {
-  if (mov >= 5000) return 5;
-  if (mov >= 900) return 4;
-  if (mov >= 300) return 3;
-  if (mov >= 100) return 2;
-  if (mov >= 1) return 1;
+// Umbrales de movilizadas por país: [min N1, min N2, min N3, min N4, min N5]
+const UMBRALES: Record<string, number[]> = {
+  py: [1, 100, 300, 900, 5000],
+  ar: [1, 50, 200, 900, 3000],
+};
+function nivelDe(mov: number, country: string): number {
+  const u = UMBRALES[country] || UMBRALES.py;
+  if (mov >= u[4]) return 5;
+  if (mov >= u[3]) return 4;
+  if (mov >= u[2]) return 3;
+  if (mov >= u[1]) return 2;
+  if (mov >= u[0]) return 1;
   return 0;
+}
+function umbralesTexto(country: string): string {
+  const u = UMBRALES[country] || UMBRALES.py;
+  return `🔴 0 · ⚪ ${u[0]}–${u[1] - 1} · 🟡 ${u[1]}–${u[2] - 1} · 🟠 ${u[2]}–${u[3] - 1} · 🟣 ${u[3]}–${u[4] - 1} · 🔵 ${u[4]}+`;
 }
 
 const ESTADOS = [
@@ -214,8 +224,8 @@ export default function GestionDropshippers({
       //  · cerrado: mes reciente cerrado (prev) vs anterior cerrado (prevPrev)
       //  · proyección: cierre proyectado de agosto vs julio
       //  · resto: mes corriente vs anterior
-      const nivelCur = nivelDe(cerradoMode ? movPrev : projMode ? proj : movCur);
-      const nivelPrev = nivelDe(cerradoMode ? movPrevPrev : movPrev);
+      const nivelCur = nivelDe(cerradoMode ? movPrev : projMode ? proj : movCur, country);
+      const nivelPrev = nivelDe(cerradoMode ? movPrevPrev : movPrev, country);
       // Diario = comparación de RANGOS acumulados: del 1 al día seleccionado.
       const diaCur = accToDay(cur, diaSel);
       const diaPrev = accToDay(prev, diaSel);
@@ -521,7 +531,7 @@ export default function GestionDropshippers({
         {projMode
           ? `Proyección = ritmo diario de ${labelMes} (acumulado ÷ ${elapsed} días con data) × ${diasMes} días. El nivel y el cambio usan el cierre proyectado. La gestión comercial está disponible en la vista Diario y en meses cerrados.`
           : `El nivel se calcula sobre las movilizadas del mes (${labelMes}). Los cambios de gestión se guardan automáticamente.`}
-        {" "}Umbrales: 🔴 0 · ⚪ 1–99 · 🟡 100–299 · 🟠 300–899 · 🟣 900–4999 · 🔵 5000+.
+        {" "}Umbrales: {umbralesTexto(country)}.
       </p>
     </div>
   );
