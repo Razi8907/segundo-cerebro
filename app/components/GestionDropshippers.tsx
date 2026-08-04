@@ -284,7 +284,7 @@ export default function GestionDropshippers({
           {(["mensual", "mensual_cerrado", "diario"] as const).map((m) => (
             <button key={m} onClick={() => setMode(m)}
               className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ${mode === m ? "bg-orange-500 text-white" : "t-secondary hover:text-orange-400"}`}>
-              {m === "mensual" ? `Mensual (${labelMes} vs ${labelPrev})`
+              {m === "mensual" ? `${projMode ? "Proyección Mensual" : "Mensual"} (${labelMes} vs ${labelPrev})`
                 : m === "mensual_cerrado" ? `Mensual cerrado (${labelPrev} vs ${labelPrevPrev})`
                 : "Diario (acumulado 1→día)"}
             </button>
