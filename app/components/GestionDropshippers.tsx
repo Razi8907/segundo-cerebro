@@ -184,9 +184,7 @@ export default function GestionDropshippers({
   // Modo proyección: mensual + mes corriente (ej. Agosto vs Julio cerrado).
   const projMode = mode === "mensual" && esMesEnCurso;
   const proyectar = (movCur: number) => (projMode && elapsed > 0 ? Math.round((movCur / elapsed) * diasMes) : movCur);
-  // La gestión (comercial, estado, nota, fechas) vive solo en la vista Diario.
-  // Las vistas mensuales (proyección y cerrado) son analíticas: banner + comparación.
-  const showGestion = mode === "diario";
+  const showGestion = !projMode;
 
   // ── Guardar (upsert) ──
   const saveGestion = useCallback(async (key: string, agg: Agg, patch: Partial<Gestion>) => {
@@ -267,43 +265,17 @@ export default function GestionDropshippers({
 
   const totalDs = curAgg.size;
 
-  // Banner headline para las vistas mensuales (proyección y cerrado): mismo formato.
-  const mensualBanner = useMemo(() => {
-    if (mode === "diario") return null;
-    const tot = (m: Map<string, Agg>) => { let s = 0; for (const a of m.values()) s += a.total; return s; };
-    const curTot = tot(curAgg), prevTot = tot(prevAgg), prevPrevTot = tot(prevPrevAgg);
-    if (projMode) {
-      let projTot = 0;
-      for (const a of curAgg.values()) projTot += elapsed > 0 ? (a.total / elapsed) * diasMes : a.total;
-      const proj = Math.round(projTot);
-      return {
-        tiles: [
-          { lbl: `${labelMes} al día ${elapsed}`, val: curTot, sub: "movilizadas acumuladas", accent: false },
-          { lbl: `Proyección cierre ${labelMes}`, val: proj, sub: `${fmt(elapsed > 0 ? curTot / elapsed : 0)}/día × ${diasMes}`, accent: true },
-          { lbl: `${labelPrev} cerrado`, val: prevTot, sub: "movilizadas totales", accent: false },
-        ],
-        growth: deltaPct(proj, prevTot), growthLbl: "Crecimiento proyectado", growthSub: `${labelMes} proy. vs ${labelPrev}`,
-      };
-    }
-    if (cerradoMode) {
-      return {
-        tiles: [
-          { lbl: `${labelPrev} cerrado`, val: prevTot, sub: "movilizadas totales", accent: true },
-          { lbl: `${labelPrevPrev} cerrado`, val: prevPrevTot, sub: "movilizadas totales", accent: false },
-        ],
-        growth: deltaPct(prevTot, prevPrevTot), growthLbl: "Crecimiento", growthSub: `${labelPrev} vs ${labelPrevPrev}`,
-      };
-    }
-    return {
-      tiles: [
-        { lbl: labelMes, val: curTot, sub: "movilizadas totales", accent: true },
-        { lbl: labelPrev, val: prevTot, sub: "movilizadas totales", accent: false },
-      ],
-      growth: deltaPct(curTot, prevTot), growthLbl: "Crecimiento", growthSub: `${labelMes} vs ${labelPrev}`,
-    };
-  }, [mode, projMode, cerradoMode, curAgg, prevAgg, prevPrevAgg, elapsed, diasMes, labelMes, labelPrev, labelPrevPrev]);
+  // Resumen de proyección (headline) — solo en modo proyección.
+  const proySummary = useMemo(() => {
+    if (!projMode) return null;
+    let curTot = 0, projTot = 0, prevTot = 0;
+    for (const a of curAgg.values()) { curTot += a.total; projTot += elapsed > 0 ? (a.total / elapsed) * diasMes : a.total; }
+    for (const a of prevAgg.values()) prevTot += a.total;
+    const projRound = Math.round(projTot);
+    return { curTot, projTot: projRound, prevTot, growth: deltaPct(projRound, prevTot) };
+  }, [projMode, curAgg, prevAgg, elapsed, diasMes]);
 
-  const colSpan = mode === "diario" ? 12 : 7;
+  const colSpan = projMode ? 7 : 12;
 
   return (
     <div className="glass-card p-5">
@@ -314,10 +286,8 @@ export default function GestionDropshippers({
             {projMode
               ? `Proyección de cierre de ${labelMes} (mes corriente) vs ${labelPrev} cerrado. ${totalDs} dropshippers.`
               : cerradoMode
-              ? `Comparativo de meses cerrados: ${labelPrev} vs ${labelPrevPrev}. Nivel y cambio sobre ${labelPrev}.`
-              : mode === "diario"
-              ? `Seguimiento diario acumulado + gestión comercial editable. ${totalDs} dropshippers.`
-              : `Comparativo mensual ${labelMes} vs ${labelPrev}.`}
+              ? `Comparativo de meses cerrados: ${labelPrev} vs ${labelPrevPrev}. Nivel y cambio sobre ${labelPrev}. Gestión comercial editable.`
+              : `Nivel por umbral de movilizadas, cambio de nivel vs ${labelPrev}, y gestión comercial editable. ${totalDs} dropshippers.`}
           </p>
         </div>
         <div className="flex flex-wrap gap-1 rounded-lg p-1" style={{ background: "var(--bg-kpi)" }}>
@@ -332,26 +302,34 @@ export default function GestionDropshippers({
         </div>
       </div>
 
-      {/* Headline de crecimiento — mismo formato en Proyección Mensual y Mensual cerrado */}
-      {mode !== "diario" && mensualBanner && (
+      {/* Headline de proyección de crecimiento */}
+      {projMode && proySummary && (
         <div className="mt-4 rounded-xl p-4 border grid grid-cols-2 md:grid-cols-4 gap-3"
           style={{
-            background: mensualBanner.growth >= 0 ? "rgba(16,185,129,0.10)" : "rgba(249,115,22,0.10)",
-            borderColor: mensualBanner.growth >= 0 ? "rgba(16,185,129,0.35)" : "rgba(249,115,22,0.35)",
+            background: proySummary.growth >= 0 ? "rgba(16,185,129,0.10)" : "rgba(249,115,22,0.10)",
+            borderColor: proySummary.growth >= 0 ? "rgba(16,185,129,0.35)" : "rgba(249,115,22,0.35)",
           }}>
-          {mensualBanner.tiles.map((t, i) => (
-            <div key={i}>
-              <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">{t.lbl}</div>
-              <div className={`text-xl font-bold mt-0.5 ${t.accent ? "" : "t-primary"}`} style={t.accent ? { color: "#f97316" } : undefined}>{fmt(t.val)}</div>
-              <div className="text-[11px] t-secondary">{t.sub}</div>
-            </div>
-          ))}
           <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">{mensualBanner.growthLbl}</div>
-            <div className="text-xl font-bold mt-0.5" style={{ color: mensualBanner.growth >= 0 ? "#10b981" : "#ef4444" }}>
-              {mensualBanner.growth > 0 ? "+" : ""}{mensualBanner.growth}%
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">{labelMes} al día {elapsed}</div>
+            <div className="text-xl font-bold t-primary mt-0.5">{fmt(proySummary.curTot)}</div>
+            <div className="text-[11px] t-secondary">movilizadas acumuladas</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">Proyección cierre {labelMes}</div>
+            <div className="text-xl font-bold mt-0.5" style={{ color: "#f97316" }}>{fmt(proySummary.projTot)}</div>
+            <div className="text-[11px] t-secondary">al ritmo de {fmt(elapsed > 0 ? proySummary.curTot / elapsed : 0)}/día × {diasMes} días</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">{labelPrev} cerrado</div>
+            <div className="text-xl font-bold t-primary mt-0.5">{fmt(proySummary.prevTot)}</div>
+            <div className="text-[11px] t-secondary">movilizadas totales</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">Crecimiento proyectado</div>
+            <div className="text-xl font-bold mt-0.5" style={{ color: proySummary.growth >= 0 ? "#10b981" : "#ef4444" }}>
+              {proySummary.growth > 0 ? "+" : ""}{proySummary.growth}%
             </div>
-            <div className="text-[11px] t-secondary">{mensualBanner.growthSub}</div>
+            <div className="text-[11px] t-secondary">{labelMes} proy. vs {labelPrev}</div>
           </div>
         </div>
       )}
@@ -401,11 +379,11 @@ export default function GestionDropshippers({
         </>
       )}
 
-      {/* Vistas mensuales (analíticas): solo filtros de nivel y búsqueda (sin gestión) */}
-      {mode !== "diario" && (
+      {/* En proyección, solo filtros de nivel y búsqueda (sin gestión) */}
+      {projMode && (
         <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
           <select value={fNivel} onChange={(e) => setFNivel(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
-            <option value="">{projMode ? "Nivel proyectado: todos" : "Nivel: todos"}</option>
+            <option value="">Nivel proyectado: todos</option>
             {NIVELES.map((l) => <option key={l.n} value={String(l.n)}>{l.emoji} N{l.n} {l.label}</option>)}
           </select>
           <input type="text" placeholder="Buscar dropshipper…" value={search} onChange={(e) => setSearch(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
