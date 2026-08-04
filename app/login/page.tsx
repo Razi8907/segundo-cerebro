@@ -9,7 +9,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(
-    searchParams.get("error") === "horario"
+    searchParams?.get("error") === "horario"
       ? "Fuera del horario de acceso permitido"
       : ""
   );
@@ -36,7 +36,7 @@ function LoginForm() {
       }
 
       // Redirect to last visited page or home
-      const returnTo = searchParams.get("from") || "/";
+      const returnTo = searchParams?.get("from") || "/";
       window.location.href = returnTo;
     } catch {
       setError("Error de conexión. Intenta de nuevo.");
