@@ -113,9 +113,11 @@ export default function AccionesUrgentes({
 }) {
   const realMes = LABEL[mes as string] ? (mes as string) : "julio";
   const mesPrev = PREV_MONTH[realMes] || "junio";
+  const mesPrevPrev = PREV_MONTH[mesPrev] || "mayo";
 
   const [opCurr, setOpCurr] = useState<OpSnapshot | null>(null);
   const [opPrev, setOpPrev] = useState<OpSnapshot | null>(null);
+  const [opPrevPrev, setOpPrevPrev] = useState<OpSnapshot | null>(null);
   const [dailyCurr, setDailyCurr] = useState<DailyRow[]>([]);
   const [dailyPrev, setDailyPrev] = useState<DailyRow[]>([]);
   const [comunidades, setComunidades] = useState<
@@ -126,22 +128,24 @@ export default function AccionesUrgentes({
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [cur, prev, dCur, dPrev, us] = await Promise.all([
+      const [cur, prev, prevPrev, dCur, dPrev, us] = await Promise.all([
         fetch(`/api/data/operational?country=${country}&mes=${realMes}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/operational?country=${country}&mes=${mesPrev}`).then((r) => r.json()).catch(() => null),
+        fetch(`/api/data/operational?country=${country}&mes=${mesPrevPrev}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/operations-daily?country=${country}&mes=${realMes}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/operations-daily?country=${country}&mes=${mesPrev}`).then((r) => r.json()).catch(() => null),
         fetch(`/api/data/usuarios?country=${country}`).then((r) => r.json()).catch(() => null),
       ]);
       setOpCurr(cur?.data || null);
       setOpPrev(prev?.data || null);
+      setOpPrevPrev(prevPrev?.data || null);
       setDailyCurr(Array.isArray(dCur?.dias) ? dCur.dias : []);
       setDailyPrev(Array.isArray(dPrev?.dias) ? dPrev.dias : []);
       if (us && !us.error) setComunidades(us.comunidades_globales || us?.data?.comunidades_globales || null);
     } finally {
       setLoading(false);
     }
-  }, [country, realMes, mesPrev]);
+  }, [country, realMes, mesPrev, mesPrevPrev]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -496,10 +500,12 @@ export default function AccionesUrgentes({
         mesPrev={mesPrev}
         labelMes={LABEL[realMes]}
         labelPrev={LABEL[mesPrev]}
+        labelPrevPrev={LABEL[mesPrevPrev]}
         diasMes={A.diasMes}
         esMesEnCurso={A.esMesEnCurso}
         dsCurDaily={opCurr?.by_ds_daily || []}
         dsPrevDaily={opPrev?.by_ds_daily || []}
+        dsPrevPrevDaily={opPrevPrev?.by_ds_daily || []}
       />
 
       {/* Recomendaciones */}

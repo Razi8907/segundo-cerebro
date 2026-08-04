@@ -108,17 +108,18 @@ function NivelBadge({ n }: { n: number }) {
 
 // ════════════════════════════════════════════════════════════════════════
 export default function GestionDropshippers({
-  country, realMes, mesPrev, labelMes, labelPrev, diasMes, esMesEnCurso, dsCurDaily, dsPrevDaily,
+  country, realMes, mesPrev, labelMes, labelPrev, labelPrevPrev, diasMes, esMesEnCurso, dsCurDaily, dsPrevDaily, dsPrevPrevDaily,
 }: {
   country: "ar" | "py";
   realMes: string; mesPrev: string;
-  labelMes: string; labelPrev: string;
+  labelMes: string; labelPrev: string; labelPrevPrev: string;
   diasMes: number;
   esMesEnCurso: boolean;
   dsCurDaily: DsDailyRow[];
   dsPrevDaily: DsDailyRow[];
+  dsPrevPrevDaily: DsDailyRow[];
 }) {
-  const [mode, setMode] = useState<"mensual" | "diario">("mensual");
+  const [mode, setMode] = useState<"mensual" | "mensual_cerrado" | "diario">("mensual");
   const hoyDia = new Date().getDate();
   const [diaSel, setDiaSel] = useState<number>(esMesEnCurso ? Math.min(hoyDia, diasMes) : diasMes);
 
@@ -157,6 +158,10 @@ export default function GestionDropshippers({
 
   const curAgg = useMemo(() => buildAgg(dsCurDaily), [dsCurDaily]);
   const prevAgg = useMemo(() => buildAgg(dsPrevDaily), [dsPrevDaily]);
+  const prevPrevAgg = useMemo(() => buildAgg(dsPrevPrevDaily), [dsPrevPrevDaily]);
+
+  // Mensual cerrado: compara los dos meses cerrados anteriores (ej. Julio vs Junio).
+  const cerradoMode = mode === "mensual_cerrado";
 
   // Días transcurridos con data en el mes corriente (para proyectar el cierre).
   const maxDayCur = useMemo(() => {
@@ -194,19 +199,23 @@ export default function GestionDropshippers({
 
   // ── Filas ──
   const rows = useMemo(() => {
-    const keys = new Set<string>([...curAgg.keys(), ...prevAgg.keys()]);
+    const keys = new Set<string>([...curAgg.keys(), ...prevAgg.keys(), ...(cerradoMode ? prevPrevAgg.keys() : [])]);
     const out = [];
     for (const key of keys) {
       const cur = curAgg.get(key);
       const prev = prevAgg.get(key);
-      const agg: Agg = cur || prev!;
+      const prevPrev = prevPrevAgg.get(key);
+      const agg: Agg = cur || prev || prevPrev!;
       const movCur = cur?.total || 0;
       const movPrev = prev?.total || 0;
+      const movPrevPrev = prevPrev?.total || 0;
       const proj = proyectar(movCur);
-      // En proyección el nivel de agosto se calcula sobre el cierre proyectado
-      // (comparar acumulado parcial vs mes cerrado no sería justo).
-      const nivelCur = nivelDe(projMode ? proj : movCur);
-      const nivelPrev = nivelDe(movPrev);
+      // Nivel según el modo:
+      //  · cerrado: mes reciente cerrado (prev) vs anterior cerrado (prevPrev)
+      //  · proyección: cierre proyectado de agosto vs julio
+      //  · resto: mes corriente vs anterior
+      const nivelCur = nivelDe(cerradoMode ? movPrev : projMode ? proj : movCur);
+      const nivelPrev = nivelDe(cerradoMode ? movPrevPrev : movPrev);
       // Diario = comparación de RANGOS acumulados: del 1 al día seleccionado.
       const diaCur = accToDay(cur, diaSel);
       const diaPrev = accToDay(prev, diaSel);
@@ -214,7 +223,7 @@ export default function GestionDropshippers({
       out.push({
         key, agg,
         nombre: agg.nombre, email: agg.email, celular: agg.celular,
-        movCur, movPrev, proj, nivelCur, nivelPrev, diaCur, diaPrev,
+        movCur, movPrev, movPrevPrev, proj, nivelCur, nivelPrev, diaCur, diaPrev,
         comercial: g?.comercial_asignado || "",
         estado: g?.estado || "sin_gestionar",
         nota: g?.nota || "",
@@ -233,13 +242,16 @@ export default function GestionDropshippers({
       if (search && !r.nombre.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-    // Orden: por volumen del modo activo (proyección en modo proyección)
+    // Orden: por volumen del modo activo
     filtered = filtered.sort((a, b) =>
-      mode === "diario" ? b.diaCur - a.diaCur : projMode ? b.proj - a.proj : b.movCur - a.movCur,
+      mode === "diario" ? b.diaCur - a.diaCur
+        : cerradoMode ? b.movPrev - a.movPrev
+        : projMode ? b.proj - a.proj
+        : b.movCur - a.movCur,
     );
     return filtered;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curAgg, prevAgg, gestionMap, diaSel, mode, projMode, elapsed, fComercial, fNivel, fEstado, fGestionDesde, fProxHasta, search]);
+  }, [curAgg, prevAgg, prevPrevAgg, gestionMap, diaSel, mode, projMode, cerradoMode, elapsed, fComercial, fNivel, fEstado, fGestionDesde, fProxHasta, search]);
 
   const totalDs = curAgg.size;
 
@@ -253,7 +265,7 @@ export default function GestionDropshippers({
     return { curTot, projTot: projRound, prevTot, growth: deltaPct(projRound, prevTot) };
   }, [projMode, curAgg, prevAgg, elapsed, diasMes]);
 
-  const colSpan = projMode ? 7 : mode === "mensual" ? 12 : 12;
+  const colSpan = projMode ? 7 : 12;
 
   return (
     <div className="glass-card p-5">
@@ -263,14 +275,18 @@ export default function GestionDropshippers({
           <p className="text-xs t-secondary mt-1">
             {projMode
               ? `Proyección de cierre de ${labelMes} (mes corriente) vs ${labelPrev} cerrado. ${totalDs} dropshippers.`
+              : cerradoMode
+              ? `Comparativo de meses cerrados: ${labelPrev} vs ${labelPrevPrev}. Nivel y cambio sobre ${labelPrev}. Gestión comercial editable.`
               : `Nivel por umbral de movilizadas, cambio de nivel vs ${labelPrev}, y gestión comercial editable. ${totalDs} dropshippers.`}
           </p>
         </div>
-        <div className="flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-kpi)" }}>
-          {(["mensual", "diario"] as const).map((m) => (
+        <div className="flex flex-wrap gap-1 rounded-lg p-1" style={{ background: "var(--bg-kpi)" }}>
+          {(["mensual", "mensual_cerrado", "diario"] as const).map((m) => (
             <button key={m} onClick={() => setMode(m)}
               className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ${mode === m ? "bg-orange-500 text-white" : "t-secondary hover:text-orange-400"}`}>
-              {m === "mensual" ? `Mensual (${labelMes} vs ${labelPrev})` : "Diario (acumulado 1→día)"}
+              {m === "mensual" ? `Mensual (${labelMes} vs ${labelPrev})`
+                : m === "mensual_cerrado" ? `Mensual cerrado (${labelPrev} vs ${labelPrevPrev})`
+                : "Diario (acumulado 1→día)"}
             </button>
           ))}
         </div>
@@ -385,6 +401,12 @@ export default function GestionDropshippers({
                   <th className="text-right py-2 px-2">{labelPrev} (cerrado)</th>
                   <th className="text-right py-2 px-2">Crec. proy.</th>
                 </>
+              ) : cerradoMode ? (
+                <>
+                  <th className="text-right py-2 px-2">{labelPrev}</th>
+                  <th className="text-right py-2 px-2">{labelPrevPrev}</th>
+                  <th className="text-right py-2 px-2">Δ</th>
+                </>
               ) : (
                 <>
                   <th className="text-right py-2 px-2">{labelMes}</th>
@@ -413,6 +435,7 @@ export default function GestionDropshippers({
               const dDiario = deltaPct(r.diaCur, r.diaPrev);
               const dMensual = deltaPct(r.movCur, r.movPrev);
               const dProj = deltaPct(r.proj, r.movPrev);
+              const dCerr = deltaPct(r.movPrev, r.movPrevPrev);
               return (
                 <tr key={r.key} className="border-t align-top" style={{ borderColor: "var(--bg-card-border)" }}>
                   <td className="py-2 pr-3 t-primary font-medium max-w-[180px] truncate" title={r.nombre}>{r.nombre}</td>
@@ -434,6 +457,12 @@ export default function GestionDropshippers({
                       <td className="text-right py-2 px-2 t-primary font-semibold" style={{ color: "#f97316" }}>{fmt(r.proj)}</td>
                       <td className="text-right py-2 px-2 t-secondary">{fmt(r.movPrev)}</td>
                       <td className="text-right py-2 px-2 font-semibold" style={{ color: dProj >= 0 ? "#10b981" : "#ef4444" }}>{dProj > 0 ? "+" : ""}{dProj}%</td>
+                    </>
+                  ) : cerradoMode ? (
+                    <>
+                      <td className="text-right py-2 px-2 t-primary font-semibold">{fmt(r.movPrev)}</td>
+                      <td className="text-right py-2 px-2 t-secondary">{fmt(r.movPrevPrev)}</td>
+                      <td className="text-right py-2 px-2 font-semibold" style={{ color: dCerr >= 0 ? "#10b981" : "#ef4444" }}>{dCerr > 0 ? "+" : ""}{dCerr}%</td>
                     </>
                   ) : (
                     <>
