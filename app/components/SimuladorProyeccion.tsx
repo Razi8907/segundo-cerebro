@@ -176,19 +176,31 @@ export default function SimuladorProyeccion({
         </ResponsiveContainer>
       </div>
 
-      {/* Plan editable por día (días restantes) */}
-      {diasRestantes > 0 && (
+      {/* Plan por día: reales (solo lectura) + proyectados (editables) */}
+      {diasMes > 0 && (
         <div className="mt-4">
-          <div className="text-xs font-semibold t-primary mb-2">Plan por día (editá para afinar el escenario)</div>
+          <div className="flex flex-wrap items-center gap-3 mb-2">
+            <div className="text-xs font-semibold t-primary">Detalle por día</div>
+            <span className="text-[10px] t-muted flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(148,163,184,0.25)" }} /> reales (cargados · no editables)</span>
+            <span className="text-[10px] t-muted flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: "rgba(249,115,22,0.18)" }} /> proyectados (editá para simular)</span>
+          </div>
           <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2">
-            {Array.from({ length: diasRestantes }, (_, i) => N + 1 + i).map((d) => (
-              <div key={d} className="rounded-lg p-1.5 text-center" style={{ background: "var(--bg-kpi)" }}>
-                <div className="text-[10px] t-muted">Día {d}</div>
-                <input type="number" min={0} value={planFor(d)}
-                  onChange={(e) => setOverrides((o) => ({ ...o, [d]: Math.max(0, Number(e.target.value) || 0) }))}
-                  className="w-full mt-0.5 px-1 py-0.5 rounded border bg-transparent t-primary text-xs text-center" style={{ borderColor: "var(--bg-card-border)" }} />
-              </div>
-            ))}
+            {Array.from({ length: diasMes }, (_, i) => i + 1).map((d) => {
+              const esReal = d <= N;
+              return (
+                <div key={d} className="rounded-lg p-1.5 text-center border"
+                  style={{ background: esReal ? "rgba(148,163,184,0.12)" : "rgba(249,115,22,0.10)", borderColor: esReal ? "transparent" : "rgba(249,115,22,0.30)" }}>
+                  <div className="text-[10px] t-muted">Día {d} {esReal ? "· real" : ""}</div>
+                  {esReal ? (
+                    <div className="w-full mt-0.5 px-1 py-0.5 text-xs text-center font-semibold t-secondary">{fmt(realByDay.get(d) || 0)}</div>
+                  ) : (
+                    <input type="number" min={0} value={planFor(d)}
+                      onChange={(e) => setOverrides((o) => ({ ...o, [d]: Math.max(0, Number(e.target.value) || 0) }))}
+                      className="w-full mt-0.5 px-1 py-0.5 rounded border bg-transparent t-primary text-xs text-center font-semibold" style={{ borderColor: "var(--bg-card-border)" }} />
+                  )}
+                </div>
+              );
+            })}
           </div>
           {Object.keys(overrides).length > 0 && (
             <button onClick={() => setOverrides({})} className="mt-2 text-[11px] underline t-muted hover:text-orange-400">
