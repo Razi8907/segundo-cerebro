@@ -47,7 +47,6 @@ const ESTADOS = [
   { v: "en_seguimiento", label: "🔵 En seguimiento", color: "#3b82f6" },
   { v: "sin_gestionar", label: "🔴 Sin gestionar", color: "#ef4444" },
 ];
-const estadoLabel = (v: string) => ESTADOS.find((e) => e.v === v)?.label || "🔴 Sin gestionar";
 
 // ────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -151,6 +150,19 @@ export default function GestionDropshippers({
   const curAgg = useMemo(() => buildAgg(dsCurDaily), [dsCurDaily]);
   const prevAgg = useMemo(() => buildAgg(dsPrevDaily), [dsPrevDaily]);
 
+  // Días transcurridos con data en el mes corriente (para proyectar el cierre).
+  const maxDayCur = useMemo(() => {
+    let mx = 0;
+    for (const a of curAgg.values()) for (const d of a.byDay.keys()) if (d > mx) mx = d;
+    return mx;
+  }, [curAgg]);
+  const elapsed = esMesEnCurso ? Math.max(1, Math.min(maxDayCur || 1, Math.max(1, hoyDia - 1))) : (maxDayCur || diasMes);
+
+  // Modo proyección: mensual + mes corriente (ej. Agosto vs Julio cerrado).
+  const projMode = mode === "mensual" && esMesEnCurso;
+  const proyectar = (movCur: number) => (projMode && elapsed > 0 ? Math.round((movCur / elapsed) * diasMes) : movCur);
+  const showGestion = !projMode;
+
   // ── Guardar (upsert) ──
   const saveGestion = useCallback(async (key: string, agg: Agg, patch: Partial<Gestion>) => {
     const base = gestionMap[key] || {
@@ -182,7 +194,10 @@ export default function GestionDropshippers({
       const agg: Agg = cur || prev!;
       const movCur = cur?.total || 0;
       const movPrev = prev?.total || 0;
-      const nivelCur = nivelDe(movCur);
+      const proj = proyectar(movCur);
+      // En proyección el nivel de agosto se calcula sobre el cierre proyectado
+      // (comparar acumulado parcial vs mes cerrado no sería justo).
+      const nivelCur = nivelDe(projMode ? proj : movCur);
       const nivelPrev = nivelDe(movPrev);
       const diaCur = cur?.byDay.get(diaSel) || 0;
       const diaPrev = prev?.byDay.get(diaSel) || 0;
@@ -190,7 +205,7 @@ export default function GestionDropshippers({
       out.push({
         key, agg,
         nombre: agg.nombre, email: agg.email, celular: agg.celular,
-        movCur, movPrev, nivelCur, nivelPrev, diaCur, diaPrev,
+        movCur, movPrev, proj, nivelCur, nivelPrev, diaCur, diaPrev,
         comercial: g?.comercial_asignado || "",
         estado: g?.estado || "sin_gestionar",
         nota: g?.nota || "",
@@ -209,12 +224,27 @@ export default function GestionDropshippers({
       if (search && !r.nombre.toLowerCase().includes(search.toLowerCase())) return false;
       return true;
     });
-    // Orden: por volumen del modo activo
-    filtered = filtered.sort((a, b) => (mode === "diario" ? b.diaCur - a.diaCur : b.movCur - a.movCur));
+    // Orden: por volumen del modo activo (proyección en modo proyección)
+    filtered = filtered.sort((a, b) =>
+      mode === "diario" ? b.diaCur - a.diaCur : projMode ? b.proj - a.proj : b.movCur - a.movCur,
+    );
     return filtered;
-  }, [curAgg, prevAgg, gestionMap, diaSel, mode, fComercial, fNivel, fEstado, fGestionDesde, fProxHasta, search]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curAgg, prevAgg, gestionMap, diaSel, mode, projMode, elapsed, fComercial, fNivel, fEstado, fGestionDesde, fProxHasta, search]);
 
   const totalDs = curAgg.size;
+
+  // Resumen de proyección (headline) — solo en modo proyección.
+  const proySummary = useMemo(() => {
+    if (!projMode) return null;
+    let curTot = 0, projTot = 0, prevTot = 0;
+    for (const a of curAgg.values()) { curTot += a.total; projTot += elapsed > 0 ? (a.total / elapsed) * diasMes : a.total; }
+    for (const a of prevAgg.values()) prevTot += a.total;
+    const projRound = Math.round(projTot);
+    return { curTot, projTot: projRound, prevTot, growth: deltaPct(projRound, prevTot) };
+  }, [projMode, curAgg, prevAgg, elapsed, diasMes]);
+
+  const colSpan = projMode ? 7 : mode === "mensual" ? 12 : 12;
 
   return (
     <div className="glass-card p-5">
@@ -222,7 +252,9 @@ export default function GestionDropshippers({
         <div>
           <h3 className="text-sm font-bold t-primary">📋 Gestión de dropshippers — {labelMes} vs {labelPrev}</h3>
           <p className="text-xs t-secondary mt-1">
-            Nivel por umbral de movilizadas, cambio de nivel vs {labelPrev}, y gestión comercial editable. {totalDs} dropshippers.
+            {projMode
+              ? `Proyección de cierre de ${labelMes} (mes corriente) vs ${labelPrev} cerrado. ${totalDs} dropshippers.`
+              : `Nivel por umbral de movilizadas, cambio de nivel vs ${labelPrev}, y gestión comercial editable. ${totalDs} dropshippers.`}
           </p>
         </div>
         <div className="flex gap-1 rounded-lg p-1" style={{ background: "var(--bg-kpi)" }}>
@@ -235,6 +267,38 @@ export default function GestionDropshippers({
         </div>
       </div>
 
+      {/* Headline de proyección de crecimiento */}
+      {projMode && proySummary && (
+        <div className="mt-4 rounded-xl p-4 border grid grid-cols-2 md:grid-cols-4 gap-3"
+          style={{
+            background: proySummary.growth >= 0 ? "rgba(16,185,129,0.10)" : "rgba(249,115,22,0.10)",
+            borderColor: proySummary.growth >= 0 ? "rgba(16,185,129,0.35)" : "rgba(249,115,22,0.35)",
+          }}>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">{labelMes} al día {elapsed}</div>
+            <div className="text-xl font-bold t-primary mt-0.5">{fmt(proySummary.curTot)}</div>
+            <div className="text-[11px] t-secondary">movilizadas acumuladas</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">Proyección cierre {labelMes}</div>
+            <div className="text-xl font-bold mt-0.5" style={{ color: "#f97316" }}>{fmt(proySummary.projTot)}</div>
+            <div className="text-[11px] t-secondary">al ritmo de {fmt(elapsed > 0 ? proySummary.curTot / elapsed : 0)}/día × {diasMes} días</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">{labelPrev} cerrado</div>
+            <div className="text-xl font-bold t-primary mt-0.5">{fmt(proySummary.prevTot)}</div>
+            <div className="text-[11px] t-secondary">movilizadas totales</div>
+          </div>
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider t-muted">Crecimiento proyectado</div>
+            <div className="text-xl font-bold mt-0.5" style={{ color: proySummary.growth >= 0 ? "#10b981" : "#ef4444" }}>
+              {proySummary.growth > 0 ? "+" : ""}{proySummary.growth}%
+            </div>
+            <div className="text-[11px] t-secondary">{labelMes} proy. vs {labelPrev}</div>
+          </div>
+        </div>
+      )}
+
       {mode === "diario" && (
         <div className="mt-3 flex items-center gap-2 text-xs t-secondary">
           <span>Comparar el día</span>
@@ -245,34 +309,49 @@ export default function GestionDropshippers({
         </div>
       )}
 
-      {/* Filtros */}
-      <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
-        <select value={fComercial} onChange={(e) => setFComercial(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
-          <option value="">Comercial: todos</option>
-          <option value="__none__">Sin asignar</option>
-          {comerciales.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select value={fNivel} onChange={(e) => setFNivel(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
-          <option value="">Nivel: todos</option>
-          {NIVELES.map((l) => <option key={l.n} value={String(l.n)}>{l.emoji} N{l.n} {l.label}</option>)}
-        </select>
-        <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
-          <option value="">Estado: todos</option>
-          {ESTADOS.map((e) => <option key={e.v} value={e.v}>{e.label}</option>)}
-        </select>
-        <label className="text-[10px] t-muted flex flex-col">Gestión desde
-          <input type="date" value={fGestionDesde} onChange={(e) => setFGestionDesde(e.target.value)} className="text-xs px-2 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
-        </label>
-        <label className="text-[10px] t-muted flex flex-col">Próx. contacto hasta
-          <input type="date" value={fProxHasta} onChange={(e) => setFProxHasta(e.target.value)} className="text-xs px-2 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
-        </label>
-        <input type="text" placeholder="Buscar dropshipper…" value={search} onChange={(e) => setSearch(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
-      </div>
+      {/* Filtros — la gestión no aplica en la vista de proyección */}
+      {showGestion && (
+        <>
+          <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+            <select value={fComercial} onChange={(e) => setFComercial(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
+              <option value="">Comercial: todos</option>
+              <option value="__none__">Sin asignar</option>
+              {comerciales.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+            <select value={fNivel} onChange={(e) => setFNivel(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
+              <option value="">Nivel: todos</option>
+              {NIVELES.map((l) => <option key={l.n} value={String(l.n)}>{l.emoji} N{l.n} {l.label}</option>)}
+            </select>
+            <select value={fEstado} onChange={(e) => setFEstado(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
+              <option value="">Estado: todos</option>
+              {ESTADOS.map((e) => <option key={e.v} value={e.v}>{e.label}</option>)}
+            </select>
+            <label className="text-[10px] t-muted flex flex-col">Gestión desde
+              <input type="date" value={fGestionDesde} onChange={(e) => setFGestionDesde(e.target.value)} className="text-xs px-2 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
+            </label>
+            <label className="text-[10px] t-muted flex flex-col">Próx. contacto hasta
+              <input type="date" value={fProxHasta} onChange={(e) => setFProxHasta(e.target.value)} className="text-xs px-2 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
+            </label>
+            <input type="text" placeholder="Buscar dropshipper…" value={search} onChange={(e) => setSearch(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
+          </div>
 
-      {(fComercial || fNivel || fEstado || fGestionDesde || fProxHasta || search) && (
-        <div className="mt-2 flex items-center gap-2 text-[11px] t-muted">
-          <span>{rows.length} resultados</span>
-          <button onClick={() => { setFComercial(""); setFNivel(""); setFEstado(""); setFGestionDesde(""); setFProxHasta(""); setSearch(""); }} className="underline hover:text-orange-400">limpiar filtros</button>
+          {(fComercial || fNivel || fEstado || fGestionDesde || fProxHasta || search) && (
+            <div className="mt-2 flex items-center gap-2 text-[11px] t-muted">
+              <span>{rows.length} resultados</span>
+              <button onClick={() => { setFComercial(""); setFNivel(""); setFEstado(""); setFGestionDesde(""); setFProxHasta(""); setSearch(""); }} className="underline hover:text-orange-400">limpiar filtros</button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* En proyección, solo filtros de nivel y búsqueda (sin gestión) */}
+      {projMode && (
+        <div className="mt-4 grid grid-cols-2 md:grid-cols-3 gap-2">
+          <select value={fNivel} onChange={(e) => setFNivel(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }}>
+            <option value="">Nivel proyectado: todos</option>
+            {NIVELES.map((l) => <option key={l.n} value={String(l.n)}>{l.emoji} N{l.n} {l.label}</option>)}
+          </select>
+          <input type="text" placeholder="Buscar dropshipper…" value={search} onChange={(e) => setSearch(e.target.value)} className="text-xs px-2 py-1.5 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
         </div>
       )}
 
@@ -282,38 +361,49 @@ export default function GestionDropshippers({
           <thead>
             <tr className="t-muted text-[11px] uppercase tracking-wider">
               <th className="text-left py-2 pr-3">Dropshipper</th>
-              <th className="text-left py-2 px-2">Nivel</th>
-              <th className="text-left py-2 px-2">Cambio</th>
-              {mode === "mensual" ? (
-                <>
-                  <th className="text-right py-2 px-2">{labelMes}</th>
-                  <th className="text-right py-2 px-2">{labelPrev}</th>
-                  <th className="text-right py-2 px-2">Δ</th>
-                </>
-              ) : (
+              <th className="text-left py-2 px-2">Nivel{projMode ? " proy." : ""}</th>
+              <th className="text-left py-2 px-2">Cambio{projMode ? " proy." : ""}</th>
+              {mode === "diario" ? (
                 <>
                   <th className="text-right py-2 px-2">{String(diaSel).padStart(2, "0")}/{labelMes}</th>
                   <th className="text-right py-2 px-2">{String(diaSel).padStart(2, "0")}/{labelPrev}</th>
                   <th className="text-right py-2 px-2">Δ</th>
                 </>
+              ) : projMode ? (
+                <>
+                  <th className="text-right py-2 px-2">{labelMes} (día {elapsed})</th>
+                  <th className="text-right py-2 px-2">Proy. {labelMes}</th>
+                  <th className="text-right py-2 px-2">{labelPrev} (cerrado)</th>
+                  <th className="text-right py-2 px-2">Crec. proy.</th>
+                </>
+              ) : (
+                <>
+                  <th className="text-right py-2 px-2">{labelMes}</th>
+                  <th className="text-right py-2 px-2">{labelPrev}</th>
+                  <th className="text-right py-2 px-2">Δ</th>
+                </>
               )}
-              <th className="text-left py-2 px-2">Comercial</th>
-              <th className="text-left py-2 px-2">Estado</th>
-              <th className="text-left py-2 px-2">Nota</th>
-              <th className="text-left py-2 px-2">Fecha gestión</th>
-              <th className="text-left py-2 px-2">Próx. contacto</th>
-              <th className="text-left py-2 pl-2">WA</th>
+              {showGestion && (
+                <>
+                  <th className="text-left py-2 px-2">Comercial</th>
+                  <th className="text-left py-2 px-2">Estado</th>
+                  <th className="text-left py-2 px-2">Nota</th>
+                  <th className="text-left py-2 px-2">Fecha gestión</th>
+                  <th className="text-left py-2 px-2">Próx. contacto</th>
+                  <th className="text-left py-2 pl-2">WA</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
-              const cVal = mode === "diario" ? r.diaCur : r.movCur;
-              const pVal = mode === "diario" ? r.diaPrev : r.movPrev;
-              const d = deltaPct(cVal, pVal);
               const subio = r.nivelCur > r.nivelPrev;
               const bajo = r.nivelCur < r.nivelPrev;
               const wa = digits(r.celular);
               const estadoColor = ESTADOS.find((e) => e.v === r.estado)?.color || "#ef4444";
+              const dDiario = deltaPct(r.diaCur, r.diaPrev);
+              const dMensual = deltaPct(r.movCur, r.movPrev);
+              const dProj = deltaPct(r.proj, r.movPrev);
               return (
                 <tr key={r.key} className="border-t align-top" style={{ borderColor: "var(--bg-card-border)" }}>
                   <td className="py-2 pr-3 t-primary font-medium max-w-[180px] truncate" title={r.nombre}>{r.nombre}</td>
@@ -323,54 +413,77 @@ export default function GestionDropshippers({
                       : bajo ? <span style={{ color: "#ef4444" }}>▼ N{r.nivelPrev}→N{r.nivelCur}</span>
                       : <span className="t-muted">= N{r.nivelCur}</span>}
                   </td>
-                  <td className="text-right py-2 px-2 t-primary font-semibold">{fmt(cVal)}</td>
-                  <td className="text-right py-2 px-2 t-secondary">{fmt(pVal)}</td>
-                  <td className="text-right py-2 px-2 font-semibold" style={{ color: d >= 0 ? "#10b981" : "#ef4444" }}>{d > 0 ? "+" : ""}{d}%</td>
-                  <td className="py-2 px-2">
-                    <select value={r.comercial} onChange={(e) => saveGestion(r.key, r.agg, { comercial_asignado: e.target.value || null })}
-                      className="text-xs px-1.5 py-1 rounded border bg-transparent t-primary max-w-[130px]" style={{ borderColor: "var(--bg-card-border)" }}>
-                      <option value="">—</option>
-                      {comerciales.map((c) => <option key={c} value={c}>{c}</option>)}
-                      {r.comercial && !comerciales.includes(r.comercial) && <option value={r.comercial}>{r.comercial}</option>}
-                    </select>
-                  </td>
-                  <td className="py-2 px-2">
-                    <select value={r.estado} onChange={(e) => saveGestion(r.key, r.agg, { estado: e.target.value })}
-                      className="text-xs px-1.5 py-1 rounded border font-medium" style={{ borderColor: "var(--bg-card-border)", background: `${estadoColor}18`, color: estadoColor }}>
-                      {ESTADOS.map((e) => <option key={e.v} value={e.v}>{e.label}</option>)}
-                    </select>
-                  </td>
-                  <td className="py-2 px-2">
-                    <input type="text" placeholder="nota…"
-                      value={notaDraft[r.key] ?? r.nota}
-                      onChange={(e) => setNotaDraft((n) => ({ ...n, [r.key]: e.target.value }))}
-                      onBlur={(e) => { if ((e.target.value || "") !== r.nota) saveGestion(r.key, r.agg, { nota: e.target.value }); }}
-                      className="text-xs px-1.5 py-1 rounded border bg-transparent t-primary w-[130px]" style={{ borderColor: "var(--bg-card-border)" }} />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input type="date" value={r.fecha_gestion || ""} onChange={(e) => saveGestion(r.key, r.agg, { fecha_gestion: e.target.value || null })}
-                      className="text-xs px-1 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
-                  </td>
-                  <td className="py-2 px-2">
-                    <input type="date" value={r.proxima_fecha_contacto || ""} onChange={(e) => saveGestion(r.key, r.agg, { proxima_fecha_contacto: e.target.value || null })}
-                      className="text-xs px-1 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
-                  </td>
-                  <td className="py-2 pl-2">
-                    {wa ? <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="text-green-500 hover:underline text-xs" title={r.celular || ""}>💬</a> : <span className="t-muted text-xs">—</span>}
-                    {savingKey === r.key && <span className="ml-1 text-[10px] t-muted">…</span>}
-                  </td>
+                  {mode === "diario" ? (
+                    <>
+                      <td className="text-right py-2 px-2 t-primary font-semibold">{fmt(r.diaCur)}</td>
+                      <td className="text-right py-2 px-2 t-secondary">{fmt(r.diaPrev)}</td>
+                      <td className="text-right py-2 px-2 font-semibold" style={{ color: dDiario >= 0 ? "#10b981" : "#ef4444" }}>{dDiario > 0 ? "+" : ""}{dDiario}%</td>
+                    </>
+                  ) : projMode ? (
+                    <>
+                      <td className="text-right py-2 px-2 t-secondary">{fmt(r.movCur)}</td>
+                      <td className="text-right py-2 px-2 t-primary font-semibold" style={{ color: "#f97316" }}>{fmt(r.proj)}</td>
+                      <td className="text-right py-2 px-2 t-secondary">{fmt(r.movPrev)}</td>
+                      <td className="text-right py-2 px-2 font-semibold" style={{ color: dProj >= 0 ? "#10b981" : "#ef4444" }}>{dProj > 0 ? "+" : ""}{dProj}%</td>
+                    </>
+                  ) : (
+                    <>
+                      <td className="text-right py-2 px-2 t-primary font-semibold">{fmt(r.movCur)}</td>
+                      <td className="text-right py-2 px-2 t-secondary">{fmt(r.movPrev)}</td>
+                      <td className="text-right py-2 px-2 font-semibold" style={{ color: dMensual >= 0 ? "#10b981" : "#ef4444" }}>{dMensual > 0 ? "+" : ""}{dMensual}%</td>
+                    </>
+                  )}
+                  {showGestion && (
+                    <>
+                      <td className="py-2 px-2">
+                        <select value={r.comercial} onChange={(e) => saveGestion(r.key, r.agg, { comercial_asignado: e.target.value || null })}
+                          className="text-xs px-1.5 py-1 rounded border bg-transparent t-primary max-w-[130px]" style={{ borderColor: "var(--bg-card-border)" }}>
+                          <option value="">—</option>
+                          {comerciales.map((c) => <option key={c} value={c}>{c}</option>)}
+                          {r.comercial && !comerciales.includes(r.comercial) && <option value={r.comercial}>{r.comercial}</option>}
+                        </select>
+                      </td>
+                      <td className="py-2 px-2">
+                        <select value={r.estado} onChange={(e) => saveGestion(r.key, r.agg, { estado: e.target.value })}
+                          className="text-xs px-1.5 py-1 rounded border font-medium" style={{ borderColor: "var(--bg-card-border)", background: `${estadoColor}18`, color: estadoColor }}>
+                          {ESTADOS.map((e) => <option key={e.v} value={e.v}>{e.label}</option>)}
+                        </select>
+                      </td>
+                      <td className="py-2 px-2">
+                        <input type="text" placeholder="nota…"
+                          value={notaDraft[r.key] ?? r.nota}
+                          onChange={(e) => setNotaDraft((n) => ({ ...n, [r.key]: e.target.value }))}
+                          onBlur={(e) => { if ((e.target.value || "") !== r.nota) saveGestion(r.key, r.agg, { nota: e.target.value }); }}
+                          className="text-xs px-1.5 py-1 rounded border bg-transparent t-primary w-[130px]" style={{ borderColor: "var(--bg-card-border)" }} />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input type="date" value={r.fecha_gestion || ""} onChange={(e) => saveGestion(r.key, r.agg, { fecha_gestion: e.target.value || null })}
+                          className="text-xs px-1 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
+                      </td>
+                      <td className="py-2 px-2">
+                        <input type="date" value={r.proxima_fecha_contacto || ""} onChange={(e) => saveGestion(r.key, r.agg, { proxima_fecha_contacto: e.target.value || null })}
+                          className="text-xs px-1 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
+                      </td>
+                      <td className="py-2 pl-2">
+                        {wa ? <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer" className="text-green-500 hover:underline text-xs" title={r.celular || ""}>💬</a> : <span className="t-muted text-xs">—</span>}
+                        {savingKey === r.key && <span className="ml-1 text-[10px] t-muted">…</span>}
+                      </td>
+                    </>
+                  )}
                 </tr>
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={12} className="py-6 text-center t-muted text-xs">Sin dropshippers para los filtros seleccionados.</td></tr>
+              <tr><td colSpan={colSpan} className="py-6 text-center t-muted text-xs">Sin dropshippers para los filtros seleccionados.</td></tr>
             )}
           </tbody>
         </table>
       </div>
       <p className="mt-2 text-[10px] t-muted">
-        El nivel se calcula sobre las movilizadas del mes ({labelMes}). Los cambios de gestión se guardan automáticamente.
-        Umbrales: 🔴 0 · ⚪ 1–99 · 🟡 100–299 · 🟠 300–899 · 🟣 900–4999 · 🔵 5000+.
+        {projMode
+          ? `Proyección = ritmo diario de ${labelMes} (acumulado ÷ ${elapsed} días con data) × ${diasMes} días. El nivel y el cambio usan el cierre proyectado. La gestión comercial está disponible en la vista Diario y en meses cerrados.`
+          : `El nivel se calcula sobre las movilizadas del mes (${labelMes}). Los cambios de gestión se guardan automáticamente.`}
+        {" "}Umbrales: 🔴 0 · ⚪ 1–99 · 🟡 100–299 · 🟠 300–899 · 🟣 900–4999 · 🔵 5000+.
       </p>
     </div>
   );
