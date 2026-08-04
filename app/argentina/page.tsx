@@ -26,13 +26,13 @@ import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OpsBreakdown from "../components/OpsBreakdown";
-import ProveedorManager from "../components/ProveedorManager";
 import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboardAR from "../components/FinanzasDashboardAR";
 import SeguimientoComercial from "../components/SeguimientoComercial";
 import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
 import AnalisisRecomendaciones from "../components/AnalisisRecomendaciones";
 import AccionesUrgentes from "../components/AccionesUrgentes";
+import ProveedorSeguimiento from "../components/ProveedorSeguimiento";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
@@ -291,12 +291,12 @@ export default function ArgentinaDashboard() {
               {([
                 { key: "general" as ComercialSub, label: "📊 General" },
                 { key: "acciones_urgentes" as ComercialSub, label: "🚨 Acciones Urgentes" },
+                { key: "proveedores" as ComercialSub, label: "📦 Proveedores" },
                 { key: "analisis" as ComercialSub, label: "🔍 Análisis y Recomendaciones" },
                 { key: "minimo" as ComercialSub, label: "📐 Mínimo Diario" },
                 { key: "minimo_sem" as ComercialSub, label: "📅 Mínimo Semanal" },
                 { key: "minimo_mes" as ComercialSub, label: "📆 Mínimo Mensual" },
                 { key: "dropshippers" as ComercialSub, label: "👥 Dropshippers" },
-                { key: "proveedores" as ComercialSub, label: "📦 Proveedores" },
                 { key: "crm" as ComercialSub, label: "🎯 CRM" },
               ]).map((s) => (
                 <button
@@ -346,18 +346,7 @@ export default function ArgentinaDashboard() {
             )}
 
             {comercialSub === "proveedores" && (
-              <>
-                <OpsBreakdown country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} category="proveedor" />
-                <ProveedorManager mesFilter={mesFilter} metaInfo={meta_info} country="ar" />
-                {/* Q1-based components only relevant in Abril (Mayo no los usa) */}
-                {isAbril && (
-                  <>
-                    <ProveedoresRanking proveedores={proveedores} mesFilter={mesFilter} />
-                    <ProveedoresTable proveedores={proveedores} mesFilter={mesFilter} />
-                    <ProductsAnalysis productos={productos} proveedores={proveedores} productosTotal={productos_total} mesFilter={mesFilter} metaInfo={meta_info} />
-                  </>
-                )}
-              </>
+              <ProveedorSeguimiento country="ar" />
             )}
 
             {comercialSub === "minimo" && (
