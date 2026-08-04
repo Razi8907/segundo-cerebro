@@ -7,6 +7,7 @@ import {
 } from "recharts";
 import type { MesFilter } from "../types";
 import GestionDropshippers from "./GestionDropshippers";
+import SimuladorProyeccion from "./SimuladorProyeccion";
 
 // ────────────────────────────────────────────────────────────────────────
 // Tipos del snapshot operacional (subset que consumimos)
@@ -468,6 +469,18 @@ export default function AccionesUrgentes({
             />
           )}
         </div>
+      )}
+
+      {/* Simulador de proyección diaria — solo mes en curso */}
+      {A.esMesEnCurso && (
+        <SimuladorProyeccion
+          labelMes={LABEL[realMes]}
+          diasMes={A.diasMes}
+          N={A.N}
+          dailyCurr={dailyCurr}
+          metaMov={A.metaMov}
+          metaIng={A.metaIng}
+        />
       )}
 
       {/* Seguimiento a usuario para alcanzar meta (ingresadas) */}
