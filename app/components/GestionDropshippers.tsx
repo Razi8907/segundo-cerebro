@@ -88,6 +88,14 @@ function buildAgg(rows: DsDailyRow[] | undefined): Map<string, Agg> {
   return m;
 }
 
+// Acumulado de órdenes del día 1 al día D (inclusive).
+function accToDay(a: Agg | undefined, D: number): number {
+  if (!a) return 0;
+  let s = 0;
+  for (const [d, v] of a.byDay) if (d >= 1 && d <= D) s += v;
+  return s;
+}
+
 function NivelBadge({ n }: { n: number }) {
   const lv = NIVELES[n] || NIVELES[0];
   return (
@@ -199,8 +207,9 @@ export default function GestionDropshippers({
       // (comparar acumulado parcial vs mes cerrado no sería justo).
       const nivelCur = nivelDe(projMode ? proj : movCur);
       const nivelPrev = nivelDe(movPrev);
-      const diaCur = cur?.byDay.get(diaSel) || 0;
-      const diaPrev = prev?.byDay.get(diaSel) || 0;
+      // Diario = comparación de RANGOS acumulados: del 1 al día seleccionado.
+      const diaCur = accToDay(cur, diaSel);
+      const diaPrev = accToDay(prev, diaSel);
       const g = gestionMap[key];
       out.push({
         key, agg,
@@ -261,7 +270,7 @@ export default function GestionDropshippers({
           {(["mensual", "diario"] as const).map((m) => (
             <button key={m} onClick={() => setMode(m)}
               className={`text-xs px-3 py-1.5 rounded-md font-medium transition-all ${mode === m ? "bg-orange-500 text-white" : "t-secondary hover:text-orange-400"}`}>
-              {m === "mensual" ? `Mensual (${labelMes} vs ${labelPrev})` : "Diario (día a día)"}
+              {m === "mensual" ? `Mensual (${labelMes} vs ${labelPrev})` : "Diario (acumulado 1→día)"}
             </button>
           ))}
         </div>
@@ -301,11 +310,11 @@ export default function GestionDropshippers({
 
       {mode === "diario" && (
         <div className="mt-3 flex items-center gap-2 text-xs t-secondary">
-          <span>Comparar el día</span>
+          <span>Acumulado del 1 al día</span>
           <input type="number" min={1} max={diasMes} value={diaSel}
             onChange={(e) => setDiaSel(Math.max(1, Math.min(diasMes, Number(e.target.value) || 1)))}
             className="w-16 px-2 py-1 rounded border bg-transparent t-primary" style={{ borderColor: "var(--bg-card-border)" }} />
-          <span>de cada mes → <b className="t-primary">{String(diaSel).padStart(2, "0")}/{labelMes}</b> vs <b className="t-primary">{String(diaSel).padStart(2, "0")}/{labelPrev}</b></span>
+          <span>de cada mes → <b className="t-primary">1–{String(diaSel).padStart(2, "0")} {labelMes}</b> vs <b className="t-primary">1–{String(diaSel).padStart(2, "0")} {labelPrev}</b></span>
         </div>
       )}
 
@@ -365,8 +374,8 @@ export default function GestionDropshippers({
               <th className="text-left py-2 px-2">Cambio{projMode ? " proy." : ""}</th>
               {mode === "diario" ? (
                 <>
-                  <th className="text-right py-2 px-2">{String(diaSel).padStart(2, "0")}/{labelMes}</th>
-                  <th className="text-right py-2 px-2">{String(diaSel).padStart(2, "0")}/{labelPrev}</th>
+                  <th className="text-right py-2 px-2">1–{String(diaSel).padStart(2, "0")} {labelMes}</th>
+                  <th className="text-right py-2 px-2">1–{String(diaSel).padStart(2, "0")} {labelPrev}</th>
                   <th className="text-right py-2 px-2">Δ</th>
                 </>
               ) : projMode ? (
