@@ -20,16 +20,20 @@ const fmt = (n: number): string => Math.round(n).toLocaleString("es-AR");
 // Simulador de seguimiento diario + proyección — "jugar" con escenarios.
 // ════════════════════════════════════════════════════════════════════════
 export default function SimuladorProyeccion({
-  labelMes, diasMes, N, dailyCurr, metaMov, metaIng,
+  labelMes, labelPrev, diasMes, N, dailyCurr, metaMov, metaIng, tasaMovPrev,
 }: {
   labelMes: string;
+  labelPrev: string;
   diasMes: number;
   N: number;            // días transcurridos con data (tramo real)
   dailyCurr: DailyRow[];
   metaMov: number;
   metaIng: number;
+  tasaMovPrev: number;  // tasa mov/ing del mes cerrado anterior (fracción, ej 0.75)
 }) {
   const [unidad, setUnidad] = useState<"movilizadas" | "ingresadas">("movilizadas");
+  // % de movilización (mov/ing). Default = mes cerrado anterior; editable porque varía mes a mes.
+  const [tasaPct, setTasaPct] = useState<number | null>(null);
   // baseRitmo = ritmo/día que se aplica a los días restantes (null → default = ritmo actual).
   const [baseRitmo, setBaseRitmo] = useState<number | null>(null);
   // overrides = valor proyectado manual por día (para afinar día por día).
@@ -75,6 +79,17 @@ export default function SimuladorProyeccion({
   const gap = metaVal - proyeccion;
   const pctMeta = metaVal > 0 ? (proyeccion / metaVal) * 100 : 0;
   const llega = metaVal > 0 && proyeccion >= metaVal;
+
+  // ── % de movilización (mov/ing): base mes cerrado anterior, editable ──
+  const tasaPrevPct = Math.round(tasaMovPrev * 1000) / 10;
+  const effTasaPct = tasaPct ?? tasaPrevPct;
+  const effTasa = effTasaPct / 100;
+  const otraUnidad = unidad === "movilizadas" ? "ingresadas" : "movilizadas";
+  // Conversión derivada de la proyección con la tasa elegida.
+  const derivedProy = unidad === "movilizadas"
+    ? (effTasa > 0 ? proyeccion / effTasa : 0)   // si simulo movilizadas → ingresadas necesarias
+    : proyeccion * effTasa;                        // si simulo ingresadas → movilizadas estimadas
+  const derivedMeta = unidad === "movilizadas" ? metaIng : metaMov;
 
   // Serie para el gráfico (acumulado real + acumulado proyectado + meta lineal)
   const serie = useMemo(() => {
@@ -156,6 +171,24 @@ export default function SimuladorProyeccion({
         )}
         <span className={`text-xs font-semibold ml-1 ${llega ? "text-green-500" : "text-red-500"}`}>
           {metaVal > 0 ? (llega ? "✓ Con este ritmo llegás a la meta" : "✗ Con este ritmo no llegás") : ""}
+        </span>
+      </div>
+
+      {/* % de movilización (mov/ing) — base mes cerrado anterior, editable */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg p-3" style={{ background: "var(--bg-kpi)" }}>
+        <span className="text-xs t-secondary">% de movilización (mov/ing):</span>
+        <input type="number" min={0} max={200} step={0.1} value={effTasaPct}
+          onChange={(e) => setTasaPct(Math.max(0, Number(e.target.value) || 0))}
+          className="w-20 px-2 py-1.5 rounded border bg-transparent t-primary text-sm font-semibold" style={{ borderColor: "var(--bg-card-border)" }} />
+        <span className="text-xs t-muted">%</span>
+        <button onClick={() => setTasaPct(tasaPrevPct)} className="text-xs px-2.5 py-1.5 rounded border t-secondary hover:text-orange-400" style={{ borderColor: "var(--bg-card-border)" }}>
+          = {labelPrev} cerrado ({tasaPrevPct}%)
+        </button>
+        <span className="text-xs t-secondary ml-1">
+          → {otraUnidad} proyectadas: <b className="t-primary">{effTasa > 0 ? fmt(derivedProy) : "—"}</b>
+          {derivedMeta > 0 && (
+            <span className="t-muted"> · meta {fmt(derivedMeta)} <b style={{ color: derivedProy >= derivedMeta ? "#10b981" : "#ef4444" }}>{derivedProy >= derivedMeta ? "✓" : "✗"}</b></span>
+          )}
         </span>
       </div>
 

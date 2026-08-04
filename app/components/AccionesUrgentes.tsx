@@ -395,6 +395,13 @@ export default function AccionesUrgentes({
     };
   }, [opCurr, opPrev, dailyCurr, dailyPrev, metaInfo, realMes, mesPrev]);
 
+  // Tasa de movilización del mes cerrado anterior (mov/ing del mes completo).
+  const tasaMovPrev = useMemo(() => {
+    let mov = 0, ing = 0;
+    for (const d of dailyPrev) { mov += Number(d.movilizadas) || 0; ing += Number(d.ingresadas) || 0; }
+    return ing > 0 ? mov / ing : 0;
+  }, [dailyPrev]);
+
   // ── Estados de carga / sin data ──
   if (loading) {
     return <div className="glass-card p-8 text-center t-secondary">Analizando la data de {LABEL[realMes]}…</div>;
@@ -475,11 +482,13 @@ export default function AccionesUrgentes({
       {A.esMesEnCurso && (
         <SimuladorProyeccion
           labelMes={LABEL[realMes]}
+          labelPrev={LABEL[mesPrev]}
           diasMes={A.diasMes}
           N={A.N}
           dailyCurr={dailyCurr}
           metaMov={A.metaMov}
           metaIng={A.metaIng}
+          tasaMovPrev={tasaMovPrev}
         />
       )}
 
