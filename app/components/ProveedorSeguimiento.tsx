@@ -54,7 +54,8 @@ export default function ProveedorSeguimiento({ country }: { country: "ar" | "py"
   const fetchData = useCallback(async () => {
     setLoading(true); setError("");
     try {
-      const res = await fetch(`/api/data/proveedor-seguimiento?country=${country}`);
+      const res = await fetch(`/api/data/proveedor-seguimiento?country=${country}`, { credentials: "include" });
+      if (res.status === 401 || res.status === 403) throw new Error("Sesión expirada — recargá la página e iniciá sesión de nuevo.");
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || `HTTP ${res.status}`); }
       const data = await res.json();
       setOrdenes(Array.isArray(data.ordenes) ? data.ordenes : []);
@@ -70,14 +71,15 @@ export default function ProveedorSeguimiento({ country }: { country: "ar" | "py"
     setUploading(true); setUploadMsg("");
     try {
       const urlRes = await fetch("/api/data/proveedor-seguimiento/upload-url", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ country, filename: file.name }),
       });
+      if (urlRes.status === 401 || urlRes.status === 403) throw new Error("Sesión expirada o fuera de horario — recargá la página e iniciá sesión de nuevo.");
       if (!urlRes.ok) throw new Error(`No se pudo obtener URL (HTTP ${urlRes.status})`);
       const { path, signedUrl } = await urlRes.json();
       const upRes = await fetch(signedUrl, { method: "PUT", headers: { "Content-Type": file.type || "application/octet-stream" }, body: file });
       if (!upRes.ok) throw new Error(`Subida a Storage falló (HTTP ${upRes.status})`);
-      const res = await fetch(`/api/data/proveedor-seguimiento/upload?country=${country}&path=${encodeURIComponent(path)}`, { method: "POST" });
+      const res = await fetch(`/api/data/proveedor-seguimiento/upload?country=${country}&path=${encodeURIComponent(path)}`, { method: "POST", credentials: "include" });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
       setUploadMsg(`✓ Cargado: ${fmt(j.total_activas || 0)} órdenes activas al ${fmtFecha(j.fecha_carga)}`);

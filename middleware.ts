@@ -15,8 +15,12 @@ function getCurrentHourPY(): number {
 
 export async function middleware(req: NextRequest) {
   const token = req.cookies.get(COOKIE_NAME)?.value;
+  // Para rutas de API NO redirigimos al /login: un fetch POST que sigue un 307
+  // hacia /login (página solo-GET) termina en 405. Devolvemos 401 JSON claro.
+  const isApi = req.nextUrl.pathname.startsWith("/api/");
 
   if (!token) {
+    if (isApi) return NextResponse.json({ error: "No autenticado" }, { status: 401 });
     const loginUrl = new URL("/login", req.url);
     if (req.nextUrl.pathname !== "/") {
       loginUrl.searchParams.set("from", req.nextUrl.pathname);
@@ -47,6 +51,7 @@ export async function middleware(req: NextRequest) {
         allowed = currentHour >= start || currentHour < end;
       }
       if (!allowed) {
+        if (isApi) return NextResponse.json({ error: "Fuera del horario de acceso permitido" }, { status: 403 });
         // Delete the cookie and redirect with error
         const response = NextResponse.redirect(
           new URL("/login?error=horario", req.url)
@@ -64,6 +69,7 @@ export async function middleware(req: NextRequest) {
 
     return NextResponse.next();
   } catch {
+    if (isApi) return NextResponse.json({ error: "Sesión inválida" }, { status: 401 });
     // Invalid token - clear cookie and redirect
     const response = NextResponse.redirect(new URL("/login", req.url));
     response.cookies.set(COOKIE_NAME, "", {
