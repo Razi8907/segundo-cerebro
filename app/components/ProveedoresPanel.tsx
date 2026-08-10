@@ -3,14 +3,16 @@
 import { useState } from "react";
 import ProveedorSeguimiento from "./ProveedorSeguimiento";
 import StockTop50 from "./StockTop50";
+import GuiasNoDespachadas from "./GuiasNoDespachadas";
 
 export default function ProveedoresPanel({ country, mes }: { country: "ar" | "py"; mes: string }) {
-  const [tab, setTab] = useState<"ordenes" | "stock">("ordenes");
+  const [tab, setTab] = useState<"ordenes" | "guias" | "stock">("ordenes");
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         {([
           { k: "ordenes" as const, label: "📦 Órdenes en poder del proveedor" },
+          { k: "guias" as const, label: "🚚 Guías no despachadas" },
           { k: "stock" as const, label: "📊 Stock Top 50" },
         ]).map((t) => (
           <button key={t.k} onClick={() => setTab(t.k)}
@@ -23,7 +25,9 @@ export default function ProveedoresPanel({ country, mes }: { country: "ar" | "py
           </button>
         ))}
       </div>
-      {tab === "ordenes" ? <ProveedorSeguimiento country={country} /> : <StockTop50 country={country} mes={mes} />}
+      {tab === "ordenes" ? <ProveedorSeguimiento country={country} />
+        : tab === "guias" ? <GuiasNoDespachadas country={country} />
+        : <StockTop50 country={country} mes={mes} />}
     </div>
   );
 }
