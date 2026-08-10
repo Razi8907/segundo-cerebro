@@ -32,7 +32,7 @@ import SeguimientoComercial from "../components/SeguimientoComercial";
 import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
 import AnalisisRecomendaciones from "../components/AnalisisRecomendaciones";
 import AccionesUrgentes from "../components/AccionesUrgentes";
-import ProveedorSeguimiento from "../components/ProveedorSeguimiento";
+import ProveedoresPanel from "../components/ProveedoresPanel";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
@@ -346,7 +346,7 @@ export default function ArgentinaDashboard() {
             )}
 
             {comercialSub === "proveedores" && (
-              <ProveedorSeguimiento country="ar" />
+              <ProveedoresPanel country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "minimo" && (
