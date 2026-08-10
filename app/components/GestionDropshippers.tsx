@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 // ────────────────────────────────────────────────────────────────────────
 // Tipos
 // ────────────────────────────────────────────────────────────────────────
-interface DsDailyRow { ds: string; dsEmail?: string; dsCelular?: string; fecha: string; ordenes: number }
+interface DsDailyRow { ds: string; dsId?: string; dsEmail?: string; dsCelular?: string; fecha: string; ordenes: number }
 
 interface Gestion {
   ds_key: string;
@@ -79,18 +79,19 @@ function normKey(email?: string | null, celular?: string | null, nombre?: string
   return `n:${(nombre || "").trim().toLowerCase()}`;
 }
 
-interface Agg { nombre: string; email?: string; celular?: string; total: number; byDay: Map<number, number> }
+interface Agg { nombre: string; id?: string; email?: string; celular?: string; total: number; byDay: Map<number, number> }
 function buildAgg(rows: DsDailyRow[] | undefined): Map<string, Agg> {
   const m = new Map<string, Agg>();
   for (const r of rows || []) {
     const key = normKey(r.dsEmail, r.dsCelular, r.ds);
     if (!key || key === "n:") continue;
     let a = m.get(key);
-    if (!a) { a = { nombre: r.ds || "", email: r.dsEmail, celular: r.dsCelular, total: 0, byDay: new Map() }; m.set(key, a); }
+    if (!a) { a = { nombre: r.ds || "", id: r.dsId, email: r.dsEmail, celular: r.dsCelular, total: 0, byDay: new Map() }; m.set(key, a); }
     const d = dayOf(r.fecha);
     const o = r.ordenes || 0;
     a.total += o;
     if (d >= 1) a.byDay.set(d, (a.byDay.get(d) || 0) + o);
+    if (!a.id && r.dsId) a.id = r.dsId;
     if (!a.email && r.dsEmail) a.email = r.dsEmail;
     if (!a.celular && r.dsCelular) a.celular = r.dsCelular;
     if (!a.nombre && r.ds) a.nombre = r.ds;
@@ -232,7 +233,7 @@ export default function GestionDropshippers({
       const g = gestionMap[key];
       out.push({
         key, agg,
-        nombre: agg.nombre, email: agg.email, celular: agg.celular,
+        nombre: agg.nombre, id: agg.id, email: agg.email, celular: agg.celular,
         movCur, movPrev, movPrevPrev, proj, nivelCur, nivelPrev, diaCur, diaPrev,
         comercial: g?.comercial_asignado || "",
         estado: g?.estado || "sin_gestionar",
@@ -448,7 +449,10 @@ export default function GestionDropshippers({
               const dCerr = deltaPct(r.movPrev, r.movPrevPrev);
               return (
                 <tr key={r.key} className="border-t align-top" style={{ borderColor: "var(--bg-card-border)" }}>
-                  <td className="py-2 pr-3 t-primary font-medium max-w-[180px] truncate" title={r.nombre}>{r.nombre}</td>
+                  <td className="py-2 pr-3 max-w-[220px]" title={r.nombre}>
+                    <div className="t-primary font-medium truncate">{r.email || r.nombre}</div>
+                    {r.id && <div className="t-muted text-[10px]">ID {r.id}</div>}
+                  </td>
                   <td className="py-2 px-2"><NivelBadge n={r.nivelCur} /></td>
                   <td className="py-2 px-2 text-[11px] whitespace-nowrap">
                     {subio ? <span style={{ color: "#10b981" }}>▲ N{r.nivelPrev}→N{r.nivelCur}</span>
