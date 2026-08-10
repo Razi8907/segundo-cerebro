@@ -149,6 +149,11 @@ export default function GestionDropshippers({
   // Notas en edición local (se guardan al salir del campo)
   const [notaDraft, setNotaDraft] = useState<Record<string, string>>({});
 
+  // Selección de usuarios (mensual cerrado)
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [copiadoSel, setCopiadoSel] = useState(false);
+  const toggleSel = (key: string) => setSelected((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+
   // ── Cargar gestión + comerciales ──
   const fetchGestion = useCallback(async () => {
     try {
@@ -276,7 +281,22 @@ export default function GestionDropshippers({
     return { curTot, projTot: projRound, prevTot, growth: deltaPct(projRound, prevTot) };
   }, [projMode, curAgg, prevAgg, elapsed, diasMes]);
 
-  const colSpan = projMode ? 7 : 12;
+  const colSpan = projMode ? 7 : cerradoMode ? 13 : 12;
+
+  // Helpers de selección (mensual cerrado)
+  const allVisibleSelected = rows.length > 0 && rows.every((r) => selected.has(r.key));
+  const toggleAll = () => setSelected((s) => {
+    const n = new Set(s);
+    if (allVisibleSelected) rows.forEach((r) => n.delete(r.key));
+    else rows.forEach((r) => n.add(r.key));
+    return n;
+  });
+  const emailForKey = (key: string) => (curAgg.get(key) || prevAgg.get(key) || prevPrevAgg.get(key))?.email || "";
+  const copiarSeleccionados = () => {
+    const correos = [...selected].map(emailForKey).filter(Boolean);
+    if (correos.length === 0) return;
+    navigator.clipboard?.writeText(correos.join("\n")).then(() => { setCopiadoSel(true); setTimeout(() => setCopiadoSel(false), 2000); });
+  };
 
   return (
     <div className="glass-card p-5">
@@ -391,11 +411,21 @@ export default function GestionDropshippers({
         </div>
       )}
 
+      {/* Barra de selección (mensual cerrado) */}
+      {cerradoMode && selected.size > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg p-2 text-xs" style={{ background: "var(--bg-kpi)" }}>
+          <span className="t-primary font-semibold">{selected.size} usuario(s) seleccionado(s)</span>
+          <button onClick={copiarSeleccionados} className="px-2.5 py-1 rounded border t-secondary hover:text-orange-400" style={{ borderColor: "var(--bg-card-border)" }}>{copiadoSel ? "✓ Correos copiados" : "📋 Copiar correos"}</button>
+          <button onClick={() => setSelected(new Set())} className="underline t-muted hover:text-orange-400">limpiar selección</button>
+        </div>
+      )}
+
       {/* Tabla */}
       <div className="mt-3 overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="t-muted text-[11px] uppercase tracking-wider">
+              {cerradoMode && <th className="py-2 px-2 text-center"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} title="Seleccionar todos" /></th>}
               <th className="text-left py-2 pr-3">Dropshipper</th>
               <th className="text-left py-2 px-2">Nivel{projMode ? " proy." : ""}</th>
               <th className="text-left py-2 px-2">Cambio{projMode ? " proy." : ""}</th>
@@ -449,6 +479,7 @@ export default function GestionDropshippers({
               const dCerr = deltaPct(r.movPrev, r.movPrevPrev);
               return (
                 <tr key={r.key} className="border-t align-top" style={{ borderColor: "var(--bg-card-border)" }}>
+                  {cerradoMode && <td className="py-2 px-2 text-center"><input type="checkbox" checked={selected.has(r.key)} onChange={() => toggleSel(r.key)} /></td>}
                   <td className="py-2 pr-3 max-w-[220px]" title={r.nombre}>
                     <div className="t-primary font-medium truncate">{r.email || r.nombre}</div>
                     {r.id && <div className="t-muted text-[10px]">ID {r.id}</div>}
