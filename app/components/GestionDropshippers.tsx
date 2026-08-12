@@ -533,11 +533,12 @@ export default function GestionDropshippers({
                         </select>
                       </td>
                       <td className="py-2 px-2">
-                        <input type="text" placeholder="nota…"
+                        <textarea rows={1} placeholder="nota…"
                           value={notaDraft[r.key] ?? r.nota}
-                          onChange={(e) => setNotaDraft((n) => ({ ...n, [r.key]: e.target.value }))}
+                          ref={(el) => { if (el) { el.style.height = "auto"; el.style.height = Math.max(28, el.scrollHeight) + "px"; } }}
+                          onChange={(e) => { setNotaDraft((n) => ({ ...n, [r.key]: e.target.value })); e.currentTarget.style.height = "auto"; e.currentTarget.style.height = Math.max(28, e.currentTarget.scrollHeight) + "px"; }}
                           onBlur={(e) => { if ((e.target.value || "") !== r.nota) saveGestion(r.key, r.agg, { nota: e.target.value }); }}
-                          className="text-xs px-1.5 py-1 rounded border bg-transparent t-primary w-[130px]" style={{ borderColor: "var(--bg-card-border)" }} />
+                          className="text-xs px-1.5 py-1 rounded border bg-transparent t-primary w-[180px] resize-none overflow-hidden align-top leading-snug" style={{ borderColor: "var(--bg-card-border)", minHeight: "28px" }} />
                       </td>
                       <td className="py-2 px-2">
                         <input type="date" value={r.fecha_gestion || ""} onChange={(e) => saveGestion(r.key, r.agg, { fecha_gestion: e.target.value || null })}
