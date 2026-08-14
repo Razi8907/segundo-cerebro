@@ -269,9 +269,15 @@ const JUN = {
   guiasUrbano: 3_779,
 };
 
+// Costo recurrente de Julio 2026 (base para el punto de equilibrio):
+// Gastos fijos $34.182.867 + variables recurrentes (Sueldos $1.981.000 + Comercial
+// $4.480.000 + Oficina $572.986 = $7.033.986). Excluye viajes, evento comercial y
+// gastos legales de único pago (no son mensuales constantes).
+const JUL_OPEX_RECURRENTE = 41_216_853;
+
 function PuntoEquilibrioView() {
-  // Simulador interactivo — arranca con los valores reales de junio (editá para julio en adelante)
-  const [opex, setOpex] = useState(JUN.opex);
+  // Simulador interactivo — arranca con el costo recurrente de julio (fijos + variables recurrentes)
+  const [opex, setOpex] = useState(JUL_OPEX_RECURRENTE);
   const [margenFixy, setMargenFixy] = useState(JUN.margenFixy);
   const [margenUrbano, setMargenUrbano] = useState(JUN.margenUrbano);
   const [mixPct, setMixPct] = useState(73);
@@ -333,7 +339,7 @@ function PuntoEquilibrioView() {
       {/* SIMULADOR INTERACTIVO */}
       <div className="glass-card p-5">
         <h3 className="text-sm font-semibold t-primary">🧮 Simulador — proyectá julio en adelante</h3>
-        <p className="text-[11px] t-muted mt-1 mb-4">Arranca con los valores reales de junio. Movés las variables y el punto de equilibrio se recalcula en vivo.</p>
+        <p className="text-[11px] t-muted mt-1 mb-4">Arranca con el costo recurrente de julio 2026 ($41.216.853 = fijos $34.182.867 + variables recurrentes $7.033.986, sin viajes/eventos). Movés las variables y el punto de equilibrio se recalcula en vivo.</p>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
           <SimSlider label="OPEX del mes" value={opex} min={10_000_000} max={80_000_000} step={500_000} onChange={setOpex} fmt={(v) => fmtArs(v)} />
           <SimSlider label="Margen logístico Fixy" value={margenFixy} min={500} max={5000} step={10} onChange={setMargenFixy} fmt={(v) => `$${fmtNum(v)}`} />
