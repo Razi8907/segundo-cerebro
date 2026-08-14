@@ -297,6 +297,17 @@ function PuntoEquilibrioView() {
     return { ...b, guiasTotal, mixReal, utilidad, resultado, gap: b.beMix - guiasTotal };
   }, []);
 
+  // Punto de equilibrio JULIO 2026 (costo recurrente). Movilizadas de Operaciones,
+  // margen logístico de junio (informe de julio por transportadora pendiente).
+  const realJul = useMemo(() => {
+    const b = beCalc(JUL_OPEX_RECURRENTE, JUN.margenFixy, JUN.margenUrbano, 73, JUN.ticket, JUN.comPct, JUN.pctCod);
+    const guiasGen = 14_295;   // órdenes generadas en julio (Operaciones)
+    const guiasMov = 11_310;   // movilizadas netas (excl. canceladas/pendientes/guía generada)
+    const utilidad = guiasMov * b.uM;
+    const resultado = utilidad - JUL_OPEX_RECURRENTE;
+    return { ...b, guiasGen, guiasMov, utilidad, resultado, gap: b.beMix - guiasGen };
+  }, []);
+
   const simBars = [
     { name: "Fixy solo", guias: sim.beFixy, fill: C.orange },
     { name: "Urbano solo", guias: sim.beUrb, fill: C.green },
@@ -314,9 +325,26 @@ function PuntoEquilibrioView() {
         </p>
       </div>
 
+      {/* PUNTO DE EQUILIBRIO — JULIO 2026 (costo recurrente) */}
+      <div>
+        <h3 className="text-sm font-semibold t-primary mb-3">🎯 Punto de equilibrio — Julio 2026 (costo recurrente)</h3>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <KpiCard label="OPEX recurrente" value={fmtArs(JUL_OPEX_RECURRENTE)} sub="Fijos $34,2M + var. recurrentes $7,0M" tone="orange" />
+          <KpiCard label="Órdenes generadas" value={fmtNum(realJul.guiasGen)} sub={`Movilizadas netas ${fmtNum(realJul.guiasMov)}`} tone="blue" />
+          <KpiCard label="Utilidad generada" value={fmtArs(realJul.utilidad)} sub={`$${fmtNum(Math.round(realJul.uM))}/guía · sobre movilizadas`} tone="green" />
+          <KpiCard label="Resultado julio" value={fmtArs(realJul.resultado)} sub={realJul.resultado >= 0 ? "Por encima del equilibrio" : "Por debajo del equilibrio"} tone={realJul.resultado >= 0 ? "green" : "red"} />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+          <KpiCard label="Punto de equilibrio (mix 73/27)" value={`${fmtNum(realJul.beMix)} guías/mes`} sub="Para que utilidad = OPEX recurrente" tone="orange" />
+          <KpiCard label={realJul.gap > 0 ? "Faltan para el equilibrio" : "Por encima del equilibrio"} value={`${fmtNum(Math.abs(realJul.gap))} guías`} sub={`Generó ${fmtNum(realJul.guiasGen)} de ${fmtNum(realJul.beMix)} necesarias`} tone={realJul.gap > 0 ? "red" : "green"} />
+          <KpiCard label="Margen por guía" value={`$${fmtNum(Math.round(realJul.uM))}/guía`} sub="usa margen logístico de junio (jul s/informe)" tone="blue" />
+        </div>
+        <p className="text-[11px] t-muted mt-2">Costo recurrente = gastos fijos ($34.182.867) + variables recurrentes Sueldos/Comercial/Oficina ($7.033.986). Excluye viajes, evento comercial y legales de único pago. Egresos totales de caja en julio: $50.154.900.</p>
+      </div>
+
       {/* PUNTO DE EQUILIBRIO REAL — JUNIO */}
       <div>
-        <h3 className="text-sm font-semibold t-primary mb-3">🎯 Punto de equilibrio real — Junio 2026</h3>
+        <h3 className="text-sm font-semibold t-primary mb-3">🎯 Punto de equilibrio real — Junio 2026 (referencia)</h3>
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard label="OPEX del mes" value={fmtArs(JUN.opex)} sub="Caja $22,7M + Banco $22,3M" tone="orange" />
           <KpiCard label="Guías facturadas" value={fmtNum(real.guiasTotal)} sub={`Fixy ${fmtNum(JUN.guiasFixy)} + Urbano ${fmtNum(JUN.guiasUrbano)}`} tone="blue" />
