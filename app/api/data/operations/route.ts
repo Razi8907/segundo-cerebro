@@ -151,12 +151,20 @@ export async function POST(req: NextRequest) {
       primera_vez_parada: r.primera_vez_parada || "",
     });
 
+    // Deduplicar por guía (clave del upsert: country+mes+guia+fecha_carga, con
+    // country/mes/fecha_carga constantes en este request). Si el Excel trae la
+    // misma guía repetida, la última gana. Evita el error de Postgres
+    // "ON CONFLICT DO UPDATE command cannot affect row a second time".
+    const dedupMap = new Map<string, any>();
+    for (const r of rows) dedupMap.set(String(r?.guia || ""), r);
+    const dedupedRows = Array.from(dedupMap.values());
+
     const supabase = getSupabase();
     let inserted = 0;
     let columnMissing = false;
 
-    for (let i = 0; i < rows.length; i += 1000) {
-      const batch = rows.slice(i, i + 1000).map((r: any) => {
+    for (let i = 0; i < dedupedRows.length; i += 1000) {
+      const batch = dedupedRows.slice(i, i + 1000).map((r: any) => {
         const b: any = baseRow(r);
         if (!columnMissing) b.mes = mes;
         return b;
