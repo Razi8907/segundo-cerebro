@@ -102,6 +102,20 @@ function sumDaily(rows: DailyRow[], N: number): Area {
   return r;
 }
 
+// Fetch con reintentos (para endpoints pesados que a veces cortan bajo carga).
+// Devuelve el JSON, o { __err } si falló tras los intentos / hay problema de sesión.
+async function fetchJsonRetry(url: string, tries = 3): Promise<any> {
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, { credentials: "include" });
+      if (r.ok) return await r.json();
+      if (r.status === 401 || r.status === 403) return { __err: "auth" };
+    } catch { /* reintentar */ }
+    if (i < tries - 1) await new Promise((res) => setTimeout(res, 500 * (i + 1)));
+  }
+  return { __err: "fetch" };
+}
+
 // ════════════════════════════════════════════════════════════════════════
 export default function AccionesUrgentes({
   country,
@@ -125,27 +139,35 @@ export default function AccionesUrgentes({
     { comunidad: string; registrados: number; activos: number; pct_activacion: number }[] | null
   >(null);
   const [loading, setLoading] = useState(true);
+  const [dataError, setDataError] = useState(false);
 
   const fetchAll = useCallback(async () => {
-    setLoading(true);
+    setLoading(true); setDataError(false);
     try {
-      const [cur, prev, prevPrev, dCur, dPrev, us] = await Promise.all([
-        fetch(`/api/data/operational?country=${country}&mes=${realMes}`).then((r) => r.json()).catch(() => null),
-        fetch(`/api/data/operational?country=${country}&mes=${mesPrev}`).then((r) => r.json()).catch(() => null),
-        fetch(`/api/data/operational?country=${country}&mes=${mesPrevPrev}`).then((r) => r.json()).catch(() => null),
-        fetch(`/api/data/operations-daily?country=${country}&mes=${realMes}`).then((r) => r.json()).catch(() => null),
-        fetch(`/api/data/operations-daily?country=${country}&mes=${mesPrev}`).then((r) => r.json()).catch(() => null),
-        fetch(`/api/data/usuarios?country=${country}`).then((r) => r.json()).catch(() => null),
+      // 1) Crítico: el desglose diario del mes (define si hay data) + snapshot del mes.
+      //    Con reintentos: bajo carga el RPC diario a veces corta, y un reintento resuelve.
+      const [dCur, cur] = await Promise.all([
+        fetchJsonRetry(`/api/data/operations-daily?country=${country}&mes=${realMes}`),
+        fetchJsonRetry(`/api/data/operational?country=${country}&mes=${realMes}`),
       ]);
-      setOpCurr(cur?.data || null);
-      setOpPrev(prev?.data || null);
-      setOpPrevPrev(prevPrev?.data || null);
+      setDataError(!!dCur?.__err);
       setDailyCurr(Array.isArray(dCur?.dias) ? dCur.dias : []);
+      setOpCurr(cur?.data || null);
+
+      // 2) Secundario: comparación con el mes anterior + usuarios (no bloquean el veredicto).
+      const [prev, dPrev, us] = await Promise.all([
+        fetchJsonRetry(`/api/data/operational?country=${country}&mes=${mesPrev}`),
+        fetchJsonRetry(`/api/data/operations-daily?country=${country}&mes=${mesPrev}`),
+        fetchJsonRetry(`/api/data/usuarios?country=${country}`),
+      ]);
+      setOpPrev(prev?.data || null);
       setDailyPrev(Array.isArray(dPrev?.dias) ? dPrev.dias : []);
-      if (us && !us.error) setComunidades(us.comunidades_globales || us?.data?.comunidades_globales || null);
+      if (us && !us.__err && !us.error) setComunidades(us.comunidades_globales || us?.data?.comunidades_globales || null);
     } finally {
       setLoading(false);
     }
+    // 3) Terciario (solo para la pestaña "Mensual cerrado"): mes prev-prev, diferido.
+    fetchJsonRetry(`/api/data/operational?country=${country}&mes=${mesPrevPrev}`).then((pp) => setOpPrevPrev(pp?.data || null));
   }, [country, realMes, mesPrev, mesPrevPrev]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
@@ -409,11 +431,25 @@ export default function AccionesUrgentes({
   if (!A) {
     return (
       <div className="glass-card p-8 text-center">
-        <p className="text-lg font-bold t-primary">Todavía no hay data cargada de {LABEL[realMes]}</p>
-        <p className="mt-2 text-sm t-secondary">
-          Cargá la operación del mes en la pestaña <b>General → Cargar operación</b>. Apenas esté,
-          este panel compara automáticamente el tramo de días de {LABEL[realMes]} contra {LABEL[mesPrev]}.
-        </p>
+        {dataError ? (
+          <>
+            <p className="text-lg font-bold t-primary">No pudimos cargar la data de {LABEL[realMes]}</p>
+            <p className="mt-2 text-sm t-secondary">
+              Puede ser una demora del servidor (la data sí está cargada). Reintentá; si persiste, recargá la página.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-lg font-bold t-primary">Todavía no hay data cargada de {LABEL[realMes]}</p>
+            <p className="mt-2 text-sm t-secondary">
+              Cargá la operación del mes en <b>General → Cargar operación</b> u <b>Operaciones</b>. Apenas esté,
+              este panel compara el tramo de días de {LABEL[realMes]} contra {LABEL[mesPrev]}.
+            </p>
+          </>
+        )}
+        <button onClick={() => fetchAll()} className="mt-4 text-sm px-4 py-2 rounded-lg font-semibold text-white bg-orange-500 hover:opacity-90">
+          🔄 Reintentar
+        </button>
       </div>
     );
   }
