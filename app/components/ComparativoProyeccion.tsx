@@ -31,6 +31,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
   const [dailyActual, setDailyActual] = useState<DailyRow[]>([]);
   const [dailyPrev, setDailyPrev] = useState<DailyRow[]>([]);
   const [mesPrev, setMesPrev] = useState("");
+  const [prevLive, setPrevLive] = useState<{ movLive: number; fechaLive: string; totalLive: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -45,6 +46,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
       setDailyActual(Array.isArray(d.dailyActual) ? d.dailyActual : []);
       setDailyPrev(Array.isArray(d.dailyPrev) ? d.dailyPrev : []);
       setMesPrev(d.mesPrev || "");
+      setPrevLive(d.prevLive || null);
     } catch (e: any) { setError(e.message || "Error al cargar"); }
     finally { setLoading(false); }
   }, [country, mes]);
@@ -92,18 +94,22 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
     const hayPrev = dailyPrev.length > 0 && accIP > 0;
     const ingActualN = accIA, movActualN = accMA, ingPrevN = accIP;
     const pctActualN = ingActualN > 0 ? (movActualN / ingActualN) * 100 : 0;
+    // % del mes anterior al día N tomado del snapshot YA MADURO (referencia de cierre por día).
     const pctPrevN = ingPrevN > 0 ? (accMP / ingPrevN) * 100 : 0;
 
-    // Proyección por MADURACIÓN: durante el mes la movilización es menor a la final
-    // (las órdenes recientes todavía no se movilizaron). El mes anterior muestra cuánto
-    // sube el % desde este mismo día hasta el cierre; se aplica ese factor al mes actual.
-    // Ej: si el mes ant. al día N iba 60% y cerró 83% (×1,38), y el actual va 62% → ~85,7%.
+    // Proyección por MADURACIÓN: durante el mes la movilización es MENOR a la final,
+    // porque las órdenes recientes todavía no se movilizaron. Para que la comparación sea
+    // real hay que ver cómo estaba el mes anterior EN VIVO ese mismo día (no ya cerrado):
+    // movLive = movilizadas del snapshot histórico del mes anterior al día N.
+    // Ej: julio al día 22 iba 70% EN VIVO y cerró 83% (×1,19); agosto hoy 76% → ~90%.
     const ingPrevTotal = sum(dailyPrev, "ingresadas");
     const movPrevTotal = sum(dailyPrev, "movilizadas");
     const pctPrevFinal = ingPrevTotal > 0 ? (movPrevTotal / ingPrevTotal) * 100 : 0;
+    // % EN VIVO del mes anterior al día N (base correcta para la maduración).
+    const pctPrevLiveN = (prevLive && ingPrevN > 0) ? (prevLive.movLive / ingPrevN) * 100 : pctPrevN;
     const factor = ingPrevN > 0 ? ingPrevTotal / ingPrevN : 1;      // crecimiento de ingresadas
     const ingProy = Math.round(ingActualN * factor);
-    const maduracion = pctPrevN > 0 ? pctPrevFinal / pctPrevN : 1;  // cuánto sube el % del día N al cierre
+    const maduracion = pctPrevLiveN > 0 ? pctPrevFinal / pctPrevLiveN : 1;  // sube el % del día N (en vivo) al cierre
     const pctProyBase = Math.min(100, pctActualN * maduracion);
     const escenarios = [
       { key: "conservador", label: "🔴 Conservador", delta: -2.5 },
@@ -115,17 +121,18 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
       return { ...e, pctFinal, movProy };
     });
 
-    const diffN = pctActualN - pctPrevN;
+    // Comparación JUSTA al día N: en vivo (este mes) vs en vivo (mes anterior el mismo día).
+    const diffN = pctActualN - pctPrevLiveN;
     const quiebres = serie.filter((s, i) => i > 0 && Math.sign(s.diff) !== Math.sign(serie[i - 1].diff) && Math.abs(s.diff) > 0.3).map((s) => s.dia);
     const masIngresadas = ingActualN > ingPrevN;
 
     return {
       ingresadas, mov, canceladas, entregadas, devueltas, enProceso, grupoB, pctMov, pctCancel, pctPend, techo,
       bPendConf, bPendiente, bGuia, bPreparado, bResto,
-      N, serie, hayPrev, ingActualN, movActualN, ingPrevN, pctActualN, pctPrevN, diffN,
+      N, serie, hayPrev, ingActualN, movActualN, ingPrevN, pctActualN, pctPrevN, pctPrevLiveN, diffN,
       ingPrevTotal, pctPrevFinal, factor, ingProy, maduracion, pctProyBase, escenarios, quiebres, masIngresadas,
     };
-  }, [clasif, dailyActual, dailyPrev, diasMes]);
+  }, [clasif, dailyActual, dailyPrev, prevLive, diasMes]);
 
   if (loading) return <div className="glass-card p-8 text-center t-secondary">Analizando {labelMes}…</div>;
   if (error) return <div className="glass-card p-8 text-center text-red-400">{error} <button onClick={() => fetchData()} className="ml-2 underline">Reintentar</button></div>;
@@ -143,7 +150,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <b className="t-primary"> {fmt(A.mov)}</b> movilizadas ·
           movilización <b style={{ color: semMov.color }}>{semMov.emoji} {pp(A.pctMov)}%</b> ·
           techo posible <b className="t-primary">{pp(A.techo)}%</b>.
-          {A.hayPrev && <> Vs {labelPrev} al mismo día: <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp</b> ({A.diffN >= 0 ? "mejor" : "peor"}).</>}
+          {A.hayPrev && <> Vs {labelPrev} en vivo el mismo día ({pp(A.pctPrevLiveN)}%): <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp</b> ({A.diffN >= 0 ? "mejor" : "peor"}).</>}
         </p>
       </div>
 
@@ -187,15 +194,15 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           {/* 3 — COMPARATIVO DÍA A DÍA */}
           <div className="glass-card p-5">
             <h3 className="text-sm font-bold t-primary mb-1">Comparativo día a día — {labelMes} vs {labelPrev} (mismo día)</h3>
-            <p className="text-[11px] t-muted mb-3">Acumulado a cada día. % Movilización = movilizadas / ingresadas. Δ en puntos porcentuales.</p>
+            <p className="text-[11px] t-muted mb-3">Acumulado a cada día. % Movilización = movilizadas / ingresadas. Δ en puntos porcentuales. {labelPrev} se muestra <b className="t-primary">ya cerrado</b> (referencia final); la comparación en vivo del día N está arriba en el resumen y la proyección.</p>
             <div className="overflow-x-auto max-h-[420px]">
               <table className="w-full text-xs">
                 <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
                   <tr className="t-muted uppercase tracking-wider">
                     <th className="text-left py-2 px-2">Día</th>
                     <th className="text-right py-2 px-2">Ingr {labelPrev}</th>
-                    <th className="text-right py-2 px-2">Mov {labelPrev}</th>
-                    <th className="text-right py-2 px-2">% Mov {labelPrev}</th>
+                    <th className="text-right py-2 px-2">Mov {labelPrev} (cierre)</th>
+                    <th className="text-right py-2 px-2">% Mov {labelPrev} (cierre)</th>
                     <th className="text-right py-2 px-2">Ingr {labelMes}</th>
                     <th className="text-right py-2 px-2">Mov {labelMes}</th>
                     <th className="text-right py-2 px-2">% Mov {labelMes}</th>
@@ -227,7 +234,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <div className="glass-card p-5" style={{ borderLeft: `3px solid ${semDiff(A.diffN).color}` }}>
             <h3 className="text-sm font-bold t-primary mb-2">🔍 Análisis</h3>
             <ul className="text-sm t-secondary space-y-1.5 leading-relaxed">
-              <li>• Al día {A.N}, {labelMes} va <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "mejor" : "peor"}</b> que {labelPrev} en movilización: {pp(A.pctActualN)}% vs {pp(A.pctPrevN)}% ({A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp).</li>
+              <li>• Al día {A.N}, {labelMes} va <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "mejor" : "peor"}</b> que {labelPrev} <b className="t-primary">en vivo el mismo día</b>: {pp(A.pctActualN)}% vs {pp(A.pctPrevLiveN)}% ({A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp). <span className="t-muted">({labelPrev} cerró en {pp(A.pctPrevFinal)}%.)</span></li>
               <li>• Ingresadas: {fmt(A.ingActualN)} vs {fmt(A.ingPrevN)} en {labelPrev} ({A.masIngresadas ? "+" : ""}{pp(A.ingPrevN > 0 ? ((A.ingActualN - A.ingPrevN) / A.ingPrevN) * 100 : 0)}%).</li>
               <li>• La diferencia se explica principalmente por <b className="t-primary">{Math.abs(A.diffN) >= 1 ? "la gestión de movilización" : "el volumen de ingresadas"}</b>{A.masIngresadas ? " (entraron más órdenes este mes)" : ""}.</li>
               {A.quiebres.length > 0 && <li>• Quiebres de tendencia vs {labelPrev}: día(s) {A.quiebres.join(", ")}.</li>}
@@ -238,7 +245,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <div className="glass-card p-5">
             <h3 className="text-sm font-bold t-primary mb-1">📈 Proyección de cierre — {labelMes}</h3>
             <p className="text-[11px] t-muted mb-3">
-              En {labelPrev}, al día {A.N} la movilización iba <b className="t-primary">{pp(A.pctPrevN)}%</b> y cerró en <b className="t-primary">{pp(A.pctPrevFinal)}%</b> (maduración ×{pp(A.maduracion)}).
+              En {labelPrev}, al día {A.N} la movilización iba <b className="t-primary">{pp(A.pctPrevLiveN)}%</b> <b className="t-primary">en vivo</b> (así como se veía ese día, todavía sin madurar) y cerró en <b className="t-primary">{pp(A.pctPrevFinal)}%</b> → maduró ×{pp(A.maduracion)}.
               {" "}{labelMes} hoy va {pp(A.pctActualN)}% → proyección de cierre <b className="t-primary">{pp(A.pctProyBase)}%</b>.
               {" "}Ingresadas proyectadas: <b className="t-primary">{fmt(A.ingProy)}</b> (crecimiento {pp(A.factor)}×).
             </p>

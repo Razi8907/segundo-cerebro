@@ -10,6 +10,10 @@ const PREV: Record<string, string> = {
   mayo: "abril", junio: "mayo", julio: "junio", agosto: "julio",
   septiembre: "agosto", octubre: "septiembre", noviembre: "octubre", diciembre: "noviembre",
 };
+const MESNUM: Record<string, number> = {
+  enero: 1, febrero: 2, marzo: 3, abril: 4, mayo: 5, junio: 6,
+  julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12,
+};
 
 // GET /api/data/comparativo?country=py&mes=agosto
 // Devuelve: clasificación del mes (grupos A/B/C) + desglose diario (órdenes/movilizadas)
@@ -36,10 +40,34 @@ export async function GET(req: NextRequest) {
   if (clasifRes.error) return NextResponse.json({ error: clasifRes.error.message }, { status: 500 });
   if (dActualRes.error) return NextResponse.json({ error: dActualRes.error.message }, { status: 500 });
 
+  // Día N = último día del mes actual con datos (ingresadas o movilizadas > 0).
+  type Row = { dia: number; ingresadas: number; movilizadas: number };
+  const dActual = (dActualRes.data || []) as Row[];
+  const N = dActual.reduce((m, d) =>
+    ((Number(d.ingresadas) > 0 || Number(d.movilizadas) > 0) && d.dia > m ? d.dia : m), 0);
+
+  // Movilización EN VIVO del mes anterior al mismo día N (snapshot histórico de operations,
+  // NO el snapshot ya maduro). Base correcta para el factor de maduración de la proyección.
+  let prevLive: { movLive: number; fechaLive: string; totalLive: number } | null = null;
+  if (mesPrev && N > 0 && MESNUM[mesPrev]) {
+    const r = await sb.rpc("get_ops_mov_live", {
+      p_country: country, p_mes: mesPrev, p_mesnum: MESNUM[mesPrev], p_dia: N,
+    });
+    const row = r.data && (r.data as any[])[0];
+    if (!r.error && row) {
+      prevLive = {
+        movLive: Number(row.movilizadas) || 0,
+        fechaLive: String(row.fecha_carga_usada || ""),
+        totalLive: Number(row.total_snapshot) || 0,
+      };
+    }
+  }
+
   return NextResponse.json({
-    mes, mesPrev,
+    mes, mesPrev, N,
     clasif: (clasifRes.data && clasifRes.data[0]) || null,
     dailyActual: dActualRes.data || [],
     dailyPrev: (dPrevRes as { data?: unknown[] }).data || [],
+    prevLive,
   });
 }
