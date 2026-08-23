@@ -136,7 +136,8 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
       <div className="glass-card p-5" style={{ borderLeft: `3px solid ${semMov.color}` }}>
         <h2 className="text-lg font-bold t-primary flex items-center gap-2">📊 Comparativo + Proyección — {labelMes} {country.toUpperCase()}</h2>
         <p className="text-sm t-secondary mt-2 leading-relaxed">
-          Al día <b className="t-primary">{A.N}</b>: <b className="t-primary">{fmt(A.total)}</b> órdenes ·
+          Al día <b className="t-primary">{A.N}</b>: <b className="t-primary">{fmt(A.total)}</b> ingresadas ·
+          <b className="t-primary"> {fmt(A.mov)}</b> movilizadas ·
           movilización <b style={{ color: semMov.color }}>{semMov.emoji} {pp(A.pctMov)}%</b> ·
           techo posible <b className="t-primary">{pp(A.techo)}%</b> (si se despacha todo lo pendiente).
           {A.hayPrev && <> Vs {labelPrev} al mismo día: <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp</b> ({A.diffN >= 0 ? "mejor" : "peor"}).</>}
@@ -145,7 +146,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
 
       {/* 2 — CLASIFICACIÓN (Grupos A/B/C) */}
       <div className="glass-card p-5">
-        <h3 className="text-sm font-bold t-primary mb-3">Clasificación de órdenes ({fmt(A.total)} total)</h3>
+        <h3 className="text-sm font-bold t-primary mb-3">Clasificación de órdenes ingresadas ({fmt(A.total)})</h3>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           {/* Grupo A */}
           <div className="rounded-lg p-3" style={{ background: "rgba(239,68,68,0.08)" }}>
@@ -173,11 +174,13 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
             <RowTot l="Total movilizadas" v={A.mov} t={A.total} />
           </div>
         </div>
-        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <Kpi label="% Movilización" value={`${pp(A.pctMov)}%`} tone={semMov.color} />
+        <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+          <Kpi label="Ingresadas" value={fmt(A.total)} tone="#3b82f6" />
+          <Kpi label="Movilizadas" value={fmt(A.mov)} tone={semMov.color} />
+          <Kpi label="% Movilización" value={`${pp(A.pctMov)}%`} tone={semMov.color} sub="mov / ingresadas" />
           <Kpi label="% Cancelación" value={`${pp(A.pctCancel)}%`} tone="#ef4444" />
           <Kpi label="% Pendiente (Grupo B)" value={`${pp(A.pctPend)}%`} tone="#eab308" />
-          <Kpi label="Techo máximo posible" value={`${pp(A.techo)}%`} tone="#3b82f6" sub="si se despacha todo B" />
+          <Kpi label="Techo máx. posible" value={`${pp(A.techo)}%`} tone="#3b82f6" sub="si se despacha todo B" />
         </div>
       </div>
 
@@ -192,12 +195,12 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
                 <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
                   <tr className="t-muted uppercase tracking-wider">
                     <th className="text-left py-2 px-2">Día</th>
-                    <th className="text-right py-2 px-2">Órd {labelPrev}</th>
+                    <th className="text-right py-2 px-2">Ingr {labelPrev}</th>
                     <th className="text-right py-2 px-2">Mov {labelPrev}</th>
-                    <th className="text-right py-2 px-2">% {labelPrev}</th>
-                    <th className="text-right py-2 px-2">Órd {labelMes}</th>
+                    <th className="text-right py-2 px-2">% Mov {labelPrev}</th>
+                    <th className="text-right py-2 px-2">Ingr {labelMes}</th>
                     <th className="text-right py-2 px-2">Mov {labelMes}</th>
-                    <th className="text-right py-2 px-2">% {labelMes}</th>
+                    <th className="text-right py-2 px-2">% Mov {labelMes}</th>
                     <th className="text-right py-2 px-2">Δ pp</th>
                   </tr>
                 </thead>
@@ -227,7 +230,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
             <h3 className="text-sm font-bold t-primary mb-2">🔍 Análisis</h3>
             <ul className="text-sm t-secondary space-y-1.5 leading-relaxed">
               <li>• Al día {A.N}, {labelMes} va <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "mejor" : "peor"}</b> que {labelPrev}: {pp(A.pctActualN)}% vs {pp(A.pctPrevN)}% ({A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp).</li>
-              <li>• Volumen: {fmt(A.ordActualN)} órdenes vs {fmt(A.ordPrevN)} en {labelPrev} ({A.masOrdenes ? "+" : ""}{pp(A.ordPrevN > 0 ? ((A.ordActualN - A.ordPrevN) / A.ordPrevN) * 100 : 0)}%).</li>
+              <li>• Ingresadas: {fmt(A.ordActualN)} vs {fmt(A.ordPrevN)} en {labelPrev} ({A.masOrdenes ? "+" : ""}{pp(A.ordPrevN > 0 ? ((A.ordActualN - A.ordPrevN) / A.ordPrevN) * 100 : 0)}%).</li>
               <li>• La diferencia se explica principalmente por <b className="t-primary">{Math.abs(A.diffN) >= 1 ? "la gestión de movilización" : "el volumen de órdenes"}</b>{A.masOrdenes ? " (entraron más órdenes este mes)" : ""}.</li>
               {A.quiebres.length > 0 && <li>• Quiebres de tendencia (días donde cambió el signo vs {labelPrev}): {A.quiebres.join(", ")}.</li>}
             </ul>
@@ -237,8 +240,8 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <div className="glass-card p-5">
             <h3 className="text-sm font-bold t-primary mb-1">📈 Proyección de cierre — {labelMes}</h3>
             <p className="text-[11px] t-muted mb-3">
-              Factor de crecimiento {pp(A.factor)}× (patrón {labelPrev}) → <b className="t-primary">{fmt(A.ordenesProy)}</b> órdenes proyectadas.
-              Tasa de los días restantes en {labelPrev}: {pp(A.tasaRestPrev)}%.
+              Factor de crecimiento {pp(A.factor)}× (patrón {labelPrev}) → <b className="t-primary">{fmt(A.ordenesProy)}</b> ingresadas proyectadas al cierre.
+              Tasa de movilización de los días restantes en {labelPrev}: {pp(A.tasaRestPrev)}%.
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {A.escenarios.map((e) => {
@@ -249,7 +252,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
                     <div className="text-2xl font-bold mt-1" style={{ color: st.color }}>{pp(e.pctFinal)}%</div>
                     <div className="text-[11px] t-secondary mt-0.5">movilización final estimada</div>
                     <div className="mt-2 text-xs t-secondary space-y-0.5">
-                      <div>Órdenes: <b className="t-primary">{fmt(A.ordenesProy)}</b></div>
+                      <div>Ingresadas: <b className="t-primary">{fmt(A.ordenesProy)}</b></div>
                       <div>Movilizadas: <b className="t-primary">{fmt(e.movProy)}</b></div>
                       <div className="t-muted">tasa días restantes: {pp(e.tasa)}%</div>
                     </div>

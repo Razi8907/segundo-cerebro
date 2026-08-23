@@ -25,7 +25,6 @@ import DropshipperManager from "../components/DropshipperManager";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OpsBreakdown from "../components/OpsBreakdown";
-import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboard from "../components/FinanzasDashboard";
 import FinanzasDashboardPY_H1 from "../components/FinanzasDashboardPY_H1";
 import FinanzasDashboardPY_Q1 from "../components/FinanzasDashboardPY_Q1";
@@ -34,7 +33,7 @@ import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
 import AnalisisRecomendaciones from "../components/AnalisisRecomendaciones";
 import AccionesUrgentes from "../components/AccionesUrgentes";
 import ProveedoresPanel from "../components/ProveedoresPanel";
-import ComparativoProyeccion from "../components/ComparativoProyeccion";
+import OperacionesPanel from "../components/OperacionesPanel";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
@@ -436,10 +435,7 @@ export default function ParaguayDashboard() {
         )}
 
         {!isQ2 && sector === "operaciones" && (
-          <div className="space-y-6">
-            <ComparativoProyeccion country="py" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "agosto"} />
-            <OperationsDashboard country="py" />
-          </div>
+          <OperacionesPanel country="py" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "agosto"} />
         )}
 
         {!isQ2 && sector === "finanzas" && (

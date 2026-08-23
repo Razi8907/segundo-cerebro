@@ -26,14 +26,13 @@ import ArgentinaPlanAbril from "../components/ArgentinaPlanAbril";
 import ReportGenerator from "../components/ReportGenerator";
 import OperationalUpload from "../components/OperationalUpload";
 import OpsBreakdown from "../components/OpsBreakdown";
-import OperationsDashboard from "../components/OperationsDashboard";
 import FinanzasDashboardAR from "../components/FinanzasDashboardAR";
 import SeguimientoComercial from "../components/SeguimientoComercial";
 import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
 import AnalisisRecomendaciones from "../components/AnalisisRecomendaciones";
 import AccionesUrgentes from "../components/AccionesUrgentes";
 import ProveedoresPanel from "../components/ProveedoresPanel";
-import ComparativoProyeccion from "../components/ComparativoProyeccion";
+import OperacionesPanel from "../components/OperacionesPanel";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
@@ -435,10 +434,7 @@ export default function ArgentinaDashboard() {
         )}
 
         {!isQ2 && sector === "operaciones" && (
-          <div className="space-y-6">
-            <ComparativoProyeccion country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "agosto"} />
-            <OperationsDashboard country="ar" />
-          </div>
+          <OperacionesPanel country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "agosto"} />
         )}
 
         {!isQ2 && sector === "finanzas" && <FinanzasDashboardAR />}
