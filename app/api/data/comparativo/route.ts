@@ -25,10 +25,13 @@ export async function GET(req: NextRequest) {
   const mesPrev = PREV[mes] || "";
 
   const sb = getSupabase();
+  // Ingresadas vienen del Seguimiento Diario (daily_tracking) vía get_ops_daily;
+  // movilizadas/entregadas/devueltas/canceladas de operations_data. get_ops_clasif
+  // aporta el desglose de estados pendientes (grupo B).
   const [clasifRes, dActualRes, dPrevRes] = await Promise.all([
     sb.rpc("get_ops_clasif", { p_country: country, p_mes: mes }),
-    sb.rpc("get_ops_daily_ord", { p_country: country, p_mes: mes }),
-    mesPrev ? sb.rpc("get_ops_daily_ord", { p_country: country, p_mes: mesPrev }) : Promise.resolve({ data: [], error: null }),
+    sb.rpc("get_ops_daily", { p_country: country, p_mes: mes }),
+    mesPrev ? sb.rpc("get_ops_daily", { p_country: country, p_mes: mesPrev }) : Promise.resolve({ data: [], error: null }),
   ]);
   if (clasifRes.error) return NextResponse.json({ error: clasifRes.error.message }, { status: 500 });
   if (dActualRes.error) return NextResponse.json({ error: dActualRes.error.message }, { status: 500 });
