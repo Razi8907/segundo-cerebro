@@ -34,6 +34,7 @@ import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
 import AnalisisRecomendaciones from "../components/AnalisisRecomendaciones";
 import AccionesUrgentes from "../components/AccionesUrgentes";
 import ProveedoresPanel from "../components/ProveedoresPanel";
+import ComparativoProyeccion from "../components/ComparativoProyeccion";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
 import { useUser } from "../lib/useUser";
@@ -435,7 +436,10 @@ export default function ParaguayDashboard() {
         )}
 
         {!isQ2 && sector === "operaciones" && (
-          <OperationsDashboard country="py" />
+          <div className="space-y-6">
+            <ComparativoProyeccion country="py" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "agosto"} />
+            <OperationsDashboard country="py" />
+          </div>
         )}
 
         {!isQ2 && sector === "finanzas" && (
