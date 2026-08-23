@@ -94,23 +94,25 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
     const pctActualN = ingActualN > 0 ? (movActualN / ingActualN) * 100 : 0;
     const pctPrevN = ingPrevN > 0 ? (accMP / ingPrevN) * 100 : 0;
 
-    // Proyección
+    // Proyección por MADURACIÓN: durante el mes la movilización es menor a la final
+    // (las órdenes recientes todavía no se movilizaron). El mes anterior muestra cuánto
+    // sube el % desde este mismo día hasta el cierre; se aplica ese factor al mes actual.
+    // Ej: si el mes ant. al día N iba 60% y cerró 83% (×1,38), y el actual va 62% → ~85,7%.
     const ingPrevTotal = sum(dailyPrev, "ingresadas");
-    const factor = ingPrevN > 0 ? ingPrevTotal / ingPrevN : 1;
+    const movPrevTotal = sum(dailyPrev, "movilizadas");
+    const pctPrevFinal = ingPrevTotal > 0 ? (movPrevTotal / ingPrevTotal) * 100 : 0;
+    const factor = ingPrevN > 0 ? ingPrevTotal / ingPrevN : 1;      // crecimiento de ingresadas
     const ingProy = Math.round(ingActualN * factor);
-    const ingRestProy = Math.max(0, ingProy - ingActualN);
-    let ingRest = 0, movRest = 0;
-    for (let d = N + 1; d <= diasMes; d++) { ingRest += mapP.get(d)?.ingresadas || 0; movRest += mapP.get(d)?.movilizadas || 0; }
-    const tasaRestPrev = ingRest > 0 ? (movRest / ingRest) * 100 : pctPrevN;
+    const maduracion = pctPrevN > 0 ? pctPrevFinal / pctPrevN : 1;  // cuánto sube el % del día N al cierre
+    const pctProyBase = Math.min(100, pctActualN * maduracion);
     const escenarios = [
       { key: "conservador", label: "🔴 Conservador", delta: -2.5 },
       { key: "base", label: "🟡 Base", delta: 0 },
       { key: "optimista", label: "🟢 Optimista", delta: 2.5 },
     ].map((e) => {
-      const tasa = Math.max(0, Math.min(100, tasaRestPrev + e.delta));
-      const movProy = Math.round(movActualN + ingRestProy * (tasa / 100));
-      const pctFinal = ingProy > 0 ? (movProy / ingProy) * 100 : 0;
-      return { ...e, tasa, movProy, pctFinal };
+      const pctFinal = Math.max(0, Math.min(100, pctProyBase + e.delta));
+      const movProy = Math.round(ingProy * (pctFinal / 100));
+      return { ...e, pctFinal, movProy };
     });
 
     const diffN = pctActualN - pctPrevN;
@@ -121,7 +123,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
       ingresadas, mov, canceladas, entregadas, devueltas, enProceso, grupoB, pctMov, pctCancel, pctPend, techo,
       bPendConf, bPendiente, bGuia, bPreparado, bResto,
       N, serie, hayPrev, ingActualN, movActualN, ingPrevN, pctActualN, pctPrevN, diffN,
-      ingPrevTotal, factor, ingProy, ingRestProy, tasaRestPrev, escenarios, quiebres, masIngresadas,
+      ingPrevTotal, pctPrevFinal, factor, ingProy, maduracion, pctProyBase, escenarios, quiebres, masIngresadas,
     };
   }, [clasif, dailyActual, dailyPrev, diasMes]);
 
@@ -236,8 +238,9 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <div className="glass-card p-5">
             <h3 className="text-sm font-bold t-primary mb-1">📈 Proyección de cierre — {labelMes}</h3>
             <p className="text-[11px] t-muted mb-3">
-              Factor de crecimiento {pp(A.factor)}× (patrón {labelPrev}) → <b className="t-primary">{fmt(A.ingProy)}</b> ingresadas proyectadas al cierre.
-              Tasa de movilización de los días restantes en {labelPrev}: {pp(A.tasaRestPrev)}%.
+              En {labelPrev}, al día {A.N} la movilización iba <b className="t-primary">{pp(A.pctPrevN)}%</b> y cerró en <b className="t-primary">{pp(A.pctPrevFinal)}%</b> (maduración ×{pp(A.maduracion)}).
+              {" "}{labelMes} hoy va {pp(A.pctActualN)}% → proyección de cierre <b className="t-primary">{pp(A.pctProyBase)}%</b>.
+              {" "}Ingresadas proyectadas: <b className="t-primary">{fmt(A.ingProy)}</b> (crecimiento {pp(A.factor)}×).
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               {A.escenarios.map((e) => {
@@ -250,7 +253,6 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
                     <div className="mt-2 text-xs t-secondary space-y-0.5">
                       <div>Ingresadas: <b className="t-primary">{fmt(A.ingProy)}</b></div>
                       <div>Movilizadas: <b className="t-primary">{fmt(e.movProy)}</b></div>
-                      <div className="t-muted">tasa días restantes: {pp(e.tasa)}%</div>
                     </div>
                   </div>
                 );
