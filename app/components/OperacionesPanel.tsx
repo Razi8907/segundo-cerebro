@@ -23,7 +23,7 @@ export default function OperacionesPanel({ country, mes }: { country: "ar" | "py
           </button>
         ))}
       </div>
-      {tab === "dashboard" ? <OperationsDashboard country={country} /> : <ComparativoProyeccion country={country} mes={mes} />}
+      {tab === "dashboard" ? <OperationsDashboard country={country} mes={mes} /> : <ComparativoProyeccion country={country} mes={mes} />}
     </div>
   );
 }

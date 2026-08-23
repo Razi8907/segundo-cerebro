@@ -611,7 +611,7 @@ function DataTable({ rows, columns, highlightHours }: {
 type MesOps = "abril" | "mayo" | "junio" | "julio" | "agosto";
 const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 2026", junio: "Junio 2026", julio: "Julio 2026", agosto: "Agosto 2026" };
 
-export default function OperationsDashboard({ country }: { country: "py" | "ar" }) {
+export default function OperationsDashboard({ country, mes: mesProp }: { country: "py" | "ar"; mes?: string }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
   const [prevRows, setPrevRows] = useState<GuideRow[]>([]);
   // operational_snapshots: data agregada del área Comercial (by_dropshipper, by_proveedor para per-entity)
@@ -635,8 +635,11 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
   const [fTransportadora, setFTransportadora] = useState("");
   const [fDropshipper, setFDropshipper] = useState("");
   const [fProveedor, setFProveedor] = useState("");
-  // Mes activo (default según fecha actual: si estamos en mayo o después → mayo)
+  // Mes activo: arranca con el mes elegido en el header (mesProp) si es válido;
+  // si no, cae al default según la fecha actual.
+  const MESES_OPS: MesOps[] = ["abril", "mayo", "junio", "julio", "agosto"];
   const [mes, setMes] = useState<MesOps>(() => {
+    if (mesProp && (MESES_OPS as string[]).includes(mesProp)) return mesProp as MesOps;
     const now = new Date();
     if (now.getFullYear() !== 2026) return "junio";
     const m = now.getMonth(); // 0-indexed
@@ -644,6 +647,11 @@ export default function OperationsDashboard({ country }: { country: "py" | "ar" 
     if (m >= 4) return "mayo";    // mayo
     return "abril";               // abril o anterior
   });
+  // Sincronizar con el mes del header cuando cambia arriba.
+  useEffect(() => {
+    if (mesProp && (MESES_OPS as string[]).includes(mesProp)) setMes(mesProp as MesOps);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mesProp]);
 
   const mapRow = useCallback((r: any): GuideRow => ({
     guia: r.guia || "",
