@@ -61,7 +61,9 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
     const ingresadas = sum(dailyActual, "ingresadas");
     const mov = sum(dailyActual, "movilizadas");
     if (dailyActual.length === 0 || (ingresadas === 0 && mov === 0)) return null;
-    const canceladas = sum(dailyActual, "canceladas");
+    // GRUPO A — pérdida definitiva: SOLO CANCELADO + RECHAZADO.
+    // "Cancelado por transportadora" NO va acá (cae en Grupo B5, junto al resto sin flujo logístico).
+    const canceladas = (clasif?.cancelado || 0) + (clasif?.rechazado || 0);
     const entregadas = sum(dailyActual, "entregadas");
     const devueltas = sum(dailyActual, "devueltas");
     const enProceso = Math.max(0, mov - entregadas - devueltas);
@@ -71,7 +73,9 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
     const pctPend = ingresadas > 0 ? (grupoB / ingresadas) * 100 : 0;
     const techo = ingresadas > 0 ? ((mov + grupoB) / ingresadas) * 100 : 0;
 
-    // Sub-estados de grupo B desde operations (clasif); el resto = por confirmar / no exportadas.
+    // GRUPO B — aún no movilizadas (oportunidad). 4 sub-estados desde operations (clasif);
+    // el 5º ("por confirmar / sin exportar") = resto sin fecha de procesamiento que no está
+    // en A ni en las 4 categorías (incluye cancelado por transportadora, guía anulada, etc.).
     const bPendConf = clasif?.pend_confirmacion || 0;
     const bPendiente = clasif?.pendiente || 0;
     const bGuia = clasif?.guia_generada || 0;
@@ -121,8 +125,9 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
       return { ...e, pctFinal, movProy };
     });
 
-    // Comparación JUSTA al día N: en vivo (este mes) vs en vivo (mes anterior el mismo día).
-    const diffN = pctActualN - pctPrevLiveN;
+    // Comparación con el mes anterior AL MISMO DÍA: se usa el % acumulado del mes anterior
+    // hasta ese día (movilizadas acum. / ingresadas acum.), NO el cierre final del mes.
+    const diffN = pctActualN - pctPrevN;
     const quiebres = serie.filter((s, i) => i > 0 && Math.sign(s.diff) !== Math.sign(serie[i - 1].diff) && Math.abs(s.diff) > 0.3).map((s) => s.dia);
     const masIngresadas = ingActualN > ingPrevN;
 
@@ -150,7 +155,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <b className="t-primary"> {fmt(A.mov)}</b> movilizadas ·
           movilización <b style={{ color: semMov.color }}>{semMov.emoji} {pp(A.pctMov)}%</b> ·
           techo posible <b className="t-primary">{pp(A.techo)}%</b>.
-          {A.hayPrev && <> Vs {labelPrev} en vivo el mismo día ({pp(A.pctPrevLiveN)}%): <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp</b> ({A.diffN >= 0 ? "mejor" : "peor"}).</>}
+          {A.hayPrev && <> Vs {labelPrev} al mismo día ({pp(A.pctPrevN)}% acumulado al día {A.N}): <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp</b> ({A.diffN >= 0 ? "mejor" : "peor"}).</>}
         </p>
       </div>
 
@@ -159,8 +164,9 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
         <h3 className="text-sm font-bold t-primary mb-3">Clasificación sobre {fmt(A.ingresadas)} ingresadas</h3>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="rounded-lg p-3" style={{ background: "rgba(239,68,68,0.08)" }}>
-            <div className="text-xs font-bold mb-2" style={{ color: "#ef4444" }}>🔴 A — No se movilizarán ({pp(A.pctCancel)}%)</div>
+            <div className="text-xs font-bold mb-2" style={{ color: "#ef4444" }}>🔴 A — No se recuperarán ({pp(A.pctCancel)}%)</div>
             <Row l="Canceladas / rechazadas" v={A.canceladas} t={A.ingresadas} />
+            <div className="text-[10px] t-muted mt-1">Solo CANCELADO + RECHAZADO. Pérdida definitiva.</div>
           </div>
           <div className="rounded-lg p-3" style={{ background: "rgba(234,179,8,0.08)" }}>
             <div className="text-xs font-bold mb-2" style={{ color: "#eab308" }}>🟡 B — Aún no movilizadas ({pp(A.pctPend)}%)</div>
@@ -169,7 +175,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
             <Row l="Guía generada" v={A.bGuia} t={A.ingresadas} />
             <Row l="Preparado p/ transp." v={A.bPreparado} t={A.ingresadas} />
             {A.bResto > 0 && <Row l="Por confirmar / sin exportar" v={A.bResto} t={A.ingresadas} />}
-            <RowTot l="Total Grupo B (oportunidad)" v={A.grupoB} t={A.ingresadas} />
+            <RowTot l="Total B (oportunidad)" v={A.grupoB} t={A.ingresadas} />
           </div>
           <div className="rounded-lg p-3" style={{ background: "rgba(16,185,129,0.08)" }}>
             <div className="text-xs font-bold mb-2" style={{ color: "#10b981" }}>🟢 C — Movilizadas ({pp(A.pctMov)}% de ingresadas)</div>
@@ -194,15 +200,15 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           {/* 3 — COMPARATIVO DÍA A DÍA */}
           <div className="glass-card p-5">
             <h3 className="text-sm font-bold t-primary mb-1">Comparativo día a día — {labelMes} vs {labelPrev} (mismo día)</h3>
-            <p className="text-[11px] t-muted mb-3">Acumulado a cada día. % Movilización = movilizadas / ingresadas. Δ en puntos porcentuales. {labelPrev} se muestra <b className="t-primary">ya cerrado</b> (referencia final); la comparación en vivo del día N está arriba en el resumen y la proyección.</p>
+            <p className="text-[11px] t-muted mb-3">Acumulado a cada día (movilizadas acum. / ingresadas acum.). Cada fila de {labelPrev} es cómo estaba ese mismo día, <b className="t-primary">no</b> el cierre final. Δ en puntos porcentuales.</p>
             <div className="overflow-x-auto max-h-[420px]">
               <table className="w-full text-xs">
                 <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}>
                   <tr className="t-muted uppercase tracking-wider">
                     <th className="text-left py-2 px-2">Día</th>
                     <th className="text-right py-2 px-2">Ingr {labelPrev}</th>
-                    <th className="text-right py-2 px-2">Mov {labelPrev} (cierre)</th>
-                    <th className="text-right py-2 px-2">% Mov {labelPrev} (cierre)</th>
+                    <th className="text-right py-2 px-2">Mov {labelPrev}</th>
+                    <th className="text-right py-2 px-2">% Mov {labelPrev}</th>
                     <th className="text-right py-2 px-2">Ingr {labelMes}</th>
                     <th className="text-right py-2 px-2">Mov {labelMes}</th>
                     <th className="text-right py-2 px-2">% Mov {labelMes}</th>
@@ -234,7 +240,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <div className="glass-card p-5" style={{ borderLeft: `3px solid ${semDiff(A.diffN).color}` }}>
             <h3 className="text-sm font-bold t-primary mb-2">🔍 Análisis</h3>
             <ul className="text-sm t-secondary space-y-1.5 leading-relaxed">
-              <li>• Al día {A.N}, {labelMes} va <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "mejor" : "peor"}</b> que {labelPrev} <b className="t-primary">en vivo el mismo día</b>: {pp(A.pctActualN)}% vs {pp(A.pctPrevLiveN)}% ({A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp). <span className="t-muted">({labelPrev} cerró en {pp(A.pctPrevFinal)}%.)</span></li>
+              <li>• Al día {A.N}, {labelMes} va <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "mejor" : "peor"}</b> que {labelPrev} <b className="t-primary">al mismo día</b>: {pp(A.pctActualN)}% vs {pp(A.pctPrevN)}% ({A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp). <span className="t-muted">(acumulado al día {A.N}, no el cierre final de {labelPrev} que fue {pp(A.pctPrevFinal)}%.)</span></li>
               <li>• Ingresadas: {fmt(A.ingActualN)} vs {fmt(A.ingPrevN)} en {labelPrev} ({A.masIngresadas ? "+" : ""}{pp(A.ingPrevN > 0 ? ((A.ingActualN - A.ingPrevN) / A.ingPrevN) * 100 : 0)}%).</li>
               <li>• La diferencia se explica principalmente por <b className="t-primary">{Math.abs(A.diffN) >= 1 ? "la gestión de movilización" : "el volumen de ingresadas"}</b>{A.masIngresadas ? " (entraron más órdenes este mes)" : ""}.</li>
               {A.quiebres.length > 0 && <li>• Quiebres de tendencia vs {labelPrev}: día(s) {A.quiebres.join(", ")}.</li>}
@@ -245,7 +251,8 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
           <div className="glass-card p-5">
             <h3 className="text-sm font-bold t-primary mb-1">📈 Proyección de cierre — {labelMes}</h3>
             <p className="text-[11px] t-muted mb-3">
-              En {labelPrev}, al día {A.N} la movilización iba <b className="t-primary">{pp(A.pctPrevLiveN)}%</b> <b className="t-primary">en vivo</b> (así como se veía ese día, todavía sin madurar) y cerró en <b className="t-primary">{pp(A.pctPrevFinal)}%</b> → maduró ×{pp(A.maduracion)}.
+              Para proyectar el cierre no sirve el {pp(A.pctPrevN)}% (así quedó {labelPrev} ya maduro a ese día): hay que ver cómo se <b className="t-primary">veía en vivo</b> ese día, porque {labelMes} hoy también está sin madurar.
+              {" "}En {labelPrev}, al día {A.N} la movilización se veía en <b className="t-primary">{pp(A.pctPrevLiveN)}%</b> y cerró en <b className="t-primary">{pp(A.pctPrevFinal)}%</b> → maduró ×{pp(A.maduracion)}.
               {" "}{labelMes} hoy va {pp(A.pctActualN)}% → proyección de cierre <b className="t-primary">{pp(A.pctProyBase)}%</b>.
               {" "}Ingresadas proyectadas: <b className="t-primary">{fmt(A.ingProy)}</b> (crecimiento {pp(A.factor)}×).
             </p>
