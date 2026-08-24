@@ -421,16 +421,37 @@ function parseExcel(file: File, country: string): Promise<GuideRow[]> {
         const headerRow = allRows[headerIdx].map((c: any) => String(c || "").trim());
         const colIdx = (name: string) => headerRow.indexOf(name);
 
-        // El ESTADO COMPLETO de Dropi (incluye CANCELADO / RECHAZADO / PENDIENTE /
-        // PENDIENTE CONFIRMACION) está en la columna AD (índice 29). La búsqueda por header
-        // "ESTATUS" a veces caía en una columna filtrada que sólo trae las órdenes ya
-        // movilizadas → los cancelados/pendientes quedaban sin estatus y se descartaban.
-        // Se prioriza la columna AD si su encabezado es de estado; si no, se usa el header.
-        const AD_COL = 29;
-        const adHeader = String(headerRow[AD_COL] || "").toUpperCase();
-        const estatusIdx = /ESTATUS|ESTADO|STATUS/.test(adHeader)
-          ? AD_COL
-          : (colIdx("ESTATUS") >= 0 ? colIdx("ESTATUS") : AD_COL);
+        // Detección ROBUSTA de la columna de estatus POR CONTENIDO (no por header ni posición):
+        // se elige la columna cuyas celdas contienen estados reales de Dropi, con fuerte
+        // preferencia por la que trae CANCELADO/RECHAZADO/PENDIENTE (el estado COMPLETO, col. AD),
+        // en vez de una columna filtrada que sólo tiene las ya movilizadas.
+        const STATUS_TOKENS = new Set([
+          "ENTREGADO", "CANCELADO", "RECHAZADO", "PENDIENTE", "PENDIENTE CONFIRMACION",
+          "GUIA_GENERADA", "GUIA GENERADA", "PREPARADO PARA TRANSPORTADORA", "DEVOLUCION",
+          "EN PROCESO DE DEVOLUCION", "DEVOLUCION EN PROCESO", "NOVEDAD", "NOVEDAD SOLUCIONADA",
+          "ASIGNADO A RUTA", "EN OFICINA", "EN OFICINAS DE AEX", "EN REPARTO", "EN RUTA PARA ENTREGA",
+          "RUTEADO PARA SU ENTREGA", "REINGRESO A BODEGA", "BODEGA ORIGEN", "EN BODEGA ORIGEN",
+          "EN BODEGA DESTINO", "NO ENTREGADA", "RETIRO REALIZADO", "ENVIO RECOLECTADO",
+          "REPACTADO LISTO PARA DESPACHO", "DISPONIBLE PARA RETIRO EN OFICINAS DE AEX",
+          "CANCELADO POR TRANSPORTADORA", "GUIA ANULADA", "MANIFIESTO", "SALIDA A RUTA",
+          "RECOGIDO POR TRANSPORTADORA", "EN REPARTO", "MAL RUTEO",
+        ]);
+        const KEY_STATES = new Set(["CANCELADO", "RECHAZADO", "PENDIENTE", "PENDIENTE CONFIRMACION"]);
+        const detectRows = allRows.slice(headerIdx + 1);
+        const ncols = headerRow.length;
+        let estatusIdx = colIdx("ESTATUS"); // fallback
+        let bestScore = -1;
+        for (let c = 0; c < ncols; c++) {
+          let matches = 0, hasKey = false;
+          for (const r of detectRows) {
+            const v = String(r?.[c] ?? "").trim().toUpperCase();
+            if (!v) continue;
+            if (STATUS_TOKENS.has(v)) { matches++; if (KEY_STATES.has(v)) hasKey = true; }
+          }
+          const score = matches + (hasKey ? 1_000_000 : 0); // preferir la columna con cancelados/pendientes
+          if (matches > 0 && score > bestScore) { bestScore = score; estatusIdx = c; }
+        }
+        if (estatusIdx < 0) estatusIdx = headerRow.length > 29 ? 29 : 0;
 
         const dynamicMap: { field: string; idx: number }[] = [
           { field: "guia", idx: colIdx("NÚMERO GUIA") },
