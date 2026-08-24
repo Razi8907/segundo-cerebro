@@ -464,7 +464,18 @@ function parseExcel(file: File, country: string): Promise<GuideRow[]> {
               row[col.field] = val != null ? String(val).trim() : "";
             }
           }
-          if (row.guia) parsed.push(row as GuideRow);
+          const gu = String(row.guia || "").trim();
+          const est = String(row.estatus || "").trim();
+          if (gu) {
+            row.guia = gu;
+            parsed.push(row as GuideRow);
+          } else if (est) {
+            // Fila SIN número de guía (PENDIENTE, PENDIENTE CONFIRMACION, cancelados sin guía, etc.).
+            // Antes se descartaba → los Grupos A/B quedaban incompletos. Se le asigna una clave
+            // sintética ÚNICA y global (antes de batchear) para no perderla ni colisionar en el upsert.
+            row.guia = `SIN-GUIA-${String(parsed.length).padStart(6, "0")}`;
+            parsed.push(row as GuideRow);
+          }
         }
         resolve(parsed);
       } catch (err) {
