@@ -421,6 +421,17 @@ function parseExcel(file: File, country: string): Promise<GuideRow[]> {
         const headerRow = allRows[headerIdx].map((c: any) => String(c || "").trim());
         const colIdx = (name: string) => headerRow.indexOf(name);
 
+        // El ESTADO COMPLETO de Dropi (incluye CANCELADO / RECHAZADO / PENDIENTE /
+        // PENDIENTE CONFIRMACION) está en la columna AD (índice 29). La búsqueda por header
+        // "ESTATUS" a veces caía en una columna filtrada que sólo trae las órdenes ya
+        // movilizadas → los cancelados/pendientes quedaban sin estatus y se descartaban.
+        // Se prioriza la columna AD si su encabezado es de estado; si no, se usa el header.
+        const AD_COL = 29;
+        const adHeader = String(headerRow[AD_COL] || "").toUpperCase();
+        const estatusIdx = /ESTATUS|ESTADO|STATUS/.test(adHeader)
+          ? AD_COL
+          : (colIdx("ESTATUS") >= 0 ? colIdx("ESTATUS") : AD_COL);
+
         const dynamicMap: { field: string; idx: number }[] = [
           { field: "guia", idx: colIdx("NÚMERO GUIA") },
           { field: "fecha", idx: colIdx("FECHA") },
@@ -431,7 +442,7 @@ function parseExcel(file: File, country: string): Promise<GuideRow[]> {
           { field: "nombre_tienda", idx: colIdx("NOMBRE TIENDA") },
           { field: "proveedor_nombre", idx: colIdx("PROVEEDOR NOMBRE") },
           { field: "transportadora", idx: colIdx("TRANSPORTADORA") },
-          { field: "estatus", idx: colIdx("ESTATUS") },
+          { field: "estatus", idx: estatusIdx },
           { field: "fecha_procesamiento", idx: colIdx("FECHA EN PROCESAMIENDO") },
           { field: "fecha_ultimo_movimiento", idx: colIdx("FECHA DE ÚLTIMO MOVIMIENTO") },
           { field: "hora_ultimo_movimiento", idx: colIdx("HORA DE ÚLTIMO MOVIMIENTO") },
