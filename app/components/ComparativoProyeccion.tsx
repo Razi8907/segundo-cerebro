@@ -61,26 +61,34 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
     const ingresadas = sum(dailyActual, "ingresadas");
     const mov = sum(dailyActual, "movilizadas");
     if (dailyActual.length === 0 || (ingresadas === 0 && mov === 0)) return null;
-    // GRUPO A — pérdida definitiva: SOLO CANCELADO + RECHAZADO.
-    // "Cancelado por transportadora" NO va acá (cae en Grupo B5, junto al resto sin flujo logístico).
-    const canceladas = (clasif?.cancelado || 0) + (clasif?.rechazado || 0);
-    const entregadas = sum(dailyActual, "entregadas");
-    const devueltas = sum(dailyActual, "devueltas");
-    const enProceso = Math.max(0, mov - entregadas - devueltas);
-    const grupoB = Math.max(0, ingresadas - mov - canceladas);
+    // ── CLASIFICACIÓN sobre el TOTAL DEL ARCHIVO (todos los registros del snapshot de operations) ──
+    // Regla de validación: Total archivo = Grupo A + Grupo B + Grupo C ;
+    // Grupo C = Entregadas + Devueltas + En proceso. Nunca se silencia el descuadre.
+    const totalArch = clasif?.total || 0;
+    const cCancel = clasif?.cancelado || 0;
+    const cRechazo = clasif?.rechazado || 0;
+    const canceladas = cCancel + cRechazo;                       // GRUPO A: CANCELADO + RECHAZADO
+    const cMov = clasif?.movilizadas || 0;                       // GRUPO C base: con fecha procesamiento y no en A
+    const entregadas = clasif?.entregadas || 0;                  // ENTREGADO (terminal)
+    const devueltas = clasif?.devueltas || 0;                    // DEVOLUCION (terminal; PY solo este)
+    const enProceso = Math.max(0, cMov - entregadas - devueltas); // resto movilizado = en proceso
+    const bPendConf = clasif?.pend_confirmacion || 0;            // B1 Pendiente confirmación
+    const bPendiente = clasif?.pendiente || 0;                   // B2 Pendiente (sin guía)
+    const bGuia = clasif?.guia_generada || 0;                    // B3 Guía generada
+    const bPreparado = clasif?.preparado || 0;                   // B4 Preparado p/ transp.
+    const grupoB = Math.max(0, totalArch - canceladas - cMov);   // GRUPO B total (por diferencia)
+    const bResto = Math.max(0, grupoB - (bPendConf + bPendiente + bGuia + bPreparado)); // B5 por confirmar / sin exportar
+    // Validación obligatoria.
+    const sumABC = canceladas + grupoB + cMov;
+    const descuadre = totalArch - sumABC;                        // debe ser 0
+    const reconcOk = descuadre === 0 && (entregadas + devueltas + enProceso) === cMov;
+    // % SOBRE TOTAL del archivo (clasificación).
+    const pctCancel = totalArch > 0 ? (canceladas / totalArch) * 100 : 0;
+    const pctPend = totalArch > 0 ? (grupoB / totalArch) * 100 : 0;
+    const pctMovC = totalArch > 0 ? (cMov / totalArch) * 100 : 0;
+    const techo = totalArch > 0 ? ((cMov + grupoB) / totalArch) * 100 : 0; // máx si se despacha todo B
+    // Movilización OPERATIVA (mov del día / ingresadas del seguimiento diario) — para comparación/proyección.
     const pctMov = ingresadas > 0 ? (mov / ingresadas) * 100 : 0;
-    const pctCancel = ingresadas > 0 ? (canceladas / ingresadas) * 100 : 0;
-    const pctPend = ingresadas > 0 ? (grupoB / ingresadas) * 100 : 0;
-    const techo = ingresadas > 0 ? ((mov + grupoB) / ingresadas) * 100 : 0;
-
-    // GRUPO B — aún no movilizadas (oportunidad). 4 sub-estados desde operations (clasif);
-    // el 5º ("por confirmar / sin exportar") = resto sin fecha de procesamiento que no está
-    // en A ni en las 4 categorías (incluye cancelado por transportadora, guía anulada, etc.).
-    const bPendConf = clasif?.pend_confirmacion || 0;
-    const bPendiente = clasif?.pendiente || 0;
-    const bGuia = clasif?.guia_generada || 0;
-    const bPreparado = clasif?.preparado || 0;
-    const bResto = Math.max(0, grupoB - (bPendConf + bPendiente + bGuia + bPreparado));
 
     const mapA = new Map<number, DailyRow>(); for (const d of dailyActual) mapA.set(d.dia, d);
     const mapP = new Map<number, DailyRow>(); for (const d of dailyPrev) mapP.set(d.dia, d);
@@ -133,6 +141,7 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
 
     return {
       ingresadas, mov, canceladas, entregadas, devueltas, enProceso, grupoB, pctMov, pctCancel, pctPend, techo,
+      totalArch, cCancel, cRechazo, cMov, pctMovC, reconcOk, descuadre,
       bPendConf, bPendiente, bGuia, bPreparado, bResto,
       N, serie, hayPrev, ingActualN, movActualN, ingPrevN, pctActualN, pctPrevN, pctPrevLiveN, diffN,
       ingPrevTotal, pctPrevFinal, factor, ingProy, maduracion, pctProyBase, escenarios, quiebres, masIngresadas,
@@ -153,45 +162,55 @@ export default function ComparativoProyeccion({ country, mes }: { country: "ar" 
         <p className="text-sm t-secondary mt-2 leading-relaxed">
           Al día <b className="t-primary">{A.N}</b>: <b className="t-primary">{fmt(A.ingresadas)}</b> ingresadas ·
           <b className="t-primary"> {fmt(A.mov)}</b> movilizadas ·
-          movilización <b style={{ color: semMov.color }}>{semMov.emoji} {pp(A.pctMov)}%</b> ·
-          techo posible <b className="t-primary">{pp(A.techo)}%</b>.
+          movilización <b style={{ color: semMov.color }}>{semMov.emoji} {pp(A.pctMov)}%</b>.
           {A.hayPrev && <> Vs {labelPrev} al mismo día ({pp(A.pctPrevN)}% acumulado al día {A.N}): <b style={{ color: semDiff(A.diffN).color }}>{A.diffN >= 0 ? "+" : ""}{pp(A.diffN)} pp</b> ({A.diffN >= 0 ? "mejor" : "peor"}).</>}
         </p>
       </div>
 
-      {/* 2 — CLASIFICACIÓN (Grupos A/B/C sobre INGRESADAS) */}
+      {/* 2 — CLASIFICACIÓN (Grupos A/B/C sobre el TOTAL DEL ARCHIVO) */}
       <div className="glass-card p-5">
-        <h3 className="text-sm font-bold t-primary mb-3">Clasificación sobre {fmt(A.ingresadas)} ingresadas</h3>
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <h3 className="text-sm font-bold t-primary">Clasificación sobre {fmt(A.totalArch)} registros del archivo</h3>
+          {A.totalArch > 0 && (
+            A.reconcOk
+              ? <span className="text-[11px] font-semibold" style={{ color: "#10b981" }}>✓ Total = A + B + C ({fmt(A.canceladas)} + {fmt(A.grupoB)} + {fmt(A.cMov)})</span>
+              : <span className="text-[11px] font-semibold" style={{ color: "#ef4444" }}>⚠ Descuadre de {fmt(Math.abs(A.descuadre))} registros sin clasificar</span>
+          )}
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="rounded-lg p-3" style={{ background: "rgba(239,68,68,0.08)" }}>
             <div className="text-xs font-bold mb-2" style={{ color: "#ef4444" }}>🔴 A — No se recuperarán ({pp(A.pctCancel)}%)</div>
-            <Row l="Canceladas / rechazadas" v={A.canceladas} t={A.ingresadas} />
-            <div className="text-[10px] t-muted mt-1">Solo CANCELADO + RECHAZADO. Pérdida definitiva.</div>
+            <Row l="Cancelado" v={A.cCancel} t={A.totalArch} />
+            <Row l="Rechazado" v={A.cRechazo} t={A.totalArch} />
+            <RowTot l="Total A (pérdida definitiva)" v={A.canceladas} t={A.totalArch} />
           </div>
           <div className="rounded-lg p-3" style={{ background: "rgba(234,179,8,0.08)" }}>
             <div className="text-xs font-bold mb-2" style={{ color: "#eab308" }}>🟡 B — Aún no movilizadas ({pp(A.pctPend)}%)</div>
-            <Row l="Pendiente confirmación" v={A.bPendConf} t={A.ingresadas} />
-            <Row l="Pendiente (sin guía)" v={A.bPendiente} t={A.ingresadas} />
-            <Row l="Guía generada" v={A.bGuia} t={A.ingresadas} />
-            <Row l="Preparado p/ transp." v={A.bPreparado} t={A.ingresadas} />
-            {A.bResto > 0 && <Row l="Por confirmar / sin exportar" v={A.bResto} t={A.ingresadas} />}
-            <RowTot l="Total B (oportunidad)" v={A.grupoB} t={A.ingresadas} />
+            <Row l="Pendiente confirmación" v={A.bPendConf} t={A.totalArch} />
+            <Row l="Pendiente (sin guía)" v={A.bPendiente} t={A.totalArch} />
+            <Row l="Guía generada" v={A.bGuia} t={A.totalArch} />
+            <Row l="Preparado p/ transp." v={A.bPreparado} t={A.totalArch} />
+            <Row l="Por confirmar / sin exportar" v={A.bResto} t={A.totalArch} />
+            <RowTot l="Total B (oportunidad)" v={A.grupoB} t={A.totalArch} />
           </div>
           <div className="rounded-lg p-3" style={{ background: "rgba(16,185,129,0.08)" }}>
-            <div className="text-xs font-bold mb-2" style={{ color: "#10b981" }}>🟢 C — Movilizadas ({pp(A.pctMov)}% de ingresadas)</div>
-            <Row l="Entregadas" v={A.entregadas} t={A.mov} suf="de mov." />
-            <Row l="Devueltas" v={A.devueltas} t={A.mov} suf="de mov." />
-            <Row l="En proceso" v={A.enProceso} t={A.mov} suf="de mov." />
-            <RowTot l="Total movilizadas" v={A.mov} t={A.ingresadas} />
+            <div className="text-xs font-bold mb-2" style={{ color: "#10b981" }}>🟢 C — Movilizadas ({pp(A.pctMovC)}% del archivo)</div>
+            <Row l="Entregadas" v={A.entregadas} t={A.cMov} suf="de mov." />
+            <Row l="Devueltas" v={A.devueltas} t={A.cMov} suf="de mov." />
+            <Row l="En proceso" v={A.enProceso} t={A.cMov} suf="de mov." />
+            <RowTot l="Total movilizadas" v={A.cMov} t={A.totalArch} />
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
-          <Kpi label="Ingresadas" value={fmt(A.ingresadas)} tone="#3b82f6" sub="seguimiento diario" />
-          <Kpi label="Movilizadas" value={fmt(A.mov)} tone={semMov.color} />
-          <Kpi label="% Movilización" value={`${pp(A.pctMov)}%`} tone={semMov.color} sub="mov / ingresadas" />
-          <Kpi label="% Cancelación" value={`${pp(A.pctCancel)}%`} tone="#ef4444" />
-          <Kpi label="% Pendiente (B)" value={`${pp(A.pctPend)}%`} tone="#eab308" />
+          <Kpi label="Total archivo" value={fmt(A.totalArch)} tone="#3b82f6" sub="registros operations" />
+          <Kpi label="Movilizadas (C)" value={fmt(A.cMov)} tone={semMov.color} sub={`${pp(A.pctMovC)}% del archivo`} />
+          <Kpi label="No recuperable (A)" value={`${pp(A.pctCancel)}%`} tone="#ef4444" sub={fmt(A.canceladas)} />
+          <Kpi label="Pendiente (B)" value={`${pp(A.pctPend)}%`} tone="#eab308" sub={fmt(A.grupoB)} />
+          <Kpi label="En proceso" value={fmt(A.enProceso)} tone="#0ea5e9" sub="de movilizadas" />
           <Kpi label="Techo máx. posible" value={`${pp(A.techo)}%`} tone="#3b82f6" sub="si se despacha todo B" />
+        </div>
+        <div className="mt-3 text-[11px] t-muted">
+          Movilización operativa (día {A.N}): <b className="t-primary">{fmt(A.mov)}</b> movilizadas / <b className="t-primary">{fmt(A.ingresadas)}</b> ingresadas del seguimiento diario = <b style={{ color: semMov.color }}>{pp(A.pctMov)}%</b>. Es la base de la comparación y proyección de abajo (distinta del % sobre archivo).
         </div>
       </div>
 
