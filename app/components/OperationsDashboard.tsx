@@ -142,22 +142,32 @@ function computeMovMetrics(
   ingresadasOverride?: number,
 ) {
   const SG = getStatusGroups(country);
+  // Estados TERMINALES = ENTREGADO / DEVOLUCION. Todo lo demás que esté movilizado
+  // (EN OFICINA, ASIGNADO A RUTA, NOVEDAD, NOVEDAD SOLUCIONADA, EN PROCESO DE
+  // DEVOLUCION, DEVOLUCION EN PROCESO, etc.) cuenta como EN PROCESO.
+  // PY: devolución terminal solo 'DEVOLUCION'. AR mantiene 'EN PROCESO DE DEVOLUCION'.
+  const devTerminal = country === "ar"
+    ? ["DEVOLUCION", "EN PROCESO DE DEVOLUCION"]
+    : ["DEVOLUCION"];
   let pendDS = 0, pendProv = 0, enProceso = 0, entregadas = 0, devueltas = 0, canceladas = 0;
   let movilizadas = 0, movilizadasProv = 0;
   for (const r of rows) {
     const s = r.estatus;
-    if (SG.mov_dropshipper.includes(s)) pendDS++;
-    else if (SG.mov_proveedor.includes(s)) pendProv++;
-    else if (SG.mov_aex.includes(s) || SG.mov_fixy.includes(s)) enProceso++;
-    else if (s === "ENTREGADO") entregadas++;
-    else if (s === "DEVOLUCION" || s === "EN PROCESO DE DEVOLUCION") devueltas++;
-    else if (SG.cancelacion.includes(s)) canceladas++;
-
     const hasProc = !!(r.fecha_procesamiento && String(r.fecha_procesamiento).trim());
     const isCanceled = SG.cancelacion.includes(s);
-    if (hasProc && !isCanceled) {
+
+    // Pendientes (todavía sin flujo logístico): dropshipper / proveedor.
+    if (SG.mov_dropshipper.includes(s)) pendDS++;
+    else if (SG.mov_proveedor.includes(s)) pendProv++;
+
+    if (isCanceled) { canceladas++; continue; }
+    if (hasProc) {
       movilizadas++;
       if (!SG.mov_proveedor.includes(s)) movilizadasProv++;
+      // Terminal vs en proceso (buckets que siempre suman movilizadas).
+      if (s === "ENTREGADO") entregadas++;
+      else if (devTerminal.includes(s)) devueltas++;
+      else enProceso++;
     }
   }
   const ingresadas = ingresadasOverride !== undefined ? ingresadasOverride : movilizadas;
