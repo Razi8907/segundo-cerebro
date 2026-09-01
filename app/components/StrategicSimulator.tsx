@@ -74,13 +74,16 @@ export default function StrategicSimulator({
   const isJunio = mesFilter === "junio";
   const isJulio = mesFilter === "julio";
   const isAgosto = mesFilter === "agosto";
+  const isSeptiembre = mesFilter === "septiembre";
   const mi = metaInfo as Record<string, unknown> | undefined;
 
   // Etiquetas dinámicas según el mes target
-  const TARGET_LABEL = isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const TARGET_LABEL = isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
 
-  const GOAL_MOVILIZADAS = isAgosto
+  const GOAL_MOVILIZADAS = isSeptiembre
+    ? ((mi?.meta_movilizadas_septiembre as number) ?? (mi?.meta_movilizadas_agosto as number) ?? 40000)
+    : isAgosto
     ? ((mi?.meta_movilizadas_agosto as number) ?? (mi?.meta_movilizadas_julio as number) ?? 40000)
     : isJulio
     ? ((mi?.meta_movilizadas_julio as number) ?? (mi?.meta_movilizadas_junio as number) ?? 40000)
@@ -90,7 +93,9 @@ export default function StrategicSimulator({
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
   const TASA_MOVILIZACION = metaInfo?.tasa_movilizacion ?? 0.78;
-  const GOAL_INGRESADAS = isAgosto
+  const GOAL_INGRESADAS = isSeptiembre
+    ? ((mi?.meta_ingresadas_septiembre as number) ?? (mi?.meta_ingresadas_agosto as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
+    : isAgosto
     ? ((mi?.meta_ingresadas_agosto as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
     : isJulio
     ? ((mi?.meta_ingresadas_julio as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))

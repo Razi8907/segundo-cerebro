@@ -70,23 +70,26 @@ export default function DropshipperManager({
   const isJunio = mesFilter === "junio";
   const isJulio = mesFilter === "julio";
   const isAgosto = mesFilter === "agosto";
-  const isPlanning = isMayo || isJunio || isJulio || isAgosto;
+  const isSeptiembre = mesFilter === "septiembre";
+  const isPlanning = isMayo || isJunio || isJulio || isAgosto || isSeptiembre;
   // Cuando hay un mes en planificación, opsAbril guarda la data del mes
   // COMPARATIVO (anterior) y opsMayo la del mes ACTIVO (target).
-  const TARGET_MES = isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : "mayo";
-  const COMP_MES = isAgosto ? "julio" : isJulio ? "junio" : isJunio ? "mayo" : "abril";
+  const TARGET_MES = isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : "mayo";
+  const COMP_MES = isSeptiembre ? "agosto" : isAgosto ? "julio" : isJulio ? "junio" : isJunio ? "mayo" : "abril";
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState<"all" | "escalar" | "reactivar" | "nuevos_provs" | "alto_dev">("all");
   const [selectedDS, setSelectedDS] = useState<string | null>(null);
 
   // Etiquetas dinámicas
-  const TARGET_LABEL = isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
-  const HIST_LABEL = isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Q1";
+  const TARGET_LABEL = isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const HIST_LABEL = isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Q1";
 
   // Metas del mes target
   const mi = metaInfo as any;
-  const META_MOV_ABRIL = isAgosto
+  const META_MOV_ABRIL = isSeptiembre
+    ? (mi?.meta_movilizadas_septiembre ?? mi?.meta_movilizadas_agosto ?? 40000)
+    : isAgosto
     ? (mi?.meta_movilizadas_agosto ?? mi?.meta_movilizadas_julio ?? 40000)
     : isJulio
     ? (mi?.meta_movilizadas_julio ?? mi?.meta_movilizadas_junio ?? 40000)
@@ -95,7 +98,9 @@ export default function DropshipperManager({
     : isMayo
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
-  const META_ING_ABRIL = isAgosto
+  const META_ING_ABRIL = isSeptiembre
+    ? (mi?.meta_ingresadas_septiembre ?? mi?.meta_ingresadas_agosto ?? 51283)
+    : isAgosto
     ? (mi?.meta_ingresadas_agosto ?? mi?.meta_ingresadas_julio ?? 51283)
     : isJulio
     ? (mi?.meta_ingresadas_julio ?? mi?.meta_ingresadas_junio ?? 51283)

@@ -469,6 +469,20 @@ export default function AccionesUrgentes({
         </p>
       </div>
 
+      {/* Simulador de proyección — ARRIBA para jugar con el número posible de movilización */}
+      {A.esMesEnCurso && (
+        <SimuladorProyeccion
+          labelMes={LABEL[realMes]}
+          labelPrev={LABEL[mesPrev]}
+          diasMes={A.diasMes}
+          N={A.N}
+          dailyCurr={dailyCurr}
+          metaMov={A.metaMov}
+          metaIng={A.metaIng}
+          tasaMovPrev={tasaMovPrev}
+        />
+      )}
+
       {/* KPIs del mes: ingresadas + movilizadas (lo más importante, arriba) */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <ActivityCard label={`Ingresadas (1–${A.N} ${LABEL[realMes]})`} cur={A.cur.ing} prev={A.prev.ing} mesPrev={LABEL[mesPrev]} />
@@ -512,20 +526,6 @@ export default function AccionesUrgentes({
             />
           )}
         </div>
-      )}
-
-      {/* Simulador de proyección diaria — solo mes en curso */}
-      {A.esMesEnCurso && (
-        <SimuladorProyeccion
-          labelMes={LABEL[realMes]}
-          labelPrev={LABEL[mesPrev]}
-          diasMes={A.diasMes}
-          N={A.N}
-          dailyCurr={dailyCurr}
-          metaMov={A.metaMov}
-          metaIng={A.metaIng}
-          tasaMovPrev={tasaMovPrev}
-        />
       )}
 
       {/* Seguimiento a usuario para alcanzar meta (ingresadas) */}

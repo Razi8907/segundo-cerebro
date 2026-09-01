@@ -546,8 +546,8 @@ function StockProjection({ country, aggData, mesLabel = "abril" }: { country: st
   );
 }
 
-export default function OperationalUpload({ country, mes = "abril" }: { country: "py" | "ar"; mes?: "abril" | "mayo" | "junio" | "julio" | "agosto" }) {
-  const mesLabel = mes === "agosto" ? "Agosto" : mes === "julio" ? "Julio" : mes === "junio" ? "Junio" : mes === "mayo" ? "Mayo" : "Abril";
+export default function OperationalUpload({ country, mes = "abril" }: { country: "py" | "ar"; mes?: "abril" | "mayo" | "junio" | "julio" | "agosto" | "septiembre" }) {
+  const mesLabel = mes === "septiembre" ? "Septiembre" : mes === "agosto" ? "Agosto" : mes === "julio" ? "Julio" : mes === "junio" ? "Junio" : mes === "mayo" ? "Mayo" : "Abril";
   const [rawRows, setRawRows] = useState<RawRow[]>([]);
   const [savedAgg, setSavedAgg] = useState<AggData | null>(null);
   const [uploadedAt, setUploadedAt] = useState<string | null>(null);
@@ -1173,7 +1173,7 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
         // Build DS daily data with trend detection
         const dsNames = Array.from(new Set(aggData.by_ds_daily.map((d) => d.ds)));
         // Filtrar fechas solo del mes activo (formato esperado DD-MM-YYYY o YYYY-MM-DD)
-        const mesNum = mes === "agosto" ? "08" : mes === "julio" ? "07" : mes === "junio" ? "06" : mes === "mayo" ? "05" : "04";
+        const mesNum = mes === "septiembre" ? "09" : mes === "agosto" ? "08" : mes === "julio" ? "07" : mes === "junio" ? "06" : mes === "mayo" ? "05" : "04";
         const belongsToMes = (f: string) => {
           // DD-MM-YYYY → middle is MM
           const m1 = /^\d{2}-(\d{2})-\d{4}$/.exec(f);

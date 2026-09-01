@@ -118,9 +118,20 @@ function getResumenByMes(mes: MesFilter, allData: any) {
     };
   }
   if (mes === "agosto") {
-    // Mes meta activo: mostrar la META en los KPI cards. Data real se ve en Operaciones.
+    // Mes normal: mostrar la META en los KPI cards (como los demás meses de planning). Data real se ve en Operaciones.
     const metaMov = allData.meta_info?.meta_movilizadas_agosto ?? allData.meta_info?.meta_movilizadas_julio ?? 0;
     const metaIng = allData.meta_info?.meta_ingresadas_agosto ?? allData.meta_info?.meta_ingresadas_julio ?? 0;
+    return {
+      ingresadas: metaIng,
+      movilizadas: metaMov,
+      entregados: Math.round(metaMov * 0.60),
+      devoluciones: Math.round(metaMov * 0.26),
+    };
+  }
+  if (mes === "septiembre") {
+    // Mes meta activo: mostrar la META en los KPI cards. Data real se ve en Operaciones.
+    const metaMov = allData.meta_info?.meta_movilizadas_septiembre ?? allData.meta_info?.meta_movilizadas_agosto ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_septiembre ?? allData.meta_info?.meta_ingresadas_agosto ?? 0;
     return {
       ingresadas: metaIng,
       movilizadas: metaMov,
@@ -154,8 +165,8 @@ export default function ArgentinaDashboard() {
     mayo: "Mayo 2026",
     junio: "Junio 2026",
     julio: "Julio 2026",
-    agosto: "Agosto 2026 (Meta)",
-    septiembre: "Septiembre 2026",
+    agosto: "Agosto 2026",
+    septiembre: "Septiembre 2026 (Meta)",
   };
 
   const isQ2 = mesFilter === "q2";
@@ -165,7 +176,8 @@ export default function ArgentinaDashboard() {
   const isJunio = mesFilter === "junio";
   const isJulio = mesFilter === "julio";
   const isAgosto = mesFilter === "agosto";
-  const isPlanning = isAbril || isMayo || isJunio || isJulio || isAgosto;
+  const isSeptiembre = mesFilter === "septiembre";
+  const isPlanning = isAbril || isMayo || isJunio || isJulio || isAgosto || isSeptiembre;
   const [comercialSub, setComercialSub] = useState<ComercialSub>("general");
   const [estrategiaSub, setEstrategiaSub] = useState<EstrategiaSub>("segmentos");
 
@@ -190,19 +202,19 @@ export default function ArgentinaDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {(["q1", "q2", "q3", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto"] as MesFilter[]).map((m) => (
+            {(["q1", "q2", "q3", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre"] as MesFilter[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setMesFilter(m)}
                 className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
                   mesFilter === m
-                    ? m === "agosto"
+                    ? m === "septiembre"
                       ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20"
                       : "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
                     : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
                 }`}
               >
-                {m === "q1" ? "Q1 Completo" : m === "agosto" ? "🎯 Agosto (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
+                {m === "q1" ? "Q1 Completo" : m === "septiembre" ? "🎯 Septiembre (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
               </button>
             ))}
             <span className="text-xs px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 ml-2">
@@ -251,13 +263,14 @@ export default function ArgentinaDashboard() {
         {!isQ2 && sector === "comercial" && <>
         {/* Period indicator */}
         <div className="text-center">
-          <span className={`text-sm font-medium ${isAgosto ? "text-green-400" : isJulio || isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
+          <span className={`text-sm font-medium ${isSeptiembre ? "text-green-400" : isAgosto || isJulio || isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
             {mesLabels[mesFilter]}
             {isAbril && ` — ${meta_info.meta_movilizadas_abril.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_abril.toLocaleString()} ingresadas`}
             {isMayo && ` — ${meta_info.meta_movilizadas_mayo.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_mayo.toLocaleString()} ingresadas`}
             {isJunio && (meta_info as any).meta_movilizadas_junio != null && ` — ${(meta_info as any).meta_movilizadas_junio.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_junio?.toLocaleString?.() || "—"} ingresadas`}
             {isJulio && (meta_info as any).meta_movilizadas_julio != null && ` — ${(meta_info as any).meta_movilizadas_julio.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_julio?.toLocaleString?.() || "—"} ingresadas`}
-            {isAgosto && (meta_info as any).meta_movilizadas_agosto != null && ` — Meta: ${(meta_info as any).meta_movilizadas_agosto.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_agosto?.toLocaleString?.() || "—"} ingresadas`}
+            {isAgosto && (meta_info as any).meta_movilizadas_agosto != null && ` — ${(meta_info as any).meta_movilizadas_agosto.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_agosto?.toLocaleString?.() || "—"} ingresadas`}
+            {isSeptiembre && ((meta_info as any).meta_movilizadas_septiembre ?? (meta_info as any).meta_movilizadas_agosto) != null && ` — Meta: ${((meta_info as any).meta_movilizadas_septiembre ?? (meta_info as any).meta_movilizadas_agosto).toLocaleString()} movilizadas / ${((meta_info as any).meta_ingresadas_septiembre ?? (meta_info as any).meta_ingresadas_agosto)?.toLocaleString?.() || "—"} ingresadas`}
           </span>
         </div>
 
@@ -317,14 +330,14 @@ export default function ArgentinaDashboard() {
               <>
                 {isAbril && <ArgentinaPlanAbril />}
                 <DailyTracker
-                  marzoData={isAgosto ? [] : isJulio ? [] : isJunio ? (seguimiento_mayo || []) : isMayo ? (seguimiento_abril || []) : seguimiento_diario}
+                  marzoData={isSeptiembre ? [] : isAgosto ? [] : isJulio ? [] : isJunio ? (seguimiento_mayo || []) : isMayo ? (seguimiento_abril || []) : seguimiento_diario}
                   metaInfo={meta_info}
-                  abrilRealData={isAgosto ? [] : isJulio ? [] : isJunio ? [] : isMayo ? (seguimiento_mayo || []) : seguimiento_abril}
+                  abrilRealData={isSeptiembre ? [] : isAgosto ? [] : isJulio ? [] : isJunio ? [] : isMayo ? (seguimiento_mayo || []) : seguimiento_abril}
                   mesFilter={mesFilter}
                   resumen={resumen}
                   country="ar"
                 />
-                <OperationalUpload country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+                <OperationalUpload country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
                 <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} mesFilter={mesFilter} country="ar" />
                 <ProductGoalPlanner proveedores={proveedores} mesFilter={mesFilter} country="ar" />
               </>
@@ -340,25 +353,25 @@ export default function ArgentinaDashboard() {
 
             {comercialSub === "dropshippers" && (
               <>
-                <OpsBreakdown country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} category="dropshipper" />
+                <OpsBreakdown country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} category="dropshipper" />
                 <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} country="ar" />
               </>
             )}
 
             {comercialSub === "proveedores" && (
-              <ProveedoresPanel country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <ProveedoresPanel country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "minimo" && (
-              <MinimoDiario country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <MinimoDiario country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "minimo_sem" && (
-              <MinimoSemanal country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <MinimoSemanal country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "minimo_mes" && (
-              <MinimoMensual country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <MinimoMensual country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "crm" && (
@@ -434,7 +447,7 @@ export default function ArgentinaDashboard() {
         )}
 
         {!isQ2 && sector === "operaciones" && (
-          <OperacionesPanel country="ar" mes={isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "agosto"} />
+          <OperacionesPanel country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "septiembre"} />
         )}
 
         {!isQ2 && sector === "finanzas" && <FinanzasDashboardAR />}
