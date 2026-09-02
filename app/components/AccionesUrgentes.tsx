@@ -458,6 +458,15 @@ export default function AccionesUrgentes({
   const usuariosAct = comunidades?.reduce((a, c) => a + (c.activos || 0), 0) || 0;
   const pctAct = usuariosReg > 0 ? (usuariosAct / usuariosReg) * 100 : 0;
 
+  // Mostrar el simulador para el mes EN CURSO, y también para el mes ANTERIOR mientras
+  // su operación termina de madurar (las órdenes se siguen movilizando los primeros días
+  // del mes siguiente). Se corta el día 15, cuando el mes ya cierra al 100%.
+  const hoy = new Date();
+  const mesActualNum = hoy.getMonth() + 1;
+  const prevDelActual = mesActualNum === 1 ? 12 : mesActualNum - 1;
+  const mesAnteriorEnCierre = MES_NUM[realMes] === prevDelActual && hoy.getDate() <= 15;
+  const mostrarSimulador = A.esMesEnCurso || mesAnteriorEnCierre;
+
   return (
     <div className="space-y-6">
       {/* Encabezado + rango */}
@@ -469,8 +478,9 @@ export default function AccionesUrgentes({
         </p>
       </div>
 
-      {/* Simulador de proyección — ARRIBA para jugar con el número posible de movilización */}
-      {A.esMesEnCurso && (
+      {/* Simulador de proyección — ARRIBA para jugar con el número posible de movilización.
+          Se muestra en el mes en curso y también en el mes anterior hasta el día 15 (cierre). */}
+      {mostrarSimulador && (
         <SimuladorProyeccion
           labelMes={LABEL[realMes]}
           labelPrev={LABEL[mesPrev]}
