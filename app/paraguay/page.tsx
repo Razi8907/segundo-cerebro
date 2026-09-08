@@ -36,6 +36,7 @@ import ProveedoresPanel from "../components/ProveedoresPanel";
 import OperacionesPanel from "../components/OperacionesPanel";
 import KpisOkrDashboard from "../components/KpisOkrDashboard";
 import ThemeToggle from "../components/ThemeToggle";
+import ErrorBoundary from "../components/ErrorBoundary";
 import { useUser } from "../lib/useUser";
 import type { MesFilter } from "../types";
 
@@ -266,8 +267,8 @@ export default function ParaguayDashboard() {
         <div className="text-center">
           <span className={`text-sm font-medium ${isSeptiembre ? "text-green-400" : isAgosto || isJulio || isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
             {mesLabels[mesFilter]}
-            {isAbril && ` — ${meta_info.meta_movilizadas_abril.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_abril.toLocaleString()} ingresadas`}
-            {isMayo && ` — ${meta_info.meta_movilizadas_mayo.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_mayo.toLocaleString()} ingresadas`}
+            {isAbril && ` — ${(meta_info as any)?.meta_movilizadas_abril?.toLocaleString?.() || "—"} movilizadas / ${(meta_info as any)?.meta_ingresadas_abril?.toLocaleString?.() || "—"} ingresadas`}
+            {isMayo && ` — ${(meta_info as any)?.meta_movilizadas_mayo?.toLocaleString?.() || "—"} movilizadas / ${(meta_info as any)?.meta_ingresadas_mayo?.toLocaleString?.() || "—"} ingresadas`}
             {isJunio && (meta_info as any).meta_movilizadas_junio != null && ` — ${(meta_info as any).meta_movilizadas_junio.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_junio?.toLocaleString?.() || "—"} ingresadas`}
             {isJulio && (meta_info as any).meta_movilizadas_julio != null && ` — ${(meta_info as any).meta_movilizadas_julio.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_julio?.toLocaleString?.() || "—"} ingresadas`}
             {isAgosto && (meta_info as any).meta_movilizadas_agosto != null && ` — ${(meta_info as any).meta_movilizadas_agosto.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_agosto?.toLocaleString?.() || "—"} ingresadas`}
@@ -299,6 +300,7 @@ export default function ParaguayDashboard() {
         />
 
         {/* Show planning content when Abril o Mayo está seleccionado */}
+        <ErrorBoundary label="esta sección de Comercial">
         {isPlanning ? (
           <>
             {/* Sub-nav: General / Dropshippers / Proveedores */}
@@ -405,6 +407,7 @@ export default function ParaguayDashboard() {
             <SellersTable sellers={sellers_top} mesFilter={mesFilter} />
           </>
         )}
+        </ErrorBoundary>
 
         <ReportGenerator
           resumen={resumen}

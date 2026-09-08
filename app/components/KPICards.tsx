@@ -8,10 +8,18 @@ interface KPICardsProps {
   periodo: string;
 }
 
-export default function KPICards({ ingresadas, movilizadas, entregados, devoluciones, periodo }: KPICardsProps) {
-  const pctMovilizacion = ((movilizadas / ingresadas) * 100).toFixed(1);
-  const pctEntrega = ((entregados / movilizadas) * 100).toFixed(1);
-  const pctDevolucion = ((devoluciones / movilizadas) * 100).toFixed(1);
+export default function KPICards(props: KPICardsProps) {
+  // Coacción defensiva: si algún valor llega undefined/null/NaN, se usa 0 en vez de
+  // reventar el .toLocaleString() (que dejaba el cuadro principal en blanco).
+  const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const ingresadas = num(props.ingresadas);
+  const movilizadas = num(props.movilizadas);
+  const entregados = num(props.entregados);
+  const devoluciones = num(props.devoluciones);
+  const periodo = props.periodo || "";
+  const pctMovilizacion = ingresadas > 0 ? ((movilizadas / ingresadas) * 100).toFixed(1) : "0";
+  const pctEntrega = movilizadas > 0 ? ((entregados / movilizadas) * 100).toFixed(1) : "0";
+  const pctDevolucion = movilizadas > 0 ? ((devoluciones / movilizadas) * 100).toFixed(1) : "0";
 
   // En meses en planificación (Mayo en curso) el valor de "movilizadas" representa
   // la META del mes, no datos reales. Renombramos y resaltamos la tarjeta.
