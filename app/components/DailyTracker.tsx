@@ -831,6 +831,18 @@ export default function DailyTracker({
           >
             Agregar
           </button>
+          <button
+            onClick={() => {
+              const day = parseInt(inputDay);
+              if (isNaN(day) || day < 1 || day > 30) { setTrackingError("Ingresá un día válido (1-30) en el campo Día para borrarlo."); return; }
+              if (!confirm(`¿Borrar el día ${day} de ${ACTIVE_LABEL}?`)) return;
+              deleteDay(day);
+            }}
+            className="px-4 py-2 text-sm rounded-lg bg-red-600/80 text-white font-medium hover:bg-red-500 transition-colors"
+            title="Borra el día que esté escrito en el campo Día"
+          >
+            Borrar día
+          </button>
           {abrilData.length > 0 && (
             <button
               onClick={async () => {
