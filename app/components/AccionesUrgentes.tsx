@@ -107,7 +107,9 @@ function sumDaily(rows: DailyRow[], N: number): Area {
 async function fetchJsonRetry(url: string, tries = 3): Promise<any> {
   for (let i = 0; i < tries; i++) {
     try {
-      const r = await fetch(url, { credentials: "include" });
+      // no-store: siempre leer el dato fresco de la base (el Seguimiento Diario se
+      // edita en vivo; sin esto el navegador podía servir una respuesta cacheada vieja).
+      const r = await fetch(url, { credentials: "include", cache: "no-store" });
       if (r.ok) return await r.json();
       if (r.status === 401 || r.status === 403) return { __err: "auth" };
     } catch { /* reintentar */ }

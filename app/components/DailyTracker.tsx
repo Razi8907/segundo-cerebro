@@ -237,7 +237,7 @@ export default function DailyTracker({
   // Load from DB only (manual entries) — no auto-sync from operational data
   useEffect(() => {
     let cancelled = false;
-    fetch(`/api/data/daily-tracking?country=${country}&mes=${ACTIVE_MES_KEY}`, { credentials: "include" })
+    fetch(`/api/data/daily-tracking?country=${country}&mes=${ACTIVE_MES_KEY}`, { credentials: "include", cache: "no-store" })
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
@@ -262,7 +262,7 @@ export default function DailyTracker({
     }
     const compMes = isSeptiembre ? "agosto" : isAgosto ? "julio" : isJulio ? "junio" : isJunio ? "mayo" : "abril";
     let cancelled = false;
-    fetch(`/api/data/daily-tracking?country=${country}&mes=${compMes}`, { credentials: "include" })
+    fetch(`/api/data/daily-tracking?country=${country}&mes=${compMes}`, { credentials: "include", cache: "no-store" })
       .then((r) => r.json())
       .then((res) => {
         if (cancelled) return;
