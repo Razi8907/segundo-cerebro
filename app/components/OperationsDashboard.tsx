@@ -826,64 +826,69 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
         producto: r.productos,
       }));
 
-      // Lotes chicos + baja concurrencia: la tabla operations_data es enorme y el
-      // upsert de lotes grandes / concurrentes provoca "statement timeout". Con lotes
-      // de 400 y 2 en paralelo cada statement termina rápido y hay menos contención.
-      const BATCH_SIZE = 400;
-      const CONCURRENCY = 2;
+      // Carga ADAPTATIVA: la tabla operations_data es enorme y a veces ni un lote
+      // chico entra en el límite de tiempo de la base ("statement timeout"). Si un
+      // lote da timeout, se PARTE A LA MITAD y se reintenta, hasta un mínimo. Así el
+      // sistema encuentra solo el tamaño que la base pueda procesar, sin cortar todo.
+      const INITIAL_BATCH = 100;
+      const MIN_CHUNK = 20;
+      const CONCURRENCY = 1; // secuencial: evita contención de locks en la tabla enorme (otra causa de timeout)
       const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       const fc = todayStr();
-      const batches: typeof apiRows[] = [];
-      for (let i = 0; i < apiRows.length; i += BATCH_SIZE) {
-        batches.push(apiRows.slice(i, i + BATCH_SIZE));
-      }
-      setUploadProgress(0);
-      let done = 0;
-      const uploadBatch = async (batch: typeof apiRows, idx: number) => {
-        const MAX_ATTEMPTS = 4;
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-          let res: Response;
+      const total = apiRows.length;
+      let doneRows = 0;
+      const bump = (n: number) => {
+        doneRows += n;
+        setUploadProgress(Math.min(99, Math.round((doneRows / Math.max(1, total)) * 100)));
+      };
+
+      const uploadChunk = async (rows: typeof apiRows): Promise<void> => {
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          let res: Response | null = null;
           try {
             res = await fetch("/api/data/operations", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ country, mes, fecha_carga: fc, rows: batch }),
+              body: JSON.stringify({ country, mes, fecha_carga: fc, rows }),
             });
-          } catch (netErr: any) {
-            if (attempt < MAX_ATTEMPTS) { await sleep(800 * attempt); continue; }
-            throw new Error(`Error de red en lote ${idx + 1}: ${netErr?.message || netErr}`);
-          }
-          if (res.ok) {
-            done += 1;
-            setUploadProgress(Math.round((done / batches.length) * 100));
-            return;
-          }
-          // Sesión: no tiene sentido reintentar.
-          if (res.status === 401 || res.status === 403 || res.redirected) {
+          } catch { res = null; }
+
+          if (res && res.ok) { bump(rows.length); return; }
+          if (res && (res.status === 401 || res.status === 403 || res.redirected)) {
             throw new Error("Sesión expirada. Volvé a iniciar sesión.");
           }
-          const contentType = res.headers.get("content-type") || "";
-          let msg = `Error HTTP ${res.status} en lote ${idx + 1}`;
-          if (contentType.includes("json")) {
-            const errData = await res.json().catch(() => ({}));
-            msg = errData.error || msg;
+          let msg = res ? `HTTP ${res.status}` : "error de red";
+          if (res) {
+            const ct = res.headers.get("content-type") || "";
+            if (ct.includes("json")) { const j = await res.json().catch(() => ({})); msg = j.error || msg; }
           }
-          // Timeouts / errores del servidor: reintentar con backoff (suelen ser
-          // por contención en la tabla enorme y se resuelven en el reintento).
-          const retryable = res.status >= 500 || /timeout|timed out|statement|cancel/i.test(msg);
-          if (retryable && attempt < MAX_ATTEMPTS) { await sleep(1200 * attempt); continue; }
-          throw new Error(msg);
+          const timeoutish = !res || res.status >= 500 || /timeout|timed out|statement|cancel/i.test(msg);
+          // Timeout en un lote grande → partir a la mitad y subir cada mitad.
+          if (timeoutish && rows.length > MIN_CHUNK) {
+            const mid = Math.floor(rows.length / 2);
+            await uploadChunk(rows.slice(0, mid));
+            await uploadChunk(rows.slice(mid));
+            return;
+          }
+          if (timeoutish && attempt < 3) { await sleep(1000 * attempt); continue; }
+          throw new Error(`No se pudo subir un bloque de ${rows.length} filas: ${msg}`);
         }
       };
-      // Worker pool simple
+
+      const batches: typeof apiRows[] = [];
+      for (let i = 0; i < apiRows.length; i += INITIAL_BATCH) {
+        batches.push(apiRows.slice(i, i + INITIAL_BATCH));
+      }
+      setUploadProgress(0);
       let cursor = 0;
       const workers = Array.from({ length: Math.min(CONCURRENCY, batches.length) }, async () => {
         while (cursor < batches.length) {
           const idx = cursor++;
-          await uploadBatch(batches[idx], idx);
+          await uploadChunk(batches[idx]);
         }
       });
       await Promise.all(workers);
+      setUploadProgress(100);
       // Set parsed data immediately + refresh from API
       setRows((prev) => {
         const existingGuias = new Set(parsed.map((r) => `${r.guia}-${r.fecha_carga}`));
