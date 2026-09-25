@@ -826,9 +826,12 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
         producto: r.productos,
       }));
 
-      // Batches de 1000 con concurrencia 3 (acelera ~3x sin saturar Vercel).
-      const BATCH_SIZE = 1000;
-      const CONCURRENCY = 3;
+      // Lotes chicos + baja concurrencia: la tabla operations_data es enorme y el
+      // upsert de lotes grandes / concurrentes provoca "statement timeout". Con lotes
+      // de 400 y 2 en paralelo cada statement termina rápido y hay menos contención.
+      const BATCH_SIZE = 400;
+      const CONCURRENCY = 2;
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
       const fc = todayStr();
       const batches: typeof apiRows[] = [];
       for (let i = 0; i < apiRows.length; i += BATCH_SIZE) {
@@ -837,24 +840,40 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
       setUploadProgress(0);
       let done = 0;
       const uploadBatch = async (batch: typeof apiRows, idx: number) => {
-        const res = await fetch("/api/data/operations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ country, mes, fecha_carga: fc, rows: batch }),
-        });
-        if (!res.ok) {
-          const contentType = res.headers.get("content-type") || "";
-          if (contentType.includes("json")) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || `Error en lote ${idx + 1} (HTTP ${res.status})`);
+        const MAX_ATTEMPTS = 4;
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          let res: Response;
+          try {
+            res = await fetch("/api/data/operations", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ country, mes, fecha_carga: fc, rows: batch }),
+            });
+          } catch (netErr: any) {
+            if (attempt < MAX_ATTEMPTS) { await sleep(800 * attempt); continue; }
+            throw new Error(`Error de red en lote ${idx + 1}: ${netErr?.message || netErr}`);
           }
+          if (res.ok) {
+            done += 1;
+            setUploadProgress(Math.round((done / batches.length) * 100));
+            return;
+          }
+          // Sesión: no tiene sentido reintentar.
           if (res.status === 401 || res.status === 403 || res.redirected) {
             throw new Error("Sesión expirada. Volvé a iniciar sesión.");
           }
-          throw new Error(`Error HTTP ${res.status} en lote ${idx + 1}`);
+          const contentType = res.headers.get("content-type") || "";
+          let msg = `Error HTTP ${res.status} en lote ${idx + 1}`;
+          if (contentType.includes("json")) {
+            const errData = await res.json().catch(() => ({}));
+            msg = errData.error || msg;
+          }
+          // Timeouts / errores del servidor: reintentar con backoff (suelen ser
+          // por contención en la tabla enorme y se resuelven en el reintento).
+          const retryable = res.status >= 500 || /timeout|timed out|statement|cancel/i.test(msg);
+          if (retryable && attempt < MAX_ATTEMPTS) { await sleep(1200 * attempt); continue; }
+          throw new Error(msg);
         }
-        done += 1;
-        setUploadProgress(Math.round((done / batches.length) * 100));
       };
       // Worker pool simple
       let cursor = 0;
