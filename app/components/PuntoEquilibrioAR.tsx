@@ -82,6 +82,20 @@ function beCalc(opex: number, margenFixy: number, margenUrbano: number, mixPct: 
 interface ApiRow { mes: string; mesOrden: number | null; dia: number | null; transportadora: string; total: number; movilizadas: number; entregadas: number; valor: number }
 export interface PeApi { rows: ApiRow[]; ingresadas: { mes: string; ingresadas: number }[] }
 
+// Utilidad de una transportadora en el mes: margen logístico + comisión COD
+interface PeLinea {
+  nombre: string;
+  guias: number;
+  margenGuia: number;      // margen logístico por guía (Informe Utilidad)
+  margenTotal: number;
+  ticket: number;          // ticket promedio real de sus guías movilizadas
+  guiasCod: number;        // guías con cobro contra entrega (PCT_COD %)
+  comCodGuia: number;      // comisión por guía COD = ticket × COM_PCT
+  codTotal: number;
+  total: number;           // margenTotal + codTotal
+  porGuia: number;         // total ÷ guías
+}
+
 interface PeDia { dia: number; guias: number; acum: number; utilAcum: number; necesario: number; proyeccion?: number }
 
 interface PeMes {
@@ -115,6 +129,7 @@ interface PeMes {
   proyeccion: number | null;   // guías al cierre al ritmo actual (solo mes en curso)
   diaEquilibrio: number | null;
   dias: PeDia[];
+  lineas: PeLinea[];
 }
 
 function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<MesKey, RendicionCaja>>): PeMes[] {
@@ -153,6 +168,7 @@ function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<Mes
     const diasMes = new Date(2026, idx + 1, 0).getDate();
     const isFixy = (t: string) => t.includes("FIXY");
     const isUrb = (t: string) => t.includes("URBANO");
+    const grupo = (t: string) => (isFixy(t) ? "Fixy" : isUrb(t) ? "Urbano" : "Otras");
     const fixy = rows.filter((x) => isFixy(x.transportadora)).reduce((s, x) => s + x.movilizadas, 0);
     const urbano = rows.filter((x) => isUrb(x.transportadora)).reduce((s, x) => s + x.movilizadas, 0);
     const otras = movilizadas - fixy - urbano;
@@ -166,8 +182,24 @@ function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<Mes
     const margenFixy = MARGEN_HIST[margenMes]!.fixy;
     const margenUrbano = MARGEN_HIST[margenMes]!.urbano;
     const b = beCalc(opexTotal, margenFixy, margenUrbano, mixPct, ticket, COM_PCT, PCT_COD);
-    const uGuia = (t: string) => (isFixy(t) ? b.uF : isUrb(t) ? b.uU : b.uM);
-    const utilidad = rows.reduce((s, x) => s + x.movilizadas * uGuia(x.transportadora), 0);
+
+    // Utilidad por transportadora, cada una con SU ticket real para la comisión COD.
+    // "Otras" (si aparecieran) toman el margen logístico promedio del mix.
+    const margenOtras = (mixPct / 100) * margenFixy + (1 - mixPct / 100) * margenUrbano;
+    const lineas: PeLinea[] = (["Fixy", "Urbano", "Otras"] as const).map((nombre) => {
+      const rs = rows.filter((x) => grupo(x.transportadora) === nombre);
+      const guias = rs.reduce((s, x) => s + x.movilizadas, 0);
+      const tk = guias > 0 ? rs.reduce((s, x) => s + x.valor, 0) / guias : 0;
+      const margenGuia = nombre === "Fixy" ? margenFixy : nombre === "Urbano" ? margenUrbano : margenOtras;
+      const guiasCod = guias * (PCT_COD / 100);
+      const comCodGuia = tk * (COM_PCT / 100);
+      const margenTotal = guias * margenGuia;
+      const codTotal = guiasCod * comCodGuia;
+      return { nombre, guias, margenGuia, margenTotal, ticket: tk, guiasCod, comCodGuia, codTotal, total: margenTotal + codTotal, porGuia: guias > 0 ? (margenTotal + codTotal) / guias : 0 };
+    }).filter((l) => l.guias > 0);
+    const porGuiaDe = (t: string) => lineas.find((l) => l.nombre === grupo(t))?.porGuia ?? 0;
+    const uGuia = porGuiaDe;
+    const utilidad = lineas.reduce((s, l) => s + l.total, 0);
     const uM = utilidad / movilizadas;
     const beTotal = Math.ceil(opexTotal / uM);
 
@@ -207,7 +239,10 @@ function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<Mes
     const ing = api.ingresadas.find((x) => x.mes === KEY_TO_MES[m])?.ingresadas ?? null;
     out.push({
       m, ingresadas: ing && ing > 0 ? ing : null, movilizadas, entregadas, fixy, urbano, otras, mixPct, ticket,
-      margenFixy, margenUrbano, margenMes, comGuia: b.comGuia, uF: b.uF, uU: b.uU, uM, utilidad,
+      margenFixy, margenUrbano, margenMes, comGuia: b.comGuia,
+      uF: lineas.find((l) => l.nombre === "Fixy")?.porGuia ?? b.uF,
+      uU: lineas.find((l) => l.nombre === "Urbano")?.porGuia ?? b.uU,
+      uM, utilidad, lineas,
       opexTotal, opexFijos, opexFuente, opexEstimado,
       beTotal,
       beFijos: opexFijos !== null ? Math.ceil(opexFijos / uM) : null,
@@ -258,6 +293,7 @@ export function PuntoEquilibrioVista({ api, mesKeys, periodoLabel, rendiciones }
           <Encabezado f={foco} />
           <Termometro f={foco} />
           <CuadroReal f={foco} />
+          <DetalleUtilidad f={foco} />
           <SeguimientoDiario f={foco} />
           <Analisis f={foco} />
           <Ganancias f={foco} />
@@ -387,6 +423,10 @@ function CuadroReal({ f }: { f: PeMes }) {
     fila(f.enCurso ? "Guías por día (hasta hoy)" : "Guías por día", fmtNum(Math.round(diaReal)), fmtNum(Math.ceil(diaNec)), signo(Math.round(diaReal - diaNec), fmtNum), tone(diaReal - diaNec)),
     fila("Utilidad por guía (margen + COD)", `$${fmtNum(Math.round(f.uM))}`, `$${fmtNum(Math.round(f.uM))}`, ""),
     fila("Utilidad generada", fmtArsExact(f.utilidad), fmtArsExact(f.opexTotal), signo(f.utilidad - f.opexTotal, fmtArsExact), tone(f.utilidad - f.opexTotal), { bold: true }),
+    ...f.lineas.flatMap((l) => [
+      fila(`${l.nombre} — margen logístico`, fmtArsExact(l.margenTotal), "", "", undefined, { sub: true }),
+      fila(`${l.nombre} — comisión COD`, fmtArsExact(l.codTotal), "", "", undefined, { sub: true }),
+    ]),
     fila("Gasto del mes", fmtArsExact(f.opexTotal), fmtArsExact(f.opexTotal), ""),
     ...(f.opexFijos !== null && gastoVar !== null
       ? [fila("Gastos fijos", fmtArsExact(f.opexFijos), "", "", undefined, { sub: true }), fila("Gastos variables", fmtArsExact(gastoVar), "", "", undefined, { sub: true })]
@@ -428,6 +468,113 @@ function CuadroReal({ f }: { f: PeMes }) {
       )}
     </div>
   );
+}
+
+// ─── Detalle de la utilidad: por transportadora, margen logístico y comisión COD ───
+function DetalleUtilidad({ f }: { f: PeMes }) {
+  const pctU = (v: number) => fmtPct(f.utilidad > 0 ? v / f.utilidad : 0);
+  const margenTotal = f.lineas.reduce((s, l) => s + l.margenTotal, 0);
+  const codTotal = f.lineas.reduce((s, l) => s + l.codTotal, 0);
+  const guiasCod = f.lineas.reduce((s, l) => s + l.guiasCod, 0);
+  const color: Record<string, string> = { Fixy: C.orange, Urbano: C.green, Otras: C.gray };
+  const $ = (v: number) => `$${fmtNum(Math.round(v))}`;
+
+  return (
+    <div className="glass-card overflow-x-auto">
+      <div className="px-5 pt-4 pb-2">
+        <h3 className="text-sm font-semibold t-primary">💵 De dónde sale la utilidad — {MES_LABEL[f.m]}{f.enCurso ? " (hasta hoy)" : ""}</h3>
+        <p className="text-[11px] t-muted">
+          Por cada transportadora: <b>margen logístico</b> (Informe Utilidad {MES_CORTO[f.margenMes]}) × guías movilizadas, más la <b>comisión COD</b> ({PCT_COD}% de las guías son COD × ticket real de esa transportadora × {COM_PCT}%).
+        </p>
+      </div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-700">
+            <Th align="left">Concepto</Th>
+            <Th>Guías</Th>
+            <Th align="left">Cálculo</Th>
+            <Th>$ por guía</Th>
+            <Th>Total</Th>
+            <Th>% utilidad</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {f.lineas.map((l) => (
+            <FragmentLinea key={l.nombre}>
+              <tr className="border-b border-gray-800/50" style={{ background: `${color[l.nombre]}10` }}>
+                <td className="py-2 px-4 text-xs font-bold" style={{ color: color[l.nombre] }}>🚚 {l.nombre}</td>
+                <Td mono bold>{fmtNum(l.guias)}</Td>
+                <Td align="left" muted>{fmtPct(l.guias / f.movilizadas)} de las movilizadas</Td>
+                <Td mono bold>{$(l.porGuia)}</Td>
+                <Td mono bold color={color[l.nombre]}>{fmtArsExact(l.total)}</Td>
+                <Td mono bold>{pctU(l.total)}</Td>
+              </tr>
+              <tr className="border-b border-gray-800/30">
+                <td className="py-2 px-4 pl-8 text-xs t-secondary">Margen logístico</td>
+                <Td mono muted>{fmtNum(l.guias)}</Td>
+                <Td align="left" muted>{fmtNum(l.guias)} guías × {$(l.margenGuia)}</Td>
+                <Td mono>{$(l.margenGuia)}</Td>
+                <Td mono>{fmtArsExact(l.margenTotal)}</Td>
+                <Td mono muted>{pctU(l.margenTotal)}</Td>
+              </tr>
+              <tr className="border-b border-gray-800/50">
+                <td className="py-2 px-4 pl-8 text-xs t-secondary">Comisión COD</td>
+                <Td mono muted>{fmtNum(Math.round(l.guiasCod))}</Td>
+                <Td align="left" muted>{fmtNum(Math.round(l.guiasCod))} guías COD × ticket {$(l.ticket)} × {COM_PCT}% = {$(l.comCodGuia)} c/u</Td>
+                <Td mono>{$(l.guias > 0 ? l.codTotal / l.guias : 0)}</Td>
+                <Td mono>{fmtArsExact(l.codTotal)}</Td>
+                <Td mono muted>{pctU(l.codTotal)}</Td>
+              </tr>
+            </FragmentLinea>
+          ))}
+          <tr className="border-b border-gray-800/50" style={{ borderTop: "2px solid rgba(148,163,184,0.35)" }}>
+            <td className="py-2 px-4 text-xs t-primary">Total margen logístico</td>
+            <Td mono>{fmtNum(f.movilizadas)}</Td>
+            <Td align="left" muted>Fixy + Urbano</Td>
+            <Td mono>{$(margenTotal / f.movilizadas)}</Td>
+            <Td mono>{fmtArsExact(margenTotal)}</Td>
+            <Td mono muted>{pctU(margenTotal)}</Td>
+          </tr>
+          <tr className="border-b border-gray-800/50">
+            <td className="py-2 px-4 text-xs t-primary">Total comisión COD</td>
+            <Td mono>{fmtNum(Math.round(guiasCod))}</Td>
+            <Td align="left" muted>guías COD</Td>
+            <Td mono>{$(codTotal / f.movilizadas)}</Td>
+            <Td mono>{fmtArsExact(codTotal)}</Td>
+            <Td mono muted>{pctU(codTotal)}</Td>
+          </tr>
+          <tr className="border-b border-gray-800/50" style={{ background: "rgba(16,185,129,0.08)" }}>
+            <td className="py-2 px-4 text-xs font-bold t-primary">= Utilidad total</td>
+            <Td mono bold>{fmtNum(f.movilizadas)}</Td>
+            <Td align="left" muted>margen + COD</Td>
+            <Td mono bold>{$(f.uM)}</Td>
+            <Td mono bold color={C.green}>{fmtArsExact(f.utilidad)}</Td>
+            <Td mono bold>100%</Td>
+          </tr>
+          <tr className="border-b border-gray-800/50">
+            <td className="py-2 px-4 text-xs t-primary">(−) Gasto del mes</td>
+            <Td mono muted>—</Td>
+            <Td align="left" muted>{f.opexFuente}</Td>
+            <Td mono muted>{$(f.opexTotal / f.movilizadas)}</Td>
+            <Td mono color={C.red}>−{fmtArsExact(f.opexTotal)}</Td>
+            <Td mono muted>{pctU(f.opexTotal)}</Td>
+          </tr>
+          <tr style={{ background: f.resultado >= 0 ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)" }}>
+            <td className="py-3 px-4 text-sm font-bold t-primary">= {f.resultado >= 0 ? "Ganancia" : "Pérdida"} del mes</td>
+            <Td mono muted>—</Td>
+            <Td align="left" muted>utilidad − gasto</Td>
+            <Td mono bold>{$(f.resultado / f.movilizadas)}</Td>
+            <Td mono bold color={f.resultado >= 0 ? C.green : C.red}>{fmtArsExact(f.resultado)}</Td>
+            <Td mono muted>—</Td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function FragmentLinea({ children }: { children: React.ReactNode }) {
+  return <>{children}</>;
 }
 
 // ─── Gráfico de seguimiento diario (acumulado) ───
