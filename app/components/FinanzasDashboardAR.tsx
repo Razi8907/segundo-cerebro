@@ -18,8 +18,9 @@ import {
   Area,
 } from "recharts";
 import { useFinanzasAR } from "../lib/useFinanzasAR";
-import type { FinanzasARData, MesKey } from "../lib/finanzas-ar-types";
+import { MES_FILTER_TO_KEYS, type FinanzasARData, type MesKey, type RendicionCaja } from "../lib/finanzas-ar-types";
 import FinanzasEditor from "./FinanzasEditor";
+import RendicionCajaAR from "./RendicionCajaAR";
 
 // ═══════════════════════════════════════════════════════════════════
 // DERIVADOS — los insights reales de Segundo Cerebro
@@ -140,18 +141,19 @@ const C = {
   gray: "#6B7280",
 };
 
-type View = "salud" | "caja" | "pnl" | "fulfillment" | "liquidaciones" | "punto_equilibrio";
+type View = "rendicion" | "salud" | "caja" | "pnl" | "fulfillment" | "liquidaciones" | "punto_equilibrio";
 
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
 // ═══════════════════════════════════════════════════════════════════
-export default function FinanzasDashboardAR() {
-  const [view, setView] = useState<View>("salud");
+export default function FinanzasDashboardAR({ mes = "agosto", mesLabel }: { mes?: string; mesLabel?: string }) {
+  const [view, setView] = useState<View>("rendicion");
   const [editing, setEditing] = useState(false);
   const { data, updatedAt, canEdit, loading, saving, save } = useFinanzasAR();
   const d = useMemo(() => derived(data), [data]);
 
   const tabs: { key: View; label: string }[] = [
+    { key: "rendicion", label: `🧾 Rendición de caja` },
     { key: "salud", label: "🩺 Salud financiera" },
     { key: "caja", label: "💰 Caja & Runway" },
     { key: "pnl", label: "📊 Resultado P&L" },
@@ -165,6 +167,10 @@ export default function FinanzasDashboardAR() {
     if (res.ok) setEditing(false);
     return res;
   };
+
+  // Guarda la rendición de un mes sin tocar el resto de la data financiera
+  const saveRendicion = (m: MesKey, r: RendicionCaja) =>
+    save({ ...data, rendiciones: { ...(data.rendiciones ?? {}), [m]: r } });
 
   return (
     <div className="space-y-6">
@@ -203,6 +209,15 @@ export default function FinanzasDashboardAR() {
 
       {loading && <div className="text-xs t-muted text-center py-4">Cargando datos financieros…</div>}
 
+      {!loading && view === "rendicion" && (
+        <RendicionCajaAR
+          rendiciones={data.rendiciones ?? {}}
+          mesKeys={MES_FILTER_TO_KEYS[mes] ?? ["ago"]}
+          periodoLabel={mesLabel ?? mes}
+          canEdit={canEdit}
+          onSave={saveRendicion}
+        />
+      )}
       {!loading && view === "salud" && <SaludView d={d} />}
       {!loading && view === "caja" && <CajaView d={d} />}
       {!loading && view === "pnl" && <PnlView d={d} />}

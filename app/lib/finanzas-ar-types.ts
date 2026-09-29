@@ -53,6 +53,7 @@ export interface FinanzasARData {
   salarioRazielAr: number;
   gastosBreakdownYtd: GastoBreakdown[];
   liquidaciones: Liquidacion[];
+  rendiciones?: Partial<Record<MesKey, RendicionCaja>>;
 }
 
 // Defaults — usados si la tabla de Supabase está vacía
@@ -102,4 +103,40 @@ export const MES_LABELS: Record<MesKey, string> = {
   ene: "Ene '26", feb: "Feb '26", mar: "Mar '26", abr: "Abr '26",
   may: "May '26", jun: "Jun '26", jul: "Jul '26", ago: "Ago '26",
   sep: "Sep '26", oct: "Oct '26", nov: "Nov '26", dic: "Dic '26",
+};
+
+// ═══════════════════════════════════════════════════════════════════
+// Rendición de caja mensual (Gerencia Administrativa).
+// Se carga desde el Excel "CAJA <MES> 2026.xlsx" (hojas Cta Cte Banco
+// Galicia, Caja Efectivo y Resumen Consolidado). Una por mes.
+// ═══════════════════════════════════════════════════════════════════
+
+export interface RendicionMovimiento {
+  fecha: string | null;      // "2026-08-10" (null si no se pudo ubicar)
+  concepto: string;
+  monto: number;
+  origen: "efectivo" | "banco";
+  grupo: string;             // "SUELDOS", "RAZIEL", "FULFILLMENT", ...
+  tipo: "fijo" | "variable"; // fijo = compromiso recurrente mensual
+  nota?: string;
+}
+
+export interface RendicionCaja {
+  saldoInicial: { efectivo: number; banco: number };
+  saldoFinal: { efectivo: number; banco: number };
+  fondosRecibidos: number;
+  banco: string;             // nombre de la cuenta ("Cta Cte Galicia")
+  movimientos: RendicionMovimiento[];
+  fuente?: string;           // nombre del archivo
+  cargadoEl?: string;        // ISO
+}
+
+// Meses del selector de arriba → meses de finanzas
+export const MES_FILTER_TO_KEYS: Record<string, MesKey[]> = {
+  q1: ["ene", "feb", "mar"],
+  q2: ["abr", "may", "jun"],
+  q3: ["jul", "ago", "sep"],
+  enero: ["ene"], febrero: ["feb"], marzo: ["mar"], abril: ["abr"],
+  mayo: ["may"], junio: ["jun"], julio: ["jul"], agosto: ["ago"],
+  septiembre: ["sep"], octubre: ["oct"], noviembre: ["nov"], diciembre: ["dic"],
 };

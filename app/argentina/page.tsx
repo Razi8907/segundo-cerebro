@@ -450,7 +450,7 @@ export default function ArgentinaDashboard() {
           <OperacionesPanel country="ar" mes={isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "septiembre"} />
         )}
 
-        {!isQ2 && sector === "finanzas" && <FinanzasDashboardAR />}
+        {!isQ2 && sector === "finanzas" && <FinanzasDashboardAR mes={mesFilter} mesLabel={mesLabels[mesFilter]} />}
 
         {!isQ2 && sector === "seguimiento" && (
           <SeguimientoComercial country="ar" />
