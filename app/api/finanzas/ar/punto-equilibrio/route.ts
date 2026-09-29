@@ -3,39 +3,35 @@ import { getSupabase } from "../../../../lib/supabase";
 
 export const runtime = "nodejs";
 
-// Meses con operación medible para el punto de equilibrio (Informe Utilidad desde enero,
-// pero el detalle por transportadora solo tiene sentido desde abril: Urbano arrancó en marzo).
+// Meses con detalle por transportadora (Urbano arrancó en marzo '26).
 const MESES = ["abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
 
 // GET /api/finanzas/ar/punto-equilibrio
-// Devuelve, por mes: ingresadas/movilizadas (resumen_operacional, misma fuente que Operaciones)
-// y el desglose por transportadora del último snapshot de operations_data (mix + ticket real).
+// Guías movilizadas EN VIVO con la misma regla y snapshot que el Dashboard operativo,
+// por mes / día de orden / transportadora (+ valor para el ticket real), e ingresadas
+// de resumen_operacional (Seguimiento Diario).
 export async function GET() {
   const sb = getSupabase();
-  const { data: resumen, error } = await sb
-    .from("resumen_operacional")
-    .select("mes, ingresadas, movilizadas, entregadas, devueltas, en_proceso, updated_at")
-    .eq("country", "ar")
-    .in("mes", MESES);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const [ops, resumen] = await Promise.all([
+    sb.rpc("get_ops_transportadora", { p_country: "ar", p_meses: MESES }),
+    sb.from("resumen_operacional").select("mes, ingresadas").eq("country", "ar").in("mes", MESES),
+  ]);
+  if (ops.error) return NextResponse.json({ error: ops.error.message }, { status: 500 });
+  if (resumen.error) return NextResponse.json({ error: resumen.error.message }, { status: 500 });
 
-  const meses = (resumen ?? []).filter((r) => (r.movilizadas ?? 0) > 0).map((r) => r.mes);
-  let transportadoras: { mes: string; transportadora: string; total: number; movilizadas: number; entregadas: number; ticket: number }[] = [];
-  if (meses.length > 0) {
-    const { data, error: e2 } = await sb.rpc("get_ops_transportadora", { p_country: "ar", p_meses: meses });
-    if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
-    transportadoras = (data ?? []).map((t: Record<string, unknown>) => ({
-      mes: String(t.mes),
-      transportadora: String(t.transportadora),
-      total: Number(t.total) || 0,
-      movilizadas: Number(t.movilizadas) || 0,
-      entregadas: Number(t.entregadas) || 0,
-      ticket: Number(t.ticket) || 0,
-    }));
-  }
+  const rows = (ops.data ?? []).map((t: Record<string, unknown>) => ({
+    mes: String(t.mes),
+    mesOrden: t.mes_orden == null ? null : Number(t.mes_orden),
+    dia: t.dia == null ? null : Number(t.dia),
+    transportadora: String(t.transportadora),
+    total: Number(t.total) || 0,
+    movilizadas: Number(t.movilizadas) || 0,
+    entregadas: Number(t.entregadas) || 0,
+    valor: Number(t.valor_movilizadas) || 0,
+  }));
 
   return NextResponse.json(
-    { resumen: resumen ?? [], transportadoras },
+    { rows, ingresadas: resumen.data ?? [] },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
