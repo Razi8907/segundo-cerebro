@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   LineChart,
   Line,
@@ -223,7 +223,13 @@ export default function FinanzasDashboardAR({ mes = "agosto", mesLabel }: { mes?
       {!loading && view === "pnl" && <PnlView d={d} />}
       {!loading && view === "fulfillment" && <FulfillmentView d={d} />}
       {!loading && view === "liquidaciones" && <LiquidacionesView d={d} />}
-      {!loading && view === "punto_equilibrio" && <PuntoEquilibrioView />}
+      {!loading && view === "punto_equilibrio" && (
+        <PuntoEquilibrioView
+          mesKeys={MES_FILTER_TO_KEYS[mes] ?? ["ago"]}
+          periodoLabel={mesLabel ?? mes}
+          rendiciones={data.rendiciones ?? {}}
+        />
+      )}
 
       {editing && (
         <FinanzasEditor
@@ -272,56 +278,307 @@ function beCalc(opex: number, margenFixy: number, margenUrbano: number, mixPct: 
   };
 }
 
-// Constantes reales de Junio 2026
-const JUN = {
-  opex: 44_932_980, // $22.657.319 caja + $22.275.661 banco
-  ticket: 57_808,
-  comPct: 1.5,
-  pctCod: 50,
-  margenFixy: 1_917,
-  margenUrbano: 3_284,
-  guiasFixy: 10_268,
-  guiasUrbano: 3_779,
+// Supuestos de comisión COD (Informe Utilidad Gerencial, junio 2026)
+const COM_PCT = 1.5;
+const PCT_COD = 50;
+
+// Gasto mensual de meses SIN rendición de caja cargada (dato de la rendición en papel).
+// Cuando se sube la rendición del mes desde "Rendición de caja", esa manda.
+const OPEX_HIST: Partial<Record<MesKey, { total: number; fijos: number | null; nota: string }>> = {
+  jun: { total: 44_932_980, fijos: null, nota: "Caja $22,7M + Banco $22,3M" },
+  jul: { total: 50_154_900, fijos: 34_182_867, nota: "Egresos de caja de julio" },
 };
 
-// Costo recurrente de Julio 2026 (base para el punto de equilibrio):
-// Gastos fijos $34.182.867 + variables recurrentes (Sueldos $1.981.000 + Comercial
-// $4.480.000 + Oficina $572.986 = $7.033.986). Excluye viajes, evento comercial y
-// gastos legales de único pago (no son mensuales constantes).
-const JUL_OPEX_RECURRENTE = 41_216_853;
+const PE_KEYS: MesKey[] = ["abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
+const KEY_TO_MES: Record<MesKey, string> = {
+  ene: "enero", feb: "febrero", mar: "marzo", abr: "abril", may: "mayo", jun: "junio",
+  jul: "julio", ago: "agosto", sep: "septiembre", oct: "octubre", nov: "noviembre", dic: "diciembre",
+};
+const MES_IDX: Record<MesKey, number> = { ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5, jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11 };
+const MES_CORTO: Record<MesKey, string> = { ene: "Ene", feb: "Feb", mar: "Mar", abr: "Abr", may: "May", jun: "Jun", jul: "Jul", ago: "Ago", sep: "Sep", oct: "Oct", nov: "Nov", dic: "Dic" };
 
-function PuntoEquilibrioView() {
-  // Simulador interactivo — arranca con el costo recurrente de julio (fijos + variables recurrentes)
-  const [opex, setOpex] = useState(JUL_OPEX_RECURRENTE);
-  const [margenFixy, setMargenFixy] = useState(JUN.margenFixy);
-  const [margenUrbano, setMargenUrbano] = useState(JUN.margenUrbano);
-  const [mixPct, setMixPct] = useState(73);
-  const [ticket, setTicket] = useState(JUN.ticket);
-  const [comPct, setComPct] = useState(JUN.comPct);
-  const [pctCod, setPctCod] = useState(JUN.pctCod);
+interface PeApi {
+  resumen: { mes: string; ingresadas: number; movilizadas: number; entregadas: number; en_proceso: number }[];
+  transportadoras: { mes: string; transportadora: string; total: number; movilizadas: number; entregadas: number; ticket: number }[];
+}
+
+interface PeMes {
+  m: MesKey;
+  ingresadas: number;
+  movilizadas: number;
+  fixy: number;
+  urbano: number;
+  otras: number;
+  mixPct: number;          // % Fixy sobre movilizadas
+  ticket: number;
+  margenFixy: number;
+  margenUrbano: number;
+  margenMes: MesKey;       // de qué mes es el margen logístico usado
+  comGuia: number;
+  uM: number;              // utilidad promedio por guía (mix real)
+  utilidad: number;
+  opexTotal: number;
+  opexFijos: number | null;
+  opexFuente: string;      // "Rendición de caja", "Rendición en papel", "Estimado con Ago"
+  opexEstimado: boolean;
+  beTotal: number;
+  beFijos: number | null;
+  resultado: number;
+  resultadoFijos: number | null;
+  enCurso: boolean;
+  diasMes: number;
+}
+
+function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<MesKey, RendicionCaja>>): PeMes[] {
+  if (!api) return [];
+  const hoy = new Date();
+  const out: PeMes[] = [];
+  let ultimoOpex: { m: MesKey; total: number; fijos: number | null } | null = null;
+
+  for (const m of PE_KEYS) {
+    // Gasto del mes: rendición cargada > rendición en papel > último conocido (estimado)
+    const r = rendiciones[m];
+    let opexTotal: number | null = null, opexFijos: number | null = null, opexFuente = "", opexEstimado = false;
+    if (r) {
+      opexTotal = r.movimientos.reduce((s, x) => s + x.monto, 0);
+      opexFijos = r.movimientos.filter((x) => x.tipo === "fijo").reduce((s, x) => s + x.monto, 0);
+      opexFuente = "Rendición de caja";
+    } else if (OPEX_HIST[m]) {
+      opexTotal = OPEX_HIST[m]!.total;
+      opexFijos = OPEX_HIST[m]!.fijos;
+      opexFuente = OPEX_HIST[m]!.nota;
+    }
+    if (opexTotal !== null) ultimoOpex = { m, total: opexTotal, fijos: opexFijos };
+
+    const res = api.resumen.find((x) => x.mes === KEY_TO_MES[m]);
+    if (!res || !res.movilizadas) continue;
+    if (opexTotal === null) {
+      if (!ultimoOpex) continue;
+      opexTotal = ultimoOpex.total;
+      opexFijos = ultimoOpex.fijos;
+      opexFuente = `Estimado con gasto de ${MES_CORTO[ultimoOpex.m]}`;
+      opexEstimado = true;
+    }
+
+    const ts = api.transportadoras.filter((t) => t.mes === KEY_TO_MES[m]);
+    const fixy = ts.filter((t) => t.transportadora.includes("FIXY")).reduce((s, t) => s + t.movilizadas, 0);
+    const urbano = ts.filter((t) => t.transportadora.includes("URBANO")).reduce((s, t) => s + t.movilizadas, 0);
+    const movTs = ts.reduce((s, t) => s + t.movilizadas, 0);
+    const movilizadas = res.movilizadas;
+    const otras = Math.max(movilizadas - fixy - urbano, 0);
+    const totTs = ts.reduce((s, t) => s + t.total, 0);
+    const ticket = totTs > 0 ? ts.reduce((s, t) => s + t.ticket * t.total, 0) / totTs : 57_808;
+    const mixPct = fixy + urbano > 0 ? (fixy / (fixy + urbano)) * 100 : 73;
+
+    // Margen logístico: el del mes si hay Informe Utilidad; si no, el último informe disponible
+    const idx = MES_IDX[m];
+    const histIdx = Math.min(idx, FIXY_HIST.length - 1);
+    const margenMes = (Object.keys(MES_IDX) as MesKey[])[histIdx];
+    const margenFixy = FIXY_HIST[histIdx].util;
+    const margenUrbano = URBANO_HIST[histIdx].util;
+
+    const b = beCalc(opexTotal, margenFixy, margenUrbano, mixPct, ticket, COM_PCT, PCT_COD);
+    // Utilidad real: cada transportadora con su margen; "otras" al promedio del mix
+    const utilidad = fixy * b.uF + urbano * b.uU + otras * b.uM;
+    const uM = movilizadas > 0 ? utilidad / movilizadas : b.uM;
+    const diasMes = new Date(2026, idx + 1, 0).getDate();
+    out.push({
+      m, ingresadas: res.ingresadas, movilizadas, fixy, urbano, otras: movTs ? otras : 0, mixPct, ticket,
+      margenFixy, margenUrbano, margenMes, comGuia: b.comGuia, uM, utilidad,
+      opexTotal, opexFijos, opexFuente, opexEstimado,
+      beTotal: uM > 0 ? Math.ceil(opexTotal / uM) : 0,
+      beFijos: opexFijos !== null && uM > 0 ? Math.ceil(opexFijos / uM) : null,
+      resultado: utilidad - opexTotal,
+      resultadoFijos: opexFijos !== null ? utilidad - opexFijos : null,
+      enCurso: hoy.getFullYear() === 2026 && hoy.getMonth() === idx,
+      diasMes,
+    });
+  }
+  return out;
+}
+
+function PuntoEquilibrioView({ mesKeys, periodoLabel, rendiciones }: { mesKeys: MesKey[]; periodoLabel: string; rendiciones: Partial<Record<MesKey, RendicionCaja>> }) {
+  const [api, setApi] = useState<PeApi | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/finanzas/ar/punto-equilibrio", { cache: "no-store" })
+      .then(async (r) => { if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`); return r.json(); })
+      .then((j) => { if (alive) setApi(j); })
+      .catch((e) => { if (alive) setErr(e?.message || "Error al cargar"); });
+    return () => { alive = false; };
+  }, []);
+
+  const meses = useMemo(() => buildPuntoEquilibrio(api, rendiciones), [api, rendiciones]);
+  // Mes foco: el último del período elegido arriba que tenga operación
+  const foco = [...meses].reverse().find((x) => mesKeys.includes(x.m)) ?? null;
+
+  if (err) return <div className="glass-card p-5 text-sm text-red-400">No se pudo cargar el punto de equilibrio: {err}</div>;
+  if (!api) return <div className="text-xs t-muted text-center py-4">Calculando punto de equilibrio…</div>;
+
+  return (
+    <div className="space-y-6">
+      {/* Intro */}
+      <div className="glass-card p-4 border-l-2" style={{ borderColor: C.orange }}>
+        <p className="text-sm t-secondary leading-relaxed">
+          <b className="t-primary">¿Cuántas guías/mes hay que mover para que la utilidad cubra los gastos?</b> Utilidad por guía = <b className="t-primary">margen logístico</b> de cada transportadora
+          (Informe Utilidad Gerencial) + <b className="t-primary">comisión COD</b> ({PCT_COD}% COD × ticket real del mes × {COM_PCT}%). Guías = <b className="t-primary">movilizadas</b> de Operaciones,
+          con el mix Fixy/Urbano real del mes. Gasto = <b className="t-primary">rendición de caja</b> del mes.
+        </p>
+      </div>
+
+      {!foco && (
+        <div className="glass-card p-8 text-center">
+          <p className="text-sm t-secondary">No hay operación cargada para {periodoLabel}.</p>
+          <p className="text-[11px] t-muted mt-1">El punto de equilibrio se calcula desde abril 2026 con las guías movilizadas de Operaciones.</p>
+        </div>
+      )}
+
+      {foco && <PeFoco f={foco} />}
+
+      {/* Evolución mensual */}
+      {meses.length > 0 && (
+        <div className="glass-card overflow-x-auto">
+          <div className="px-5 pt-4 pb-2">
+            <h3 className="text-sm font-semibold t-primary">📈 Evolución del punto de equilibrio</h3>
+            <p className="text-[11px] t-muted">Cobertura = guías movilizadas ÷ guías necesarias. ≥ 100% = el mes cubrió sus gastos.</p>
+          </div>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-gray-700">
+                <Th align="left">Mes</Th>
+                <Th>Movilizadas</Th>
+                <Th>Mix Fixy</Th>
+                <Th>Utilidad/guía</Th>
+                <Th>Gasto del mes</Th>
+                <Th>Utilidad</Th>
+                <Th>Resultado</Th>
+                <Th>Equilibrio</Th>
+                <Th>Cobertura</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {meses.map((r) => {
+                const cob = r.beTotal > 0 ? r.movilizadas / r.beTotal : 0;
+                const esFoco = foco?.m === r.m;
+                return (
+                  <tr key={r.m} className="border-b border-gray-800/50" style={esFoco ? { background: "rgba(232,105,42,0.08)" } : undefined}>
+                    <Td align="left" bold>
+                      {MES_LABELS_PE[r.m]}
+                      {r.enCurso && <span className="ml-2 text-[10px] text-amber-400">en curso</span>}
+                    </Td>
+                    <Td mono>{fmtNum(r.movilizadas)}</Td>
+                    <Td mono muted>{r.mixPct.toFixed(0)}%</Td>
+                    <Td mono>${fmtNum(Math.round(r.uM))}</Td>
+                    <Td mono color={C.red}>{fmtArs(r.opexTotal)}{r.opexEstimado && <span className="text-amber-400"> *</span>}</Td>
+                    <Td mono color={C.green}>{fmtArs(r.utilidad)}</Td>
+                    <Td mono bold color={r.resultado >= 0 ? C.green : C.red}>{fmtArs(r.resultado)}</Td>
+                    <Td mono>{fmtNum(r.beTotal)}</Td>
+                    <Td mono bold color={cob >= 1 ? C.green : C.red}>{fmtPct(cob)}</Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <p className="text-[11px] t-muted px-5 py-3">
+            * Mes sin rendición de caja cargada: se usa el gasto del último mes conocido. Los meses sin Informe Utilidad usan el margen logístico del último informe (Jun &apos;26).
+          </p>
+        </div>
+      )}
+
+      {/* HISTÓRICO POR TRANSPORTADORA */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <HistTable titulo="Utilidad real por guía — Fixy" color={C.orange} rows={FIXY_HIST} />
+        <HistTable titulo="Utilidad real por guía — Urbano" color={C.green} rows={URBANO_HIST} />
+      </div>
+
+      {foco && <PeSimulador key={foco.m} f={foco} />}
+    </div>
+  );
+}
+
+const MES_LABELS_PE: Record<MesKey, string> = {
+  ene: "Enero", feb: "Febrero", mar: "Marzo", abr: "Abril", may: "Mayo", jun: "Junio",
+  jul: "Julio", ago: "Agosto", sep: "Septiembre", oct: "Octubre", nov: "Noviembre", dic: "Diciembre",
+};
+
+function PeFoco({ f }: { f: PeMes }) {
+  const gap = f.beTotal - f.movilizadas;
+  const gapFijos = f.beFijos !== null ? f.beFijos - f.movilizadas : null;
+  const margenPropio = f.margenMes === f.m;
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <h3 className="text-sm font-semibold t-primary">🎯 Punto de equilibrio — {MES_LABELS_PE[f.m]} 2026</h3>
+        {f.enCurso && <Badge tone="amber">Mes en curso — guías parciales</Badge>}
+        <Badge tone={f.opexEstimado ? "amber" : "blue"}>Gasto: {f.opexFuente}</Badge>
+        <Badge tone={margenPropio ? "blue" : "amber"}>Margen logístico: {margenPropio ? `informe ${MES_CORTO[f.m]}` : `último informe (${MES_CORTO[f.margenMes]})`}</Badge>
+      </div>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          label="Gasto del mes"
+          value={fmtArs(f.opexTotal)}
+          sub={f.opexFijos !== null ? `Fijos ${fmtArs(f.opexFijos)} + variables ${fmtArs(f.opexTotal - f.opexFijos)}` : f.opexFuente}
+          tone="orange"
+        />
+        <KpiCard
+          label="Guías movilizadas"
+          value={fmtNum(f.movilizadas)}
+          sub={`Fixy ${fmtNum(f.fixy)} + Urbano ${fmtNum(f.urbano)} · mix ${f.mixPct.toFixed(0)}/${(100 - f.mixPct).toFixed(0)}`}
+          tone="blue"
+        />
+        <KpiCard label="Utilidad generada" value={fmtArs(f.utilidad)} sub={`$${fmtNum(Math.round(f.uM))}/guía (margen + COD)`} tone="green" />
+        <KpiCard
+          label={`Resultado ${MES_CORTO[f.m].toLowerCase()}`}
+          value={fmtArs(f.resultado)}
+          sub={f.resultado >= 0 ? "Por encima del equilibrio" : "Por debajo del equilibrio"}
+          tone={f.resultado >= 0 ? "green" : "red"}
+        />
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
+        <KpiCard
+          label="Punto de equilibrio (gasto total)"
+          value={`${fmtNum(f.beTotal)} guías/mes`}
+          sub={`≈ ${fmtNum(Math.ceil(f.beTotal / f.diasMes))} guías/día · para que utilidad = gasto del mes`}
+          tone="orange"
+        />
+        <KpiCard
+          label={gap > 0 ? "Faltan para el equilibrio" : "Por encima del equilibrio"}
+          value={`${fmtNum(Math.abs(gap))} guías`}
+          sub={`Movilizó ${fmtNum(f.movilizadas)} de ${fmtNum(f.beTotal)} necesarias (${fmtPct(f.beTotal ? f.movilizadas / f.beTotal : 0)})`}
+          tone={gap > 0 ? "red" : "green"}
+        />
+        {f.beFijos !== null && gapFijos !== null ? (
+          <KpiCard
+            label="Equilibrio solo gastos fijos"
+            value={`${fmtNum(f.beFijos)} guías/mes`}
+            sub={gapFijos > 0 ? `Faltan ${fmtNum(gapFijos)} guías para cubrir los fijos` : `Cubre los fijos con ${fmtNum(-gapFijos)} guías de margen`}
+            tone={gapFijos > 0 ? "red" : "green"}
+          />
+        ) : (
+          <KpiCard label="Equilibrio solo gastos fijos" value="—" sub="Sin separación fijos/variables para este mes" tone="blue" />
+        )}
+      </div>
+      <p className="text-[11px] t-muted mt-2">
+        Ticket promedio real del mes {`$${fmtNum(Math.round(f.ticket))}`} → comisión COD {`$${fmtNum(Math.round(f.comGuia))}`}/guía.
+        Margen logístico: Fixy ${fmtNum(f.margenFixy)} · Urbano ${fmtNum(f.margenUrbano)} por guía.
+      </p>
+    </div>
+  );
+}
+
+function PeSimulador({ f }: { f: PeMes }) {
+  // Simulador interactivo — arranca con los valores reales del mes elegido
+  const [opex, setOpex] = useState(Math.round(f.opexTotal / 100_000) * 100_000);
+  const [margenFixy, setMargenFixy] = useState(f.margenFixy);
+  const [margenUrbano, setMargenUrbano] = useState(f.margenUrbano);
+  const [mixPct, setMixPct] = useState(Math.round(f.mixPct));
+  const [ticket, setTicket] = useState(Math.round(f.ticket / 1000) * 1000);
+  const [comPct, setComPct] = useState(COM_PCT);
+  const [pctCod, setPctCod] = useState(PCT_COD);
 
   const sim = useMemo(() => beCalc(opex, margenFixy, margenUrbano, mixPct, ticket, comPct, pctCod), [opex, margenFixy, margenUrbano, mixPct, ticket, comPct, pctCod]);
-
-  // Punto de equilibrio REAL de junio (fijo, con la data real)
-  const real = useMemo(() => {
-    const guiasTotal = JUN.guiasFixy + JUN.guiasUrbano;
-    const mixReal = (JUN.guiasFixy / guiasTotal) * 100;
-    const b = beCalc(JUN.opex, JUN.margenFixy, JUN.margenUrbano, mixReal, JUN.ticket, JUN.comPct, JUN.pctCod);
-    const utilidad = JUN.guiasFixy * b.uF + JUN.guiasUrbano * b.uU;
-    const resultado = utilidad - JUN.opex;
-    return { ...b, guiasTotal, mixReal, utilidad, resultado, gap: b.beMix - guiasTotal };
-  }, []);
-
-  // Punto de equilibrio JULIO 2026 (costo recurrente). Movilizadas de Operaciones,
-  // margen logístico de junio (informe de julio por transportadora pendiente).
-  const realJul = useMemo(() => {
-    const b = beCalc(JUL_OPEX_RECURRENTE, JUN.margenFixy, JUN.margenUrbano, 73, JUN.ticket, JUN.comPct, JUN.pctCod);
-    const guiasGen = 14_295;   // órdenes generadas en julio (Operaciones)
-    const guiasMov = 11_310;   // movilizadas netas (excl. canceladas/pendientes/guía generada)
-    const utilidad = guiasMov * b.uM;
-    const resultado = utilidad - JUL_OPEX_RECURRENTE;
-    return { ...b, guiasGen, guiasMov, utilidad, resultado, gap: b.beMix - guiasGen };
-  }, []);
 
   const simBars = [
     { name: "Fixy solo", guias: sim.beFixy, fill: C.orange },
@@ -330,89 +587,38 @@ function PuntoEquilibrioView() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Intro */}
-      <div className="glass-card p-4 border-l-2" style={{ borderColor: C.orange }}>
-        <p className="text-sm t-secondary leading-relaxed">
-          <b className="t-primary">¿Cuántas guías/mes hay que mover para que la utilidad cubra los gastos?</b> La utilidad por guía es el{" "}
-          <b className="t-primary">margen logístico</b> de cada transportadora (dato real del Informe Utilidad Gerencial) más la{" "}
-          <b className="t-primary">comisión COD</b> (COD % × ticket × comisión, solo en las guías con cobro contra entrega). OPEX real de junio: {fmtArs(JUN.opex)}.
-        </p>
+    <div className="glass-card p-5">
+      <h3 className="text-sm font-semibold t-primary">🧮 Simulador — ¿qué pasa si…?</h3>
+      <p className="text-[11px] t-muted mt-1 mb-4">Arranca con los valores reales de {MES_LABELS_PE[f.m].toLowerCase()} (gasto {fmtArs(f.opexTotal)}, mix {f.mixPct.toFixed(0)}% Fixy, ticket ${fmtNum(Math.round(f.ticket))}). Movés las variables y el punto de equilibrio se recalcula en vivo.</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
+        <SimSlider label="Gasto del mes" value={opex} min={10_000_000} max={80_000_000} step={500_000} onChange={setOpex} fmt={(v) => fmtArs(v)} />
+        <SimSlider label="Margen logístico Fixy" value={margenFixy} min={500} max={5000} step={10} onChange={setMargenFixy} fmt={(v) => `$${fmtNum(v)}`} />
+        <SimSlider label="Margen logístico Urbano" value={margenUrbano} min={500} max={6000} step={10} onChange={setMargenUrbano} fmt={(v) => `$${fmtNum(v)}`} />
+        <SimSlider label="Mix (% Fixy)" value={mixPct} min={0} max={100} step={1} onChange={setMixPct} fmt={(v) => `${v}% Fixy`} />
+        <SimSlider label="Ticket promedio COD" value={ticket} min={30_000} max={120_000} step={1000} onChange={setTicket} fmt={(v) => `$${fmtNum(v)}`} />
+        <SimSlider label="Comisión COD" value={comPct} min={0.1} max={3} step={0.1} onChange={setComPct} fmt={(v) => `${v}%`} />
+        <SimSlider label="% de guías que son COD" value={pctCod} min={0} max={100} step={1} onChange={setPctCod} fmt={(v) => `${v}%`} />
       </div>
 
-      {/* PUNTO DE EQUILIBRIO — JULIO 2026 (costo recurrente) */}
-      <div>
-        <h3 className="text-sm font-semibold t-primary mb-3">🎯 Punto de equilibrio — Julio 2026 (costo recurrente)</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="OPEX recurrente" value={fmtArs(JUL_OPEX_RECURRENTE)} sub="Fijos $34,2M + var. recurrentes $7,0M" tone="orange" />
-          <KpiCard label="Órdenes generadas" value={fmtNum(realJul.guiasGen)} sub={`Movilizadas netas ${fmtNum(realJul.guiasMov)}`} tone="blue" />
-          <KpiCard label="Utilidad generada" value={fmtArs(realJul.utilidad)} sub={`$${fmtNum(Math.round(realJul.uM))}/guía · sobre movilizadas`} tone="green" />
-          <KpiCard label="Resultado julio" value={fmtArs(realJul.resultado)} sub={realJul.resultado >= 0 ? "Por encima del equilibrio" : "Por debajo del equilibrio"} tone={realJul.resultado >= 0 ? "green" : "red"} />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-          <KpiCard label="Punto de equilibrio (mix 73/27)" value={`${fmtNum(realJul.beMix)} guías/mes`} sub="Para que utilidad = OPEX recurrente" tone="orange" />
-          <KpiCard label={realJul.gap > 0 ? "Faltan para el equilibrio" : "Por encima del equilibrio"} value={`${fmtNum(Math.abs(realJul.gap))} guías`} sub={`Generó ${fmtNum(realJul.guiasGen)} de ${fmtNum(realJul.beMix)} necesarias`} tone={realJul.gap > 0 ? "red" : "green"} />
-          <KpiCard label="Margen por guía" value={`$${fmtNum(Math.round(realJul.uM))}/guía`} sub="usa margen logístico de junio (jul s/informe)" tone="blue" />
-        </div>
-        <p className="text-[11px] t-muted mt-2">Costo recurrente = gastos fijos ($34.182.867) + variables recurrentes Sueldos/Comercial/Oficina ($7.033.986). Excluye viajes, evento comercial y legales de único pago. Egresos totales de caja en julio: $50.154.900.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
+        <KpiCard label="BE — solo Fixy" value={`${fmtNum(sim.beFixy)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uF))}/guía (margen + COD)`} tone="orange" />
+        <KpiCard label="BE — solo Urbano" value={`${fmtNum(sim.beUrb)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uU))}/guía (margen + COD)`} tone="green" />
+        <KpiCard label={`BE — mix ${mixPct}/${100 - mixPct}`} value={`${fmtNum(sim.beMix)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uM))}/guía promedio`} tone="blue" />
       </div>
 
-      {/* PUNTO DE EQUILIBRIO REAL — JUNIO */}
-      <div>
-        <h3 className="text-sm font-semibold t-primary mb-3">🎯 Punto de equilibrio real — Junio 2026 (referencia)</h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="OPEX del mes" value={fmtArs(JUN.opex)} sub="Caja $22,7M + Banco $22,3M" tone="orange" />
-          <KpiCard label="Guías facturadas" value={fmtNum(real.guiasTotal)} sub={`Fixy ${fmtNum(JUN.guiasFixy)} + Urbano ${fmtNum(JUN.guiasUrbano)}`} tone="blue" />
-          <KpiCard label="Utilidad generada" value={fmtArs(real.utilidad)} sub={`Margen + comisión COD · $${fmtNum(Math.round(real.uM))}/guía`} tone="green" />
-          <KpiCard label="Resultado junio" value={fmtArs(real.resultado)} sub={real.resultado >= 0 ? "Por encima del equilibrio" : "Por debajo del equilibrio"} tone={real.resultado >= 0 ? "green" : "red"} />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-3">
-          <KpiCard label="Punto de equilibrio (mix real 73/27)" value={`${fmtNum(real.beMix)} guías/mes`} sub="Para que utilidad = OPEX" tone="orange" />
-          <KpiCard label={real.gap >= 0 ? "Faltaron para el equilibrio" : "Por encima del equilibrio"} value={`${fmtNum(Math.abs(real.gap))} guías`} sub={`Movió ${fmtNum(real.guiasTotal)} de ${fmtNum(real.beMix)} necesarias`} tone={real.gap >= 0 ? "red" : "green"} />
-          <KpiCard label="BE si fuera 100% Urbano" value={`${fmtNum(real.beUrb)} guías/mes`} sub={`vs Fixy solo ${fmtNum(real.beFixy)} — Urbano rinde más/guía`} tone="green" />
-        </div>
-      </div>
-
-      {/* HISTÓRICO POR TRANSPORTADORA */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <HistTable titulo="Utilidad real por guía — Fixy" color={C.orange} rows={FIXY_HIST} />
-        <HistTable titulo="Utilidad real por guía — Urbano" color={C.green} rows={URBANO_HIST} />
-      </div>
-
-      {/* SIMULADOR INTERACTIVO */}
-      <div className="glass-card p-5">
-        <h3 className="text-sm font-semibold t-primary">🧮 Simulador — proyectá julio en adelante</h3>
-        <p className="text-[11px] t-muted mt-1 mb-4">Arranca con el costo recurrente de julio 2026 ($41.216.853 = fijos $34.182.867 + variables recurrentes $7.033.986, sin viajes/eventos). Movés las variables y el punto de equilibrio se recalcula en vivo.</p>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
-          <SimSlider label="OPEX del mes" value={opex} min={10_000_000} max={80_000_000} step={500_000} onChange={setOpex} fmt={(v) => fmtArs(v)} />
-          <SimSlider label="Margen logístico Fixy" value={margenFixy} min={500} max={5000} step={10} onChange={setMargenFixy} fmt={(v) => `$${fmtNum(v)}`} />
-          <SimSlider label="Margen logístico Urbano" value={margenUrbano} min={500} max={6000} step={10} onChange={setMargenUrbano} fmt={(v) => `$${fmtNum(v)}`} />
-          <SimSlider label="Mix (% Fixy)" value={mixPct} min={0} max={100} step={1} onChange={setMixPct} fmt={(v) => `${v}% Fixy`} />
-          <SimSlider label="Ticket promedio COD" value={ticket} min={30_000} max={120_000} step={1000} onChange={setTicket} fmt={(v) => `$${fmtNum(v)}`} />
-          <SimSlider label="Comisión COD" value={comPct} min={0.1} max={3} step={0.1} onChange={setComPct} fmt={(v) => `${v}%`} />
-          <SimSlider label="% de guías que son COD" value={pctCod} min={0} max={100} step={1} onChange={setPctCod} fmt={(v) => `${v}%`} />
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
-          <KpiCard label="BE — solo Fixy" value={`${fmtNum(sim.beFixy)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uF))}/guía (margen + COD)`} tone="orange" />
-          <KpiCard label="BE — solo Urbano" value={`${fmtNum(sim.beUrb)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uU))}/guía (margen + COD)`} tone="green" />
-          <KpiCard label={`BE — mix ${mixPct}/${100 - mixPct}`} value={`${fmtNum(sim.beMix)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uM))}/guía promedio`} tone="blue" />
-        </div>
-
-        <div className="mt-5" style={{ height: 220 }}>
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={simBars} margin={{ top: 16, right: 10, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
-              <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} />
-              <Tooltip formatter={(v) => `${fmtNum(typeof v === "number" ? v : 0)} guías/mes`} contentStyle={{ background: "#1a1a1a", border: `1px solid ${C.orange}`, fontSize: 12 }} />
-              <ReferenceLine y={real.guiasTotal} stroke={C.gray} strokeDasharray="4 4" label={{ value: `Junio real: ${fmtNum(real.guiasTotal)}`, fill: "#94a3b8", fontSize: 10, position: "insideTopRight" }} />
-              <Bar dataKey="guias" radius={[4, 4, 0, 0]}>
-                {simBars.map((b, i) => <Cell key={i} fill={b.fill} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      <div className="mt-5" style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={simBars} margin={{ top: 16, right: 10, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+            <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} />
+            <Tooltip formatter={(v) => `${fmtNum(typeof v === "number" ? v : 0)} guías/mes`} contentStyle={{ background: "#1a1a1a", border: `1px solid ${C.orange}`, fontSize: 12 }} />
+            <ReferenceLine y={f.movilizadas} stroke={C.gray} strokeDasharray="4 4" label={{ value: `${MES_CORTO[f.m]} real: ${fmtNum(f.movilizadas)}`, fill: "#94a3b8", fontSize: 10, position: "insideTopRight" }} />
+            <Bar dataKey="guias" radius={[4, 4, 0, 0]}>
+              {simBars.map((b, i) => <Cell key={i} fill={b.fill} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   );
