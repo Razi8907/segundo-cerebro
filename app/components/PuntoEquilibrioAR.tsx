@@ -28,23 +28,18 @@ import {
 import type { MesKey, RendicionCaja } from "../lib/finanzas-ar-types";
 import { C, fmtArs, fmtArsExact, fmtNum, fmtPct, Badge, KpiCard, Td, Th, type Tone } from "./finanzas-ar-ui";
 
-// Margen logístico real por guía (Informe Utilidad Gerencial, Power BI)
-const FIXY_HIST = [
-  { mes: "Ene", guias: 8274, util: 1353 },
-  { mes: "Feb", guias: 6476, util: 1394 },
-  { mes: "Mar", guias: 4683, util: 1425 },
-  { mes: "Abr", guias: 4689, util: 1868 },
-  { mes: "May", guias: 11871, util: 1859 },
-  { mes: "Jun", guias: 10268, util: 1917 },
-];
-const URBANO_HIST = [
-  { mes: "Ene", guias: 6, util: 2393 },
-  { mes: "Feb", guias: 358, util: 2887 },
-  { mes: "Mar", guias: 1506, util: 2515 },
-  { mes: "Abr", guias: 4393, util: 2680 },
-  { mes: "May", guias: 4253, util: 2719 },
-  { mes: "Jun", guias: 3779, util: 3284 },
-];
+// Margen logístico real por guía (Informe Utilidad Gerencial, Power BI).
+// Meses sin informe usan el último mes cargado antes (se marca en pantalla).
+// Para cargar un mes nuevo: agregar su fila acá.
+const MARGEN_HIST: Partial<Record<MesKey, { fixy: number; urbano: number; guiasFixy: number | null; guiasUrbano: number | null }>> = {
+  ene: { fixy: 1353, urbano: 2393, guiasFixy: 8274, guiasUrbano: 6 },
+  feb: { fixy: 1394, urbano: 2887, guiasFixy: 6476, guiasUrbano: 358 },
+  mar: { fixy: 1425, urbano: 2515, guiasFixy: 4683, guiasUrbano: 1506 },
+  abr: { fixy: 1868, urbano: 2680, guiasFixy: 4689, guiasUrbano: 4393 },
+  may: { fixy: 1859, urbano: 2719, guiasFixy: 11871, guiasUrbano: 4253 },
+  jun: { fixy: 1917, urbano: 3284, guiasFixy: 10268, guiasUrbano: 3779 },
+  ago: { fixy: 2670, urbano: 4169, guiasFixy: null, guiasUrbano: null },
+};
 
 // Supuestos de comisión COD (Informe Utilidad Gerencial, junio 2026)
 const COM_PCT = 1.5;
@@ -167,10 +162,9 @@ function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<Mes
     const mixPct = fixy + urbano > 0 ? (fixy / (fixy + urbano)) * 100 : 100;
 
     // Margen logístico: el del mes si hay Informe Utilidad; si no, el último informe disponible
-    const histIdx = Math.min(idx, FIXY_HIST.length - 1);
-    const margenMes = ALL_KEYS[histIdx];
-    const margenFixy = FIXY_HIST[histIdx].util;
-    const margenUrbano = URBANO_HIST[histIdx].util;
+    const margenMes = [...ALL_KEYS.slice(0, idx + 1)].reverse().find((k) => MARGEN_HIST[k]) ?? "jun";
+    const margenFixy = MARGEN_HIST[margenMes]!.fixy;
+    const margenUrbano = MARGEN_HIST[margenMes]!.urbano;
     const b = beCalc(opexTotal, margenFixy, margenUrbano, mixPct, ticket, COM_PCT, PCT_COD);
     const uGuia = (t: string) => (isFixy(t) ? b.uF : isUrb(t) ? b.uU : b.uM);
     const utilidad = rows.reduce((s, x) => s + x.movilizadas * uGuia(x.transportadora), 0);
@@ -279,8 +273,8 @@ export function PuntoEquilibrioVista({ api, mesKeys, periodoLabel, rendiciones }
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <HistTable titulo="Margen logístico real por guía — Fixy" color={C.orange} rows={FIXY_HIST} />
-        <HistTable titulo="Margen logístico real por guía — Urbano" color={C.green} rows={URBANO_HIST} />
+        <HistTable titulo="Margen logístico real por guía — Fixy" color={C.orange} rows={histRows("fixy")} />
+        <HistTable titulo="Margen logístico real por guía — Urbano" color={C.green} rows={histRows("urbano")} />
       </div>
 
       {foco && <Simulador key={foco.m} f={foco} />}
@@ -671,7 +665,7 @@ function Evolucion({ meses, foco }: { meses: PeMes[]; foco: MesKey | null }) {
         </tbody>
       </table>
       <p className="text-[11px] t-muted px-5 py-3">
-        * Mes sin rendición de caja cargada: se usa el gasto del último mes conocido. Los meses sin Informe Utilidad usan el margen logístico del último informe (Jun &apos;26).
+        * Mes sin rendición de caja cargada: se usa el gasto del último mes conocido. Los meses sin Informe Utilidad usan el margen logístico del último informe cargado (julio usa junio; septiembre usa agosto).
       </p>
     </div>
   );
@@ -746,7 +740,14 @@ function SimSlider({ label, value, min, max, step, onChange, fmt }: {
   );
 }
 
-function HistTable({ titulo, color, rows }: { titulo: string; color: string; rows: { mes: string; guias: number; util: number }[] }) {
+function histRows(t: "fixy" | "urbano") {
+  return ALL_KEYS.filter((k) => MARGEN_HIST[k]).map((k) => {
+    const h = MARGEN_HIST[k]!;
+    return { mes: MES_CORTO[k], guias: t === "fixy" ? h.guiasFixy : h.guiasUrbano, util: t === "fixy" ? h.fixy : h.urbano };
+  });
+}
+
+function HistTable({ titulo, color, rows }: { titulo: string; color: string; rows: { mes: string; guias: number | null; util: number }[] }) {
   return (
     <div className="glass-card p-4 overflow-x-auto">
       <h4 className="text-xs font-semibold mb-3" style={{ color }}>{titulo}</h4>
