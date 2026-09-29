@@ -293,7 +293,9 @@ export function PuntoEquilibrioVista({ api, mesKeys, periodoLabel, rendiciones }
           <Encabezado f={foco} />
           <Termometro f={foco} />
           <CuadroReal f={foco} />
-          <DetalleUtilidad f={foco} />
+          <Panoramas f={foco} />
+          <DetalleUtilidad f={foco} incluyeCod={false} />
+          <DetalleUtilidad f={foco} incluyeCod />
           <SeguimientoDiario f={foco} />
           <Analisis f={foco} />
           <Ganancias f={foco} />
@@ -471,20 +473,73 @@ function CuadroReal({ f }: { f: PeMes }) {
 }
 
 // ─── Detalle de la utilidad: por transportadora, margen logístico y comisión COD ───
-function DetalleUtilidad({ f }: { f: PeMes }) {
-  const pctU = (v: number) => fmtPct(f.utilidad > 0 ? v / f.utilidad : 0);
-  const margenTotal = f.lineas.reduce((s, l) => s + l.margenTotal, 0);
-  const codTotal = f.lineas.reduce((s, l) => s + l.codTotal, 0);
-  const guiasCod = f.lineas.reduce((s, l) => s + l.guiasCod, 0);
+// Panorama A: margen logístico + comisión COD encima. Panorama B: el margen ya incluye el COD.
+function panorama(f: PeMes, incluyeCod: boolean) {
+  const lineas = incluyeCod
+    ? f.lineas.map((l) => ({ ...l, guiasCod: 0, codTotal: 0, total: l.margenTotal, porGuia: l.margenGuia }))
+    : f.lineas;
+  const utilidad = lineas.reduce((s, l) => s + l.total, 0);
+  const uM = f.movilizadas > 0 ? utilidad / f.movilizadas : 0;
+  const be = uM > 0 ? Math.ceil(f.opexTotal / uM) : 0;
+  return { lineas, utilidad, uM, be, resultado: utilidad - f.opexTotal, gap: f.movilizadas - be };
+}
+
+function Panoramas({ f }: { f: PeMes }) {
+  const a = panorama(f, false);
+  const b = panorama(f, true);
+  const card = (titulo: string, sub: string, p: ReturnType<typeof panorama>, color: string) => (
+    <div className="glass-card p-5" style={{ borderTop: `4px solid ${color}` }}>
+      <div className="text-sm font-semibold t-primary">{titulo}</div>
+      <div className="text-[11px] t-muted mb-3">{sub}</div>
+      <div className="grid grid-cols-2 gap-3 text-xs">
+        <div><div className="t-muted uppercase text-[10px] tracking-wider">Utilidad por guía</div><div className="font-mono text-lg font-semibold t-primary">${fmtNum(Math.round(p.uM))}</div></div>
+        <div><div className="t-muted uppercase text-[10px] tracking-wider">Utilidad total</div><div className="font-mono text-lg font-semibold" style={{ color: C.green }}>{fmtArs(p.utilidad)}</div></div>
+        <div><div className="t-muted uppercase text-[10px] tracking-wider">Punto de equilibrio</div><div className="font-mono text-lg font-semibold t-primary">{fmtNum(p.be)} guías</div></div>
+        <div><div className="t-muted uppercase text-[10px] tracking-wider">{p.gap >= 0 ? "Por encima" : "Faltan"}</div><div className="font-mono text-lg font-semibold" style={{ color: p.gap >= 0 ? C.green : C.red }}>{fmtNum(Math.abs(p.gap))} guías</div></div>
+      </div>
+      <div className="mt-3 pt-3 border-t border-gray-700/50 flex items-baseline justify-between">
+        <span className="text-xs t-secondary">{p.resultado >= 0 ? "Ganancia" : "Pérdida"} del mes</span>
+        <span className="font-mono text-xl font-bold" style={{ color: p.resultado >= 0 ? C.green : C.red }}>{fmtArsExact(p.resultado)}</span>
+      </div>
+    </div>
+  );
+  return (
+    <div>
+      <h3 className="text-sm font-semibold t-primary mb-1">🔀 Dos panoramas — {MES_LABEL[f.m]}{f.enCurso ? " (hasta hoy)" : ""}</h3>
+      <p className="text-[11px] t-muted mb-3">
+        Mismas guías ({fmtNum(f.movilizadas)}) y mismo gasto ({fmtArs(f.opexTotal)}). Cambia solo si la comisión COD se suma al margen logístico o si ya viene incluida en él.
+        El resto de la pestaña (termómetro, seguimiento, análisis) usa el Panorama A.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        {card("Panorama A — margen + comisión COD", `Margen Fixy $${fmtNum(f.margenFixy)} · Urbano $${fmtNum(f.margenUrbano)} + COD (${PCT_COD}% × ticket × ${COM_PCT}%)`, a, C.orange)}
+        {card("Panorama B — el margen ya incluye el COD", `Utilidad Fixy $${fmtNum(f.margenFixy)} · Urbano $${fmtNum(f.margenUrbano)} por guía, sin sumar comisión`, b, C.blue)}
+      </div>
+      <p className="text-[11px] t-muted mt-2">
+        Diferencia entre panoramas: {fmtArs(a.utilidad - b.utilidad)} de utilidad (la comisión COD) = {fmtNum(Math.abs(b.be - a.be))} guías de equilibrio.
+      </p>
+    </div>
+  );
+}
+
+function DetalleUtilidad({ f, incluyeCod }: { f: PeMes; incluyeCod: boolean }) {
+  const p = panorama(f, incluyeCod);
+  const pctU = (v: number) => fmtPct(p.utilidad > 0 ? v / p.utilidad : 0);
+  const margenTotal = p.lineas.reduce((s, l) => s + l.margenTotal, 0);
+  const codTotal = p.lineas.reduce((s, l) => s + l.codTotal, 0);
+  const guiasCod = p.lineas.reduce((s, l) => s + l.guiasCod, 0);
   const color: Record<string, string> = { Fixy: C.orange, Urbano: C.green, Otras: C.gray };
-  const $ = (v: number) => `$${fmtNum(Math.round(v))}`;
+  const $ = (v: number) => `${v < 0 ? "−" : ""}$${fmtNum(Math.abs(Math.round(v)))}`;
 
   return (
     <div className="glass-card overflow-x-auto">
       <div className="px-5 pt-4 pb-2">
-        <h3 className="text-sm font-semibold t-primary">💵 De dónde sale la utilidad — {MES_LABEL[f.m]}{f.enCurso ? " (hasta hoy)" : ""}</h3>
+        <h3 className="text-sm font-semibold t-primary">
+          💵 De dónde sale la utilidad — {incluyeCod ? "Panorama B (el margen ya incluye el COD)" : "Panorama A (margen + comisión COD)"} · {MES_LABEL[f.m]}{f.enCurso ? " (hasta hoy)" : ""}
+        </h3>
         <p className="text-[11px] t-muted">
-          Por cada transportadora: <b>margen logístico</b> (Informe Utilidad {MES_CORTO[f.margenMes]}) × guías movilizadas, más la <b>comisión COD</b> ({PCT_COD}% de las guías son COD × ticket real de esa transportadora × {COM_PCT}%).
+          {incluyeCod
+            ? <>Por cada transportadora: <b>utilidad por guía</b> (Informe Utilidad {MES_CORTO[f.margenMes]}, ya con la comisión COD adentro) × guías movilizadas. No se suma comisión aparte.</>
+            : <>Por cada transportadora: <b>margen logístico</b> (Informe Utilidad {MES_CORTO[f.margenMes]}) × guías movilizadas, más la <b>comisión COD</b> ({PCT_COD}% de las guías son COD × ticket real de esa transportadora × {COM_PCT}%).</>}
         </p>
       </div>
       <table className="w-full text-sm">
@@ -499,7 +554,7 @@ function DetalleUtilidad({ f }: { f: PeMes }) {
           </tr>
         </thead>
         <tbody>
-          {f.lineas.map((l) => (
+          {p.lineas.map((l) => (
             <FragmentLinea key={l.nombre}>
               <tr className="border-b border-gray-800/50" style={{ background: `${color[l.nombre]}10` }}>
                 <td className="py-2 px-4 text-xs font-bold" style={{ color: color[l.nombre] }}>🚚 {l.nombre}</td>
@@ -510,7 +565,7 @@ function DetalleUtilidad({ f }: { f: PeMes }) {
                 <Td mono bold>{pctU(l.total)}</Td>
               </tr>
               <tr className="border-b border-gray-800/30">
-                <td className="py-2 px-4 pl-8 text-xs t-secondary">Margen logístico</td>
+                <td className="py-2 px-4 pl-8 text-xs t-secondary">{incluyeCod ? "Utilidad (margen con COD incluido)" : "Margen logístico"}</td>
                 <Td mono muted>{fmtNum(l.guias)}</Td>
                 <Td align="left" muted>{fmtNum(l.guias)} guías × {$(l.margenGuia)}</Td>
                 <Td mono>{$(l.margenGuia)}</Td>
@@ -519,24 +574,36 @@ function DetalleUtilidad({ f }: { f: PeMes }) {
               </tr>
               <tr className="border-b border-gray-800/50">
                 <td className="py-2 px-4 pl-8 text-xs t-secondary">Comisión COD</td>
-                <Td mono muted>{fmtNum(Math.round(l.guiasCod))}</Td>
-                <Td align="left" muted>{fmtNum(Math.round(l.guiasCod))} guías COD × ticket {$(l.ticket)} × {COM_PCT}% = {$(l.comCodGuia)} c/u</Td>
-                <Td mono>{$(l.guias > 0 ? l.codTotal / l.guias : 0)}</Td>
-                <Td mono>{fmtArsExact(l.codTotal)}</Td>
-                <Td mono muted>{pctU(l.codTotal)}</Td>
+                {incluyeCod ? (
+                  <>
+                    <Td mono muted>—</Td>
+                    <Td align="left" muted>Incluida en la utilidad por guía</Td>
+                    <Td mono muted>$0</Td>
+                    <Td mono muted>$0</Td>
+                    <Td mono muted>—</Td>
+                  </>
+                ) : (
+                  <>
+                    <Td mono muted>{fmtNum(Math.round(l.guiasCod))}</Td>
+                    <Td align="left" muted>{fmtNum(Math.round(l.guiasCod))} guías COD × ticket {$(l.ticket)} × {COM_PCT}% = {$(l.comCodGuia)} c/u</Td>
+                    <Td mono>{$(l.guias > 0 ? l.codTotal / l.guias : 0)}</Td>
+                    <Td mono>{fmtArsExact(l.codTotal)}</Td>
+                    <Td mono muted>{pctU(l.codTotal)}</Td>
+                  </>
+                )}
               </tr>
             </FragmentLinea>
           ))}
           <tr className="border-b border-gray-800/50" style={{ borderTop: "2px solid rgba(148,163,184,0.35)" }}>
-            <td className="py-2 px-4 text-xs t-primary">Total margen logístico</td>
+            <td className="py-2 px-4 text-xs t-primary">{incluyeCod ? "Total utilidad por guía (con COD)" : "Total margen logístico"}</td>
             <Td mono>{fmtNum(f.movilizadas)}</Td>
             <Td align="left" muted>Fixy + Urbano</Td>
             <Td mono>{$(margenTotal / f.movilizadas)}</Td>
             <Td mono>{fmtArsExact(margenTotal)}</Td>
             <Td mono muted>{pctU(margenTotal)}</Td>
           </tr>
-          <tr className="border-b border-gray-800/50">
-            <td className="py-2 px-4 text-xs t-primary">Total comisión COD</td>
+          <tr className="border-b border-gray-800/50" style={incluyeCod ? { opacity: 0.55 } : undefined}>
+            <td className="py-2 px-4 text-xs t-primary">Total comisión COD{incluyeCod ? " (incluida arriba)" : ""}</td>
             <Td mono>{fmtNum(Math.round(guiasCod))}</Td>
             <Td align="left" muted>guías COD</Td>
             <Td mono>{$(codTotal / f.movilizadas)}</Td>
@@ -546,9 +613,9 @@ function DetalleUtilidad({ f }: { f: PeMes }) {
           <tr className="border-b border-gray-800/50" style={{ background: "rgba(16,185,129,0.08)" }}>
             <td className="py-2 px-4 text-xs font-bold t-primary">= Utilidad total</td>
             <Td mono bold>{fmtNum(f.movilizadas)}</Td>
-            <Td align="left" muted>margen + COD</Td>
-            <Td mono bold>{$(f.uM)}</Td>
-            <Td mono bold color={C.green}>{fmtArsExact(f.utilidad)}</Td>
+            <Td align="left" muted>{incluyeCod ? "margen (COD incluido)" : "margen + COD"}</Td>
+            <Td mono bold>{$(p.uM)}</Td>
+            <Td mono bold color={C.green}>{fmtArsExact(p.utilidad)}</Td>
             <Td mono bold>100%</Td>
           </tr>
           <tr className="border-b border-gray-800/50">
@@ -559,13 +626,21 @@ function DetalleUtilidad({ f }: { f: PeMes }) {
             <Td mono color={C.red}>−{fmtArsExact(f.opexTotal)}</Td>
             <Td mono muted>{pctU(f.opexTotal)}</Td>
           </tr>
-          <tr style={{ background: f.resultado >= 0 ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)" }}>
-            <td className="py-3 px-4 text-sm font-bold t-primary">= {f.resultado >= 0 ? "Ganancia" : "Pérdida"} del mes</td>
+          <tr style={{ background: p.resultado >= 0 ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)" }}>
+            <td className="py-3 px-4 text-sm font-bold t-primary">= {p.resultado >= 0 ? "Ganancia" : "Pérdida"} del mes</td>
             <Td mono muted>—</Td>
             <Td align="left" muted>utilidad − gasto</Td>
-            <Td mono bold>{$(f.resultado / f.movilizadas)}</Td>
-            <Td mono bold color={f.resultado >= 0 ? C.green : C.red}>{fmtArsExact(f.resultado)}</Td>
+            <Td mono bold>{$(p.resultado / f.movilizadas)}</Td>
+            <Td mono bold color={p.resultado >= 0 ? C.green : C.red}>{fmtArsExact(p.resultado)}</Td>
             <Td mono muted>—</Td>
+          </tr>
+          <tr className="border-t border-gray-700">
+            <td className="py-2 px-4 text-xs t-primary">Punto de equilibrio</td>
+            <Td mono bold>{fmtNum(p.be)}</Td>
+            <Td align="left" muted>gasto ÷ {$(p.uM)} por guía</Td>
+            <Td mono muted>—</Td>
+            <Td mono bold color={p.gap >= 0 ? C.green : C.red}>{p.gap >= 0 ? `+${fmtNum(p.gap)} guías por encima` : `faltan ${fmtNum(-p.gap)} guías`}</Td>
+            <Td mono muted>{fmtPct(p.be > 0 ? f.movilizadas / p.be : 0)}</Td>
           </tr>
         </tbody>
       </table>
