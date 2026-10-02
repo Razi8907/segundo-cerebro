@@ -75,13 +75,16 @@ export default function StrategicSimulator({
   const isJulio = mesFilter === "julio";
   const isAgosto = mesFilter === "agosto";
   const isSeptiembre = mesFilter === "septiembre";
+  const isOctubre = mesFilter === "octubre";
   const mi = metaInfo as Record<string, unknown> | undefined;
 
   // Etiquetas dinámicas según el mes target
-  const TARGET_LABEL = isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const TARGET_LABEL = isOctubre ? "Octubre" : isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isOctubre ? "Septiembre" : isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
 
-  const GOAL_MOVILIZADAS = isSeptiembre
+  const GOAL_MOVILIZADAS = isOctubre
+    ? ((mi?.meta_movilizadas_octubre as number) ?? (mi?.meta_movilizadas_septiembre as number) ?? 40000)
+    : isSeptiembre
     ? ((mi?.meta_movilizadas_septiembre as number) ?? (mi?.meta_movilizadas_agosto as number) ?? 40000)
     : isAgosto
     ? ((mi?.meta_movilizadas_agosto as number) ?? (mi?.meta_movilizadas_julio as number) ?? 40000)
@@ -93,7 +96,9 @@ export default function StrategicSimulator({
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
   const TASA_MOVILIZACION = metaInfo?.tasa_movilizacion ?? 0.78;
-  const GOAL_INGRESADAS = isSeptiembre
+  const GOAL_INGRESADAS = isOctubre
+    ? ((mi?.meta_ingresadas_octubre as number) ?? (mi?.meta_ingresadas_septiembre as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
+    : isSeptiembre
     ? ((mi?.meta_ingresadas_septiembre as number) ?? (mi?.meta_ingresadas_agosto as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
     : isAgosto
     ? ((mi?.meta_ingresadas_agosto as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))

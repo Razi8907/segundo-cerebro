@@ -21,7 +21,7 @@ export default function EfficiencyChart({ resumen, mesFilter }: { resumen: Resum
   // Q1/Q2/Q3 y meses futuros suman siempre desde enero-marzo (referencia histórica).
   // Meses individuales muestran solo la data del mes seleccionado si existe.
   const r = resumen as unknown as Record<string, { ingresadas: number; movilizadas: number; entregados: number; devoluciones: number } | undefined>;
-  const isSpecificMonth = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre"].includes(mesFilter as string);
+  const isSpecificMonth = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre"].includes(mesFilter as string);
   const d = isSpecificMonth ? r[mesFilter as string] : undefined;
   if (d && d.ingresadas > 0) {
     totalIng = d.ingresadas;

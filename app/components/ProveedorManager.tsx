@@ -86,12 +86,15 @@ export default function ProveedorManager({
   const isJulio = mesFilter === "julio";
   const isAgosto = mesFilter === "agosto";
   const isSeptiembre = mesFilter === "septiembre";
-  const isPlanning = isMayo || isJunio || isJulio || isAgosto || isSeptiembre;
-  const TARGET = isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP = isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const isOctubre = mesFilter === "octubre";
+  const isPlanning = isMayo || isJunio || isJulio || isAgosto || isSeptiembre || isOctubre;
+  const TARGET = isOctubre ? "Octubre" : isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP = isOctubre ? "Septiembre" : isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
 
   const mi = metaInfo as any;
-  const META_MOV = isSeptiembre
+  const META_MOV = isOctubre
+    ? (mi?.meta_movilizadas_octubre ?? mi?.meta_movilizadas_septiembre ?? 40000)
+    : isSeptiembre
     ? (mi?.meta_movilizadas_septiembre ?? mi?.meta_movilizadas_agosto ?? 40000)
     : isAgosto
     ? (mi?.meta_movilizadas_agosto ?? mi?.meta_movilizadas_julio ?? 40000)
@@ -102,7 +105,9 @@ export default function ProveedorManager({
     : isMayo
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
-  const META_ING = isSeptiembre
+  const META_ING = isOctubre
+    ? (mi?.meta_ingresadas_octubre ?? mi?.meta_ingresadas_septiembre ?? 51283)
+    : isSeptiembre
     ? (mi?.meta_ingresadas_septiembre ?? mi?.meta_ingresadas_agosto ?? 51283)
     : isAgosto
     ? (mi?.meta_ingresadas_agosto ?? mi?.meta_ingresadas_julio ?? 51283)
@@ -134,8 +139,8 @@ export default function ProveedorManager({
     let cancelled = false;
     setLoading(true);
     // Cuando el mes activo es Julio: comp=junio target=julio
-    const compMes = isSeptiembre ? "agosto" : isAgosto ? "julio" : isJulio ? "junio" : isJunio ? "mayo" : "abril";
-    const targetMes = isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : "mayo";
+    const compMes = isOctubre ? "septiembre" : isSeptiembre ? "agosto" : isAgosto ? "julio" : isJulio ? "junio" : isJunio ? "mayo" : "abril";
+    const targetMes = isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : "mayo";
     Promise.all([
       fetch(`/api/data/operational?country=${country}&mes=${compMes}`).then((r) => r.json()).catch(() => null),
       fetch(`/api/data/operational?country=${country}&mes=${targetMes}`).then((r) => r.json()).catch(() => null),
@@ -148,7 +153,7 @@ export default function ProveedorManager({
       setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [country, isJunio, isJulio, isAgosto, isSeptiembre]);
+  }, [country, isJunio, isJulio, isAgosto, isSeptiembre, isOctubre]);
 
   // Agrupa by_prov_daily filtrando por día del mes (1..31) → OpsRow agregada por proveedor
   function aggregateProvDaily(daily: ProvDaily[], fromDay: number, toDay: number): OpsRow[] {
