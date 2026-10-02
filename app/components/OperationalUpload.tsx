@@ -560,32 +560,48 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
   const [fTransportadora, setFTransportadora] = useState("");
   const [recLogistic, setRecLogistic] = useState("");
 
+  const [loadingRows, setLoadingRows] = useState(false);
+
   useEffect(() => {
     // Reset al cambiar de mes para que la UI muestre solo la data del mes activo
+    let cancelled = false;
     setSavedAgg(null);
     setUploadedAt(null);
     setRawRows([]);
+    setFProveedor(""); setFDropshipper(""); setFTransportadora(""); setFilterType("all"); setFilterValue("");
+    const expandCompact = (rows: any[]): RawRow[] => rows.map((r: any) => ({
+      estatus: r.e||"", fecha: r.f||"", proveedor: r.p||"", provId: r.pi||0,
+      dropshipper: r.d||"", dropshipperId: r.di||"", dropshipperEmail: r.de||"", dropshipperCelular: r.dc||"",
+      producto: r.pr||"", productoId: r.pri||"", cantidad: r.c||1, departamento: r.dp||"",
+      ciudad: r.ci||"", transportadora: r.t||"", precioFlete: r.fl||0,
+    }));
     fetch(`/api/data/operational?country=${country}&mes=${mes}`)
       .then((r) => r.json())
-      .then((res) => {
-        if (res.data) {
-          setSavedAgg(res.data);
-          setUploadedAt(res.uploaded_at);
-          // Load saved raw rows for filtering
-          if (res.data.raw_rows && Array.isArray(res.data.raw_rows)) {
-            setRawRows(res.data.raw_rows);
-          } else if (res.data.compact_rows && Array.isArray(res.data.compact_rows)) {
-            // Expand compact rows
-            setRawRows(res.data.compact_rows.map((r: any) => ({
-              estatus: r.e||"", fecha: r.f||"", proveedor: r.p||"", provId: r.pi||0,
-              dropshipper: r.d||"", dropshipperId: r.di||"", dropshipperEmail: r.de||"", dropshipperCelular: r.dc||"",
-              producto: r.pr||"", productoId: r.pri||"", cantidad: r.c||1, departamento: r.dp||"",
-              ciudad: r.ci||"", transportadora: r.t||"", precioFlete: r.fl||0,
-            })));
-          }
+      .then(async (res) => {
+        if (cancelled || !res.data) return;
+        setSavedAgg(res.data);
+        setUploadedAt(res.uploaded_at);
+        // Load saved raw rows for filtering (legacy: dentro del snapshot; actual: JSON en Storage)
+        if (res.data.raw_rows && Array.isArray(res.data.raw_rows)) {
+          setRawRows(res.data.raw_rows);
+          return;
+        }
+        if (res.data.compact_rows && Array.isArray(res.data.compact_rows)) {
+          setRawRows(expandCompact(res.data.compact_rows));
+          return;
+        }
+        setLoadingRows(true);
+        try {
+          const { url } = await fetch(`/api/data/operational/rows?country=${country}&mes=${mes}`).then((r) => r.json());
+          if (!url || cancelled) return;
+          const rows = await fetch(url).then((r) => (r.ok ? r.json() : null));
+          if (!cancelled && Array.isArray(rows)) setRawRows(expandCompact(rows));
+        } finally {
+          if (!cancelled) setLoadingRows(false);
         }
       })
       .catch(() => {});
+    return () => { cancelled = true; };
   }, [country, mes]);
 
   const handleUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -598,45 +614,36 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
       const agg = aggregateRows(rows);
       setSavedAgg(agg);
       setFilterType("all"); setFilterValue("");
-      // Save aggregation + compact raw_rows in chunks to avoid Vercel payload limit
-      const saveData = { ...agg };
-      // Compact raw_rows: only keep fields needed for filtering
+      // Compact raw_rows: only keep fields needed for filtering. Van a Storage
+      // (no al snapshot) porque superan el límite de payload de Vercel.
       const compactRows = rows.map((r) => ({
         e: r.estatus, f: r.fecha, p: r.proveedor, pi: r.provId,
         d: r.dropshipper, di: r.dropshipperId, de: r.dropshipperEmail, dc: r.dropshipperCelular,
         pr: r.producto, pri: r.productoId, c: r.cantidad, dp: r.departamento,
         ci: r.ciudad, t: r.transportadora, fl: r.precioFlete,
       }));
-      (saveData as any).compact_rows = compactRows;
 
-      // Try saving, if too large save without rows
-      try {
-        const payload = JSON.stringify({ country, mes, data: saveData, raw_count: agg.total_orders });
-        if (payload.length > 4000000) {
-          // Too large for Vercel, save without compact_rows
-          delete (saveData as any).compact_rows;
-          await fetch("/api/data/operational", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ country, mes, data: saveData, raw_count: agg.total_orders }),
-          });
-        } else {
-          await fetch("/api/data/operational", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: payload,
-          });
-        }
-      } catch {
-        // Fallback: save without rows
-        delete (saveData as any).compact_rows;
-        await fetch("/api/data/operational", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ country, mes, data: saveData, raw_count: agg.total_orders }),
-        });
-      }
+      const saveRes = await fetch("/api/data/operational", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country, mes, data: agg, raw_count: agg.total_orders }),
+      });
+      if (!saveRes.ok) throw new Error(`No se pudo guardar el resumen (HTTP ${saveRes.status})`);
+
+      const urlRes = await fetch("/api/data/operational/rows", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ country, mes }),
+      });
+      if (!urlRes.ok) throw new Error(`No se pudo obtener URL para las filas (HTTP ${urlRes.status})`);
+      const { signedUrl } = await urlRes.json();
+      const upRes = await fetch(signedUrl, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(compactRows),
+      });
+      if (!upRes.ok) throw new Error(`No se pudieron guardar las filas para filtros (HTTP ${upRes.status})`);
       setUploadedAt(new Date().toISOString());
     } catch (err) {
       console.error("Upload error:", err);
-      alert("Error al procesar el archivo.");
+      alert(err instanceof Error && err.message ? err.message : "Error al procesar el archivo.");
     }
     setUploading(false);
     e.target.value = "";
@@ -893,7 +900,11 @@ export default function OperationalUpload({ country, mes = "abril" }: { country:
             )}
           </>
         ) : (
-          <p className="text-xs t-muted">Subi el archivo Excel nuevamente para activar los filtros por logistica, dropshipper y proveedor.</p>
+          <p className="text-xs t-muted">
+            {loadingRows
+              ? "Cargando filtros por logistica, dropshipper y proveedor..."
+              : `Subi el Excel de ${mesLabel} una vez más (botón "Actualizar archivo") para activar los filtros por logistica, dropshipper y proveedor. Queda guardado para siempre.`}
+          </p>
         )}
       </div>
 
