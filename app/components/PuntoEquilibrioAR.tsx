@@ -5,8 +5,8 @@
 // Real (no simulado): guías movilizadas EN VIVO con la misma regla y snapshot que el
 // Dashboard operativo, mix Fixy/Urbano y ticket reales del mes, gasto del mes desde la
 // rendición de caja. Sigue al mes elegido en el selector de arriba.
-// Utilidad por guía = margen logístico de la transportadora (Informe Utilidad Gerencial)
-//                   + comisión COD (% COD × ticket × comisión).
+// Utilidad por guía = rentabilidad por guía de la transportadora (Informe Utilidad Gerencial),
+//                   que ya incluye la comisión COD.
 // ═══════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
@@ -28,8 +28,9 @@ import {
 import type { MesKey, RendicionCaja } from "../lib/finanzas-ar-types";
 import { C, fmtArs, fmtArsExact, fmtNum, fmtPct, Badge, KpiCard, Td, Th, type Tone } from "./finanzas-ar-ui";
 
-// Margen logístico real por guía (Informe Utilidad Gerencial, Power BI).
-// Meses sin informe usan el último mes cargado antes (se marca en pantalla).
+// Rentabilidad real por guía (Informe Utilidad Gerencial, Power BI). Ya incluye la
+// comisión COD: no se suma nada encima. Meses sin informe usan el último mes cargado
+// antes (se marca en pantalla).
 // Para cargar un mes nuevo: agregar su fila acá.
 const MARGEN_HIST: Partial<Record<MesKey, { fixy: number; urbano: number; guiasFixy: number | null; guiasUrbano: number | null }>> = {
   ene: { fixy: 1353, urbano: 2393, guiasFixy: 8274, guiasUrbano: 6 },
@@ -39,11 +40,8 @@ const MARGEN_HIST: Partial<Record<MesKey, { fixy: number; urbano: number; guiasF
   may: { fixy: 1859, urbano: 2719, guiasFixy: 11871, guiasUrbano: 4253 },
   jun: { fixy: 1917, urbano: 3284, guiasFixy: 10268, guiasUrbano: 3779 },
   ago: { fixy: 2670, urbano: 4169, guiasFixy: null, guiasUrbano: null },
+  sep: { fixy: 2901, urbano: 3810, guiasFixy: null, guiasUrbano: null },
 };
-
-// Supuestos de comisión COD (Informe Utilidad Gerencial, junio 2026)
-const COM_PCT = 1.5;
-const PCT_COD = 50;
 
 // Gasto mensual de meses SIN rendición de caja cargada (rendición en papel).
 // Cuando se sube la rendición del mes desde "Rendición de caja", esa manda.
@@ -64,14 +62,13 @@ const MES_LABEL: Record<MesKey, string> = {
 };
 const MES_CORTO: Record<MesKey, string> = { ene: "Ene", feb: "Feb", mar: "Mar", abr: "Abr", may: "May", jun: "Jun", jul: "Jul", ago: "Ago", sep: "Sep", oct: "Oct", nov: "Nov", dic: "Dic" };
 
-// Utilidad por guía = margen logístico + comisión COD por guía (COD % × ticket × comisión).
-function beCalc(opex: number, margenFixy: number, margenUrbano: number, mixPct: number, ticket: number, comPct: number, pctCod: number) {
-  const comGuia = (pctCod / 100) * (ticket * (comPct / 100));
-  const uF = margenFixy + comGuia;
-  const uU = margenUrbano + comGuia;
+// Utilidad por guía = rentabilidad por guía de cada transportadora (ya incluye el COD).
+function beCalc(opex: number, margenFixy: number, margenUrbano: number, mixPct: number) {
+  const uF = margenFixy;
+  const uU = margenUrbano;
   const uM = (mixPct / 100) * uF + (1 - mixPct / 100) * uU;
   return {
-    comGuia, uF, uU, uM,
+    uF, uU, uM,
     beFixy: uF > 0 ? Math.ceil(opex / uF) : 0,
     beUrb: uU > 0 ? Math.ceil(opex / uU) : 0,
     beMix: uM > 0 ? Math.ceil(opex / uM) : 0,
@@ -82,17 +79,13 @@ function beCalc(opex: number, margenFixy: number, margenUrbano: number, mixPct: 
 interface ApiRow { mes: string; mesOrden: number | null; dia: number | null; transportadora: string; total: number; movilizadas: number; entregadas: number; valor: number }
 export interface PeApi { rows: ApiRow[]; ingresadas: { mes: string; ingresadas: number }[] }
 
-// Utilidad de una transportadora en el mes: margen logístico + comisión COD
+// Utilidad de una transportadora en el mes: guías × rentabilidad por guía (COD incluido)
 interface PeLinea {
   nombre: string;
   guias: number;
-  margenGuia: number;      // margen logístico por guía (Informe Utilidad)
+  margenGuia: number;      // rentabilidad por guía (Informe Utilidad)
   margenTotal: number;
-  ticket: number;          // ticket promedio real de sus guías movilizadas
-  guiasCod: number;        // guías con cobro contra entrega (PCT_COD %)
-  comCodGuia: number;      // comisión por guía COD = ticket × COM_PCT
-  codTotal: number;
-  total: number;           // margenTotal + codTotal
+  total: number;           // = margenTotal
   porGuia: number;         // total ÷ guías
 }
 
@@ -111,7 +104,6 @@ interface PeMes {
   margenFixy: number;
   margenUrbano: number;
   margenMes: MesKey;       // de qué mes es el margen logístico usado
-  comGuia: number;
   uF: number;
   uU: number;
   uM: number;              // utilidad promedio real por guía (mix real)
@@ -181,21 +173,16 @@ function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<Mes
     const margenMes = [...ALL_KEYS.slice(0, idx + 1)].reverse().find((k) => MARGEN_HIST[k]) ?? "jun";
     const margenFixy = MARGEN_HIST[margenMes]!.fixy;
     const margenUrbano = MARGEN_HIST[margenMes]!.urbano;
-    const b = beCalc(opexTotal, margenFixy, margenUrbano, mixPct, ticket, COM_PCT, PCT_COD);
+    const b = beCalc(opexTotal, margenFixy, margenUrbano, mixPct);
 
-    // Utilidad por transportadora, cada una con SU ticket real para la comisión COD.
-    // "Otras" (si aparecieran) toman el margen logístico promedio del mix.
+    // Utilidad por transportadora. "Otras" (si aparecieran) toman la rentabilidad promedio del mix.
     const margenOtras = (mixPct / 100) * margenFixy + (1 - mixPct / 100) * margenUrbano;
     const lineas: PeLinea[] = (["Fixy", "Urbano", "Otras"] as const).map((nombre) => {
       const rs = rows.filter((x) => grupo(x.transportadora) === nombre);
       const guias = rs.reduce((s, x) => s + x.movilizadas, 0);
-      const tk = guias > 0 ? rs.reduce((s, x) => s + x.valor, 0) / guias : 0;
       const margenGuia = nombre === "Fixy" ? margenFixy : nombre === "Urbano" ? margenUrbano : margenOtras;
-      const guiasCod = guias * (PCT_COD / 100);
-      const comCodGuia = tk * (COM_PCT / 100);
       const margenTotal = guias * margenGuia;
-      const codTotal = guiasCod * comCodGuia;
-      return { nombre, guias, margenGuia, margenTotal, ticket: tk, guiasCod, comCodGuia, codTotal, total: margenTotal + codTotal, porGuia: guias > 0 ? (margenTotal + codTotal) / guias : 0 };
+      return { nombre, guias, margenGuia, margenTotal, total: margenTotal, porGuia: margenGuia };
     }).filter((l) => l.guias > 0);
     const porGuiaDe = (t: string) => lineas.find((l) => l.nombre === grupo(t))?.porGuia ?? 0;
     const uGuia = porGuiaDe;
@@ -239,7 +226,7 @@ function buildPuntoEquilibrio(api: PeApi | null, rendiciones: Partial<Record<Mes
     const ing = api.ingresadas.find((x) => x.mes === KEY_TO_MES[m])?.ingresadas ?? null;
     out.push({
       m, ingresadas: ing && ing > 0 ? ing : null, movilizadas, entregadas, fixy, urbano, otras, mixPct, ticket,
-      margenFixy, margenUrbano, margenMes, comGuia: b.comGuia,
+      margenFixy, margenUrbano, margenMes,
       uF: lineas.find((l) => l.nombre === "Fixy")?.porGuia ?? b.uF,
       uU: lineas.find((l) => l.nombre === "Urbano")?.porGuia ?? b.uU,
       uM, utilidad, lineas,
@@ -293,9 +280,7 @@ export function PuntoEquilibrioVista({ api, mesKeys, periodoLabel, rendiciones }
           <Encabezado f={foco} />
           <Termometro f={foco} />
           <CuadroReal f={foco} />
-          <Panoramas f={foco} />
-          <DetalleUtilidad f={foco} incluyeCod={false} />
-          <DetalleUtilidad f={foco} incluyeCod />
+          <DetalleUtilidad f={foco} />
           <SeguimientoDiario f={foco} />
           <Analisis f={foco} />
           <Ganancias f={foco} />
@@ -306,7 +291,7 @@ export function PuntoEquilibrioVista({ api, mesKeys, periodoLabel, rendiciones }
 
       <div className="glass-card p-4 text-[11px] t-muted leading-relaxed">
         <b className="t-secondary">Cómo se calcula.</b> Guías = <b>movilizadas</b> del Dashboard operativo (misma regla: con fecha de procesamiento y sin cancelar/rechazar, último archivo cargado del mes).
-        Utilidad por guía = <b>margen logístico</b> de la transportadora (Informe Utilidad Gerencial) + <b>comisión COD</b> ({PCT_COD}% COD × ticket real del mes × {COM_PCT}%).
+        Utilidad por guía = <b>rentabilidad por guía</b> de la transportadora (Informe Utilidad Gerencial), que ya incluye la comisión COD.
         Gasto = <b>rendición de caja</b> del mes. Punto de equilibrio = gasto ÷ utilidad por guía.
       </div>
 
@@ -423,12 +408,9 @@ function CuadroReal({ f }: { f: PeMes }) {
     fila(`Urbano (${(100 - f.mixPct).toFixed(0)}%)`, fmtNum(f.urbano), "", "", undefined, { sub: true }),
     ...(f.otras > 0 ? [fila("Otras transportadoras", fmtNum(f.otras), "", "", undefined, { sub: true })] : []),
     fila(f.enCurso ? "Guías por día (hasta hoy)" : "Guías por día", fmtNum(Math.round(diaReal)), fmtNum(Math.ceil(diaNec)), signo(Math.round(diaReal - diaNec), fmtNum), tone(diaReal - diaNec)),
-    fila("Utilidad por guía (margen + COD)", `$${fmtNum(Math.round(f.uM))}`, `$${fmtNum(Math.round(f.uM))}`, ""),
+    fila("Utilidad por guía", `$${fmtNum(Math.round(f.uM))}`, `$${fmtNum(Math.round(f.uM))}`, ""),
     fila("Utilidad generada", fmtArsExact(f.utilidad), fmtArsExact(f.opexTotal), signo(f.utilidad - f.opexTotal, fmtArsExact), tone(f.utilidad - f.opexTotal), { bold: true }),
-    ...f.lineas.flatMap((l) => [
-      fila(`${l.nombre} — margen logístico`, fmtArsExact(l.margenTotal), "", "", undefined, { sub: true }),
-      fila(`${l.nombre} — comisión COD`, fmtArsExact(l.codTotal), "", "", undefined, { sub: true }),
-    ]),
+    ...f.lineas.map((l) => fila(`${l.nombre} — ${fmtNum(l.guias)} guías × $${fmtNum(l.margenGuia)}`, fmtArsExact(l.margenTotal), "", "", undefined, { sub: true })),
     fila("Gasto del mes", fmtArsExact(f.opexTotal), fmtArsExact(f.opexTotal), ""),
     ...(f.opexFijos !== null && gastoVar !== null
       ? [fila("Gastos fijos", fmtArsExact(f.opexFijos), "", "", undefined, { sub: true }), fila("Gastos variables", fmtArsExact(gastoVar), "", "", undefined, { sub: true })]
@@ -472,61 +454,10 @@ function CuadroReal({ f }: { f: PeMes }) {
   );
 }
 
-// ─── Detalle de la utilidad: por transportadora, margen logístico y comisión COD ───
-// Panorama A: margen logístico + comisión COD encima. Panorama B: el margen ya incluye el COD.
-function panorama(f: PeMes, incluyeCod: boolean) {
-  const lineas = incluyeCod
-    ? f.lineas.map((l) => ({ ...l, guiasCod: 0, codTotal: 0, total: l.margenTotal, porGuia: l.margenGuia }))
-    : f.lineas;
-  const utilidad = lineas.reduce((s, l) => s + l.total, 0);
-  const uM = f.movilizadas > 0 ? utilidad / f.movilizadas : 0;
-  const be = uM > 0 ? Math.ceil(f.opexTotal / uM) : 0;
-  return { lineas, utilidad, uM, be, resultado: utilidad - f.opexTotal, gap: f.movilizadas - be };
-}
-
-function Panoramas({ f }: { f: PeMes }) {
-  const a = panorama(f, false);
-  const b = panorama(f, true);
-  const card = (titulo: string, sub: string, p: ReturnType<typeof panorama>, color: string) => (
-    <div className="glass-card p-5" style={{ borderTop: `4px solid ${color}` }}>
-      <div className="text-sm font-semibold t-primary">{titulo}</div>
-      <div className="text-[11px] t-muted mb-3">{sub}</div>
-      <div className="grid grid-cols-2 gap-3 text-xs">
-        <div><div className="t-muted uppercase text-[10px] tracking-wider">Utilidad por guía</div><div className="font-mono text-lg font-semibold t-primary">${fmtNum(Math.round(p.uM))}</div></div>
-        <div><div className="t-muted uppercase text-[10px] tracking-wider">Utilidad total</div><div className="font-mono text-lg font-semibold" style={{ color: C.green }}>{fmtArs(p.utilidad)}</div></div>
-        <div><div className="t-muted uppercase text-[10px] tracking-wider">Punto de equilibrio</div><div className="font-mono text-lg font-semibold t-primary">{fmtNum(p.be)} guías</div></div>
-        <div><div className="t-muted uppercase text-[10px] tracking-wider">{p.gap >= 0 ? "Por encima" : "Faltan"}</div><div className="font-mono text-lg font-semibold" style={{ color: p.gap >= 0 ? C.green : C.red }}>{fmtNum(Math.abs(p.gap))} guías</div></div>
-      </div>
-      <div className="mt-3 pt-3 border-t border-gray-700/50 flex items-baseline justify-between">
-        <span className="text-xs t-secondary">{p.resultado >= 0 ? "Ganancia" : "Pérdida"} del mes</span>
-        <span className="font-mono text-xl font-bold" style={{ color: p.resultado >= 0 ? C.green : C.red }}>{fmtArsExact(p.resultado)}</span>
-      </div>
-    </div>
-  );
-  return (
-    <div>
-      <h3 className="text-sm font-semibold t-primary mb-1">🔀 Dos panoramas — {MES_LABEL[f.m]}{f.enCurso ? " (hasta hoy)" : ""}</h3>
-      <p className="text-[11px] t-muted mb-3">
-        Mismas guías ({fmtNum(f.movilizadas)}) y mismo gasto ({fmtArs(f.opexTotal)}). Cambia solo si la comisión COD se suma al margen logístico o si ya viene incluida en él.
-        El resto de la pestaña (termómetro, seguimiento, análisis) usa el Panorama A.
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {card("Panorama A — margen + comisión COD", `Margen Fixy $${fmtNum(f.margenFixy)} · Urbano $${fmtNum(f.margenUrbano)} + COD (${PCT_COD}% × ticket × ${COM_PCT}%)`, a, C.orange)}
-        {card("Panorama B — el margen ya incluye el COD", `Utilidad Fixy $${fmtNum(f.margenFixy)} · Urbano $${fmtNum(f.margenUrbano)} por guía, sin sumar comisión`, b, C.blue)}
-      </div>
-      <p className="text-[11px] t-muted mt-2">
-        Diferencia entre panoramas: {fmtArs(a.utilidad - b.utilidad)} de utilidad (la comisión COD) = {fmtNum(Math.abs(b.be - a.be))} guías de equilibrio.
-      </p>
-    </div>
-  );
-}
-
-function DetalleUtilidad({ f, incluyeCod }: { f: PeMes; incluyeCod: boolean }) {
-  const p = panorama(f, incluyeCod);
+// ─── Detalle de la utilidad: por transportadora (rentabilidad por guía, COD incluido) ───
+function DetalleUtilidad({ f }: { f: PeMes }) {
+  const p = { lineas: f.lineas, utilidad: f.utilidad, uM: f.uM, resultado: f.resultado, be: f.beTotal, gap: f.movilizadas - f.beTotal };
   const pctU = (v: number) => fmtPct(p.utilidad > 0 ? v / p.utilidad : 0);
-  const margenTotal = p.lineas.reduce((s, l) => s + l.margenTotal, 0);
-  const codTotal = p.lineas.reduce((s, l) => s + l.codTotal, 0);
-  const guiasCod = p.lineas.reduce((s, l) => s + l.guiasCod, 0);
   const color: Record<string, string> = { Fixy: C.orange, Urbano: C.green, Otras: C.gray };
   const $ = (v: number) => `${v < 0 ? "−" : ""}$${fmtNum(Math.abs(Math.round(v)))}`;
 
@@ -534,12 +465,10 @@ function DetalleUtilidad({ f, incluyeCod }: { f: PeMes; incluyeCod: boolean }) {
     <div className="glass-card overflow-x-auto">
       <div className="px-5 pt-4 pb-2">
         <h3 className="text-sm font-semibold t-primary">
-          💵 De dónde sale la utilidad — {incluyeCod ? "Panorama B (el margen ya incluye el COD)" : "Panorama A (margen + comisión COD)"} · {MES_LABEL[f.m]}{f.enCurso ? " (hasta hoy)" : ""}
+          💵 De dónde sale la utilidad — {MES_LABEL[f.m]}{f.enCurso ? " (hasta hoy)" : ""}
         </h3>
         <p className="text-[11px] t-muted">
-          {incluyeCod
-            ? <>Por cada transportadora: <b>utilidad por guía</b> (Informe Utilidad {MES_CORTO[f.margenMes]}, ya con la comisión COD adentro) × guías movilizadas. No se suma comisión aparte.</>
-            : <>Por cada transportadora: <b>margen logístico</b> (Informe Utilidad {MES_CORTO[f.margenMes]}) × guías movilizadas, más la <b>comisión COD</b> ({PCT_COD}% de las guías son COD × ticket real de esa transportadora × {COM_PCT}%).</>}
+          Por cada transportadora: <b>rentabilidad por guía</b> (Informe Utilidad {MES_CORTO[f.margenMes]}, ya con la comisión COD adentro) × guías movilizadas.
         </p>
       </div>
       <table className="w-full text-sm">
@@ -559,61 +488,17 @@ function DetalleUtilidad({ f, incluyeCod }: { f: PeMes; incluyeCod: boolean }) {
               <tr className="border-b border-gray-800/50" style={{ background: `${color[l.nombre]}10` }}>
                 <td className="py-2 px-4 text-xs font-bold" style={{ color: color[l.nombre] }}>🚚 {l.nombre}</td>
                 <Td mono bold>{fmtNum(l.guias)}</Td>
-                <Td align="left" muted>{fmtPct(l.guias / f.movilizadas)} de las movilizadas</Td>
+                <Td align="left" muted>{fmtNum(l.guias)} guías × {$(l.margenGuia)} · {fmtPct(l.guias / f.movilizadas)} de las movilizadas</Td>
                 <Td mono bold>{$(l.porGuia)}</Td>
                 <Td mono bold color={color[l.nombre]}>{fmtArsExact(l.total)}</Td>
                 <Td mono bold>{pctU(l.total)}</Td>
               </tr>
-              <tr className="border-b border-gray-800/30">
-                <td className="py-2 px-4 pl-8 text-xs t-secondary">{incluyeCod ? "Utilidad (margen con COD incluido)" : "Margen logístico"}</td>
-                <Td mono muted>{fmtNum(l.guias)}</Td>
-                <Td align="left" muted>{fmtNum(l.guias)} guías × {$(l.margenGuia)}</Td>
-                <Td mono>{$(l.margenGuia)}</Td>
-                <Td mono>{fmtArsExact(l.margenTotal)}</Td>
-                <Td mono muted>{pctU(l.margenTotal)}</Td>
-              </tr>
-              <tr className="border-b border-gray-800/50">
-                <td className="py-2 px-4 pl-8 text-xs t-secondary">Comisión COD</td>
-                {incluyeCod ? (
-                  <>
-                    <Td mono muted>—</Td>
-                    <Td align="left" muted>Incluida en la utilidad por guía</Td>
-                    <Td mono muted>$0</Td>
-                    <Td mono muted>$0</Td>
-                    <Td mono muted>—</Td>
-                  </>
-                ) : (
-                  <>
-                    <Td mono muted>{fmtNum(Math.round(l.guiasCod))}</Td>
-                    <Td align="left" muted>{fmtNum(Math.round(l.guiasCod))} guías COD × ticket {$(l.ticket)} × {COM_PCT}% = {$(l.comCodGuia)} c/u</Td>
-                    <Td mono>{$(l.guias > 0 ? l.codTotal / l.guias : 0)}</Td>
-                    <Td mono>{fmtArsExact(l.codTotal)}</Td>
-                    <Td mono muted>{pctU(l.codTotal)}</Td>
-                  </>
-                )}
-              </tr>
             </FragmentLinea>
           ))}
-          <tr className="border-b border-gray-800/50" style={{ borderTop: "2px solid rgba(148,163,184,0.35)" }}>
-            <td className="py-2 px-4 text-xs t-primary">{incluyeCod ? "Total utilidad por guía (con COD)" : "Total margen logístico"}</td>
-            <Td mono>{fmtNum(f.movilizadas)}</Td>
-            <Td align="left" muted>Fixy + Urbano</Td>
-            <Td mono>{$(margenTotal / f.movilizadas)}</Td>
-            <Td mono>{fmtArsExact(margenTotal)}</Td>
-            <Td mono muted>{pctU(margenTotal)}</Td>
-          </tr>
-          <tr className="border-b border-gray-800/50" style={incluyeCod ? { opacity: 0.55 } : undefined}>
-            <td className="py-2 px-4 text-xs t-primary">Total comisión COD{incluyeCod ? " (incluida arriba)" : ""}</td>
-            <Td mono>{fmtNum(Math.round(guiasCod))}</Td>
-            <Td align="left" muted>guías COD</Td>
-            <Td mono>{$(codTotal / f.movilizadas)}</Td>
-            <Td mono>{fmtArsExact(codTotal)}</Td>
-            <Td mono muted>{pctU(codTotal)}</Td>
-          </tr>
           <tr className="border-b border-gray-800/50" style={{ background: "rgba(16,185,129,0.08)" }}>
             <td className="py-2 px-4 text-xs font-bold t-primary">= Utilidad total</td>
             <Td mono bold>{fmtNum(f.movilizadas)}</Td>
-            <Td align="left" muted>{incluyeCod ? "margen (COD incluido)" : "margen + COD"}</Td>
+            <Td align="left" muted>Fixy + Urbano (COD incluido)</Td>
             <Td mono bold>{$(p.uM)}</Td>
             <Td mono bold color={C.green}>{fmtArsExact(p.utilidad)}</Td>
             <Td mono bold>100%</Td>
@@ -887,7 +772,7 @@ function Evolucion({ meses, foco }: { meses: PeMes[]; foco: MesKey | null }) {
         </tbody>
       </table>
       <p className="text-[11px] t-muted px-5 py-3">
-        * Mes sin rendición de caja cargada: se usa el gasto del último mes conocido. Los meses sin Informe Utilidad usan el margen logístico del último informe cargado (julio usa junio; septiembre usa agosto).
+        * Mes sin rendición de caja cargada: se usa el gasto del último mes conocido. Los meses sin Informe Utilidad usan el margen logístico del último informe cargado (por ejemplo, julio usa junio).
       </p>
     </div>
   );
@@ -899,11 +784,8 @@ function Simulador({ f }: { f: PeMes }) {
   const [margenFixy, setMargenFixy] = useState(f.margenFixy);
   const [margenUrbano, setMargenUrbano] = useState(f.margenUrbano);
   const [mixPct, setMixPct] = useState(Math.round(f.mixPct));
-  const [ticket, setTicket] = useState(Math.round(f.ticket / 1000) * 1000);
-  const [comPct, setComPct] = useState(COM_PCT);
-  const [pctCod, setPctCod] = useState(PCT_COD);
 
-  const sim = useMemo(() => beCalc(opex, margenFixy, margenUrbano, mixPct, ticket, comPct, pctCod), [opex, margenFixy, margenUrbano, mixPct, ticket, comPct, pctCod]);
+  const sim = useMemo(() => beCalc(opex, margenFixy, margenUrbano, mixPct), [opex, margenFixy, margenUrbano, mixPct]);
   const simBars = [
     { name: "Fixy solo", guias: sim.beFixy, fill: C.orange },
     { name: "Urbano solo", guias: sim.beUrb, fill: C.green },
@@ -916,16 +798,13 @@ function Simulador({ f }: { f: PeMes }) {
       <p className="text-[11px] t-muted mt-1 mb-4">Arranca con los valores reales de {MES_LABEL[f.m].toLowerCase()} (gasto {fmtArs(f.opexTotal)}, mix {f.mixPct.toFixed(0)}% Fixy, ticket ${fmtNum(Math.round(f.ticket))}). Movés las variables y el punto de equilibrio se recalcula en vivo.</p>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-4">
         <SimSlider label="Gasto del mes" value={opex} min={10_000_000} max={80_000_000} step={500_000} onChange={setOpex} fmt={(v) => fmtArs(v)} />
-        <SimSlider label="Margen logístico Fixy" value={margenFixy} min={500} max={5000} step={10} onChange={setMargenFixy} fmt={(v) => `$${fmtNum(v)}`} />
-        <SimSlider label="Margen logístico Urbano" value={margenUrbano} min={500} max={6000} step={10} onChange={setMargenUrbano} fmt={(v) => `$${fmtNum(v)}`} />
+        <SimSlider label="Rentabilidad por guía Fixy" value={margenFixy} min={500} max={5000} step={10} onChange={setMargenFixy} fmt={(v) => `$${fmtNum(v)}`} />
+        <SimSlider label="Rentabilidad por guía Urbano" value={margenUrbano} min={500} max={6000} step={10} onChange={setMargenUrbano} fmt={(v) => `$${fmtNum(v)}`} />
         <SimSlider label="Mix (% Fixy)" value={mixPct} min={0} max={100} step={1} onChange={setMixPct} fmt={(v) => `${v}% Fixy`} />
-        <SimSlider label="Ticket promedio COD" value={ticket} min={30_000} max={120_000} step={1000} onChange={setTicket} fmt={(v) => `$${fmtNum(v)}`} />
-        <SimSlider label="Comisión COD" value={comPct} min={0.1} max={3} step={0.1} onChange={setComPct} fmt={(v) => `${v}%`} />
-        <SimSlider label="% de guías que son COD" value={pctCod} min={0} max={100} step={1} onChange={setPctCod} fmt={(v) => `${v}%`} />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-5">
-        <KpiCard label="Equilibrio — solo Fixy" value={`${fmtNum(sim.beFixy)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uF))}/guía (margen + COD)`} tone="orange" />
-        <KpiCard label="Equilibrio — solo Urbano" value={`${fmtNum(sim.beUrb)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uU))}/guía (margen + COD)`} tone="green" />
+        <KpiCard label="Equilibrio — solo Fixy" value={`${fmtNum(sim.beFixy)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uF))}/guía (COD incluido)`} tone="orange" />
+        <KpiCard label="Equilibrio — solo Urbano" value={`${fmtNum(sim.beUrb)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uU))}/guía (COD incluido)`} tone="green" />
         <KpiCard label={`Equilibrio — mix ${mixPct}/${100 - mixPct}`} value={`${fmtNum(sim.beMix)} guías/mes`} sub={`$${fmtNum(Math.round(sim.uM))}/guía promedio`} tone="blue" />
       </div>
       <div className="mt-5" style={{ height: 220 }}>
