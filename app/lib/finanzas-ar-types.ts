@@ -24,6 +24,9 @@ export interface CajaHoy {
   efectivo: number;
   fixyConfirmado: number;
   fixyPendienteEst: number;
+  urbanoPendiente?: number;  // saldo informado por Urbano, sin conciliar
+  fechaCorte?: string;       // "2026-09-30" — fecha de los saldos
+  banco?: string;            // nombre del banco ("Galicia")
 }
 
 export interface DeudaInterco {

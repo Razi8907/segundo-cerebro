@@ -67,6 +67,9 @@ function derived(input: FinanzasARData) {
 
   const margenYtd = totales.ingresoDropi > 0 ? totales.resultado / totales.ingresoDropi : 0;
   const cajaLiquida = input.caja.bbva + input.caja.efectivo;
+  const bancoNombre = input.caja.banco ? `Banco ${input.caja.banco}` : "Banco";
+  const corte = input.caja.fechaCorte ? input.caja.fechaCorte.split("-").reverse().slice(0, 2).join("/") : "hoy";
+  const urbanoPendiente = input.caja.urbanoPendiente ?? 0;
   const monthsCount = Math.max(monthly.length, 1);
   const burnMensualPromedio = totales.totalGastos / monthsCount;
   const ingresoMensualPromedio = totales.ingresoDropi / monthsCount;
@@ -97,6 +100,9 @@ function derived(input: FinanzasARData) {
     bepNeNoEntPctActual,
     // datos crudos para los views
     caja: input.caja,
+    bancoNombre,
+    corte,
+    urbanoPendiente,
     deuda: input.deuda,
     salarioRazielAr: input.salarioRazielAr,
     gastosBreakdownYtd: input.gastosBreakdownYtd,
@@ -230,15 +236,15 @@ function SaludView({ d }: { d: ReturnType<typeof derived> }) {
           tone={ultimo.margenPorOrden >= 0 ? "green" : "red"}
         />
         <KpiCard
-          label="Caja líquida hoy"
+          label={`Caja líquida al ${d.corte}`}
           value={fmtArs(d.cajaLiquida)}
-          sub={`BBVA ${fmtArs(d.caja.bbva)} + Efectivo ${fmtArs(d.caja.efectivo)}`}
+          sub={`${d.bancoNombre} ${fmtArs(d.caja.bbva)} + Efectivo ${fmtArs(d.caja.efectivo)}`}
           tone="blue"
         />
         <KpiCard
           label="Cobranza pendiente Fixy"
           value={fmtArs(d.caja.fixyConfirmado)}
-          sub={`Confirmado dic'25 + ene'26 · feb–abr aún por conciliar`}
+          sub={`Confirmado al ${d.corte} · + ${fmtArs(d.caja.fixyPendienteEst)} en proceso · Urbano ${fmtArs(d.urbanoPendiente)} sin conciliar`}
           tone="amber"
         />
       </div>
@@ -334,7 +340,7 @@ function CajaView({ d }: { d: ReturnType<typeof derived> }) {
   };
   const escBase = {
     nombre: "Base",
-    desc: "Fixy paga retenido confirmado ($468.8M) en próximos 3 meses + Arg asume Raziel",
+    desc: `Fixy paga retenido confirmado (${fmtArs(d.caja.fixyConfirmado)}) en próximos 3 meses + Arg asume Raziel`,
     cajaInicial: cajaActual + d.caja.fixyConfirmado,
     burnExtra: d.salarioRazielAr,
     cobranzaFixy: d.caja.fixyConfirmado,
@@ -342,10 +348,10 @@ function CajaView({ d }: { d: ReturnType<typeof derived> }) {
   };
   const escOptimista = {
     nombre: "Optimista",
-    desc: "Fixy paga TODO (confirmado + feb–abr conciliado) + crecimiento de margen",
-    cajaInicial: cajaActual + d.caja.fixyConfirmado + d.caja.fixyPendienteEst,
+    desc: "Fixy paga TODO (confirmado + en proceso) + Urbano paga su pendiente + crecimiento de margen",
+    cajaInicial: cajaActual + d.caja.fixyConfirmado + d.caja.fixyPendienteEst + d.urbanoPendiente,
     burnExtra: d.salarioRazielAr,
-    cobranzaFixy: d.caja.fixyConfirmado + d.caja.fixyPendienteEst,
+    cobranzaFixy: d.caja.fixyConfirmado + d.caja.fixyPendienteEst + d.urbanoPendiente,
     runway: 999, // efectivamente "indefinido"
   };
 
@@ -364,10 +370,11 @@ function CajaView({ d }: { d: ReturnType<typeof derived> }) {
   return (
     <div className="space-y-6">
       {/* KPIs caja */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard label="Banco BBVA" value={fmtArs(d.caja.bbva)} sub="Sin movimientos desde dic'25" tone="green" />
-        <KpiCard label="Caja Efectivo" value={fmtArs(d.caja.efectivo)} sub="Saldo operativo al 23/04" tone="orange" />
-        <KpiCard label="Retenido Fixy (conf.)" value={fmtArs(d.caja.fixyConfirmado)} sub="Dic'25 + Ene'26" tone="amber" />
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <KpiCard label={d.bancoNombre} value={fmtArs(d.caja.bbva)} sub={`Saldo al ${d.corte}`} tone="green" />
+        <KpiCard label="Caja Efectivo" value={fmtArs(d.caja.efectivo)} sub={`Saldo al ${d.corte}`} tone="orange" />
+        <KpiCard label="Retenido Fixy (conf.)" value={fmtArs(d.caja.fixyConfirmado)} sub={`Al ${d.corte} · + ${fmtArs(d.caja.fixyPendienteEst)} en proceso`} tone="amber" />
+        <KpiCard label="Urbano pendiente" value={fmtArs(d.urbanoPendiente)} sub="Sin conciliar (cifra informada por Urbano)" tone="amber" />
         <KpiCard label="Burn neto promedio" value={fmtArs(d.burnNeto)} sub="Egresos − Ingresos / mes" tone="red" />
       </div>
 
@@ -623,13 +630,15 @@ function LiquidacionesView({ d }: { d: ReturnType<typeof derived> }) {
   const cobrado = d.liquidaciones.filter((l) => l.estado === "cobrado").reduce((s, l) => s + (l.neto || 0), 0);
   const retenido = d.liquidaciones.filter((l) => l.estado === "retenido").reduce((s, l) => s + (l.neto || 0), 0);
   const aConciliar = d.liquidaciones.filter((l) => l.estado === "conciliar").length;
+  const nCobrado = d.liquidaciones.filter((l) => l.estado === "cobrado").length;
+  const nRetenido = d.liquidaciones.filter((l) => l.estado === "retenido").length;
 
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-3 gap-3">
-        <KpiCard label="Cobrado en banco/efectivo" value={fmtArs(cobrado)} sub="Oct + Nov '25" tone="green" />
-        <KpiCard label="Retenido confirmado" value={fmtArs(retenido)} sub="Dic'25 + Ene'26 — pendiente cobro" tone="red" />
-        <KpiCard label="A conciliar" value={`${aConciliar} liquidaciones`} sub="Feb–Abr 2026 (Fixy + Urbano)" tone="amber" />
+        <KpiCard label="Cobrado en banco/efectivo" value={fmtArs(cobrado)} sub={`${nCobrado} liquidaciones transferidas`} tone="green" />
+        <KpiCard label="Retenido confirmado" value={fmtArs(retenido)} sub={`${nRetenido} quincenas Fixy pendientes de retiro`} tone="red" />
+        <KpiCard label="A conciliar" value={`${aConciliar} liquidaciones`} sub={`Fixy en proceso + Urbano sin conciliar (${fmtArs(d.urbanoPendiente)})`} tone="amber" />
       </div>
 
       <div className="glass-card overflow-x-auto">

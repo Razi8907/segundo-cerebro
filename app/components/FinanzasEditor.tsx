@@ -176,12 +176,13 @@ export default function FinanzasEditor({ initial, saving, onCancel, onSave }: Pr
             <div className="glass-card p-4 space-y-3">
               <h3 className="text-sm font-semibold t-primary mb-2">Saldos de caja al día de hoy</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <NumField label="Banco BBVA ($)" value={data.caja.bbva} onChange={(v) => setData({ ...data, caja: { ...data.caja, bbva: v } })} />
+                <NumField label={`Banco ${data.caja.banco ?? ""} ($)`} value={data.caja.bbva} onChange={(v) => setData({ ...data, caja: { ...data.caja, bbva: v } })} />
                 <NumField label="Caja efectivo ($)" value={data.caja.efectivo} onChange={(v) => setData({ ...data, caja: { ...data.caja, efectivo: v } })} />
                 <NumField label="Fixy retenido confirmado ($)" value={data.caja.fixyConfirmado} onChange={(v) => setData({ ...data, caja: { ...data.caja, fixyConfirmado: v } })} />
                 <NumField label="Fixy pendiente estimado ($)" value={data.caja.fixyPendienteEst} onChange={(v) => setData({ ...data, caja: { ...data.caja, fixyPendienteEst: v } })} />
+                <NumField label="Urbano pendiente sin conciliar ($)" value={data.caja.urbanoPendiente ?? 0} onChange={(v) => setData({ ...data, caja: { ...data.caja, urbanoPendiente: v } })} />
               </div>
-              <p className="text-[11px] t-muted mt-2">El total líquido (BBVA + Efectivo) se calcula automáticamente. El runway depende de estos valores.</p>
+              <p className="text-[11px] t-muted mt-2">El total líquido (Banco + Efectivo) se calcula automáticamente. El runway depende de estos valores.</p>
             </div>
           )}
 
