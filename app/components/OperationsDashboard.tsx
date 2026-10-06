@@ -129,6 +129,15 @@ function shiftDateToMes(iso: string, targetMes: "abril" | "mayo" | "junio" | "ju
   return `${year}-${String(targetMonth).padStart(2, "0")}-${String(clampedDay).padStart(2, "0")}`;
 }
 
+// ¿La fecha de orden cae en el mes indicado? Si la fecha no se puede leer, se
+// conserva la guía (no la escondemos por un formato raro).
+function fechaEnMes(fecha: string, targetMes: keyof typeof MES_MONTH_NUM): boolean {
+  const iso = toIsoDate(fecha);
+  const m = iso.match(/^(\d{4})-(\d{2})-\d{2}$/);
+  if (!m) return true;
+  return m[1] === "2026" && parseInt(m[2], 10) === MES_MONTH_NUM[targetMes];
+}
+
 // Métricas de movilización. `rows` son las guías de operations_data.
 // `ingresadasOverride` viene de Seguimiento Diario (daily_tracking) — total real
 // de órdenes recibidas. Si no se pasa, se asume que rows representa ingresadas.
@@ -789,11 +798,23 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
     setUploading(true);
     setError("");
     try {
-      const parsed = await parseExcel(file, country);
-      if (parsed.length === 0) {
+      const parsedAll = await parseExcel(file, country);
+      if (parsedAll.length === 0) {
         setError("No se encontraron filas con datos en la hoja CARGA DIARIA.");
         setUploading(false);
         return;
+      }
+      // Solo se guardan las guías cuya fecha de orden es del mes elegido: si el
+      // export de Dropi trae otros meses, se mezclaban y rompían el Resumen Operacional.
+      const parsed = parsedAll.filter((r) => fechaEnMes(r.fecha, mes));
+      const descartadas = parsedAll.length - parsed.length;
+      if (parsed.length === 0) {
+        setError(`El archivo no tiene guías de ${MES_LABEL[mes]}. Revisá el rango de fechas del export o el mes elegido.`);
+        setUploading(false);
+        return;
+      }
+      if (descartadas > 0) {
+        alert(`Se cargan ${parsed.length.toLocaleString("es-AR")} guías de ${MES_LABEL[mes]}. Se descartaron ${descartadas.toLocaleString("es-AR")} guías de otros meses que venían en el archivo.`);
       }
       // Map to API format
       const apiRows = parsed.map((r) => ({
@@ -928,16 +949,21 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
 
   // Dedupe por guia: cada guía aparece varias veces (1 fila por upload diario).
   // Nos quedamos solo con la versión más reciente (fecha_carga máxima).
+  const prevMes: MesOps = mes === "octubre" ? "septiembre" : mes === "septiembre" ? "agosto" : mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
+
+  // Además se descartan guías de otros meses que hayan quedado guardadas en este
+  // mes por un export mezclado (ej. octubre con órdenes de agosto).
   const dedupedRows = useMemo(() => {
     const guiaMap = new Map<string, typeof rows[0]>();
     for (const r of rows) {
+      if (!fechaEnMes(r.fecha, mes)) continue;
       const existing = guiaMap.get(r.guia);
       if (!existing || r.fecha_carga > existing.fecha_carga) {
         guiaMap.set(r.guia, r);
       }
     }
     return Array.from(guiaMap.values());
-  }, [rows]);
+  }, [rows, mes]);
 
   const filteredRows = useMemo(() => {
     let result = dedupedRows;
@@ -952,11 +978,12 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
   const prevDedupedRows = useMemo(() => {
     const guiaMap = new Map<string, typeof prevRows[0]>();
     for (const r of prevRows) {
+      if (!fechaEnMes(r.fecha, prevMes)) continue;
       const existing = guiaMap.get(r.guia);
       if (!existing || r.fecha_carga > existing.fecha_carga) guiaMap.set(r.guia, r);
     }
     return Array.from(guiaMap.values());
-  }, [prevRows]);
+  }, [prevRows, prevMes]);
 
   const prevFilteredRows = useMemo(() => {
     let result = prevDedupedRows;
@@ -967,7 +994,6 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
     return result;
   }, [prevDedupedRows, fComercial, fTransportadora, fDropshipper, fProveedor]);
 
-  const prevMes: MesOps = mes === "octubre" ? "septiembre" : mes === "septiembre" ? "agosto" : mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
 
   // Rango "espejo" para mes anterior: mismos días pero en el mes anterior
   // (ej. dateFrom=2026-05-01 → prevDateFrom=2026-04-01).
