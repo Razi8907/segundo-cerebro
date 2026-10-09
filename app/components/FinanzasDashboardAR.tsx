@@ -110,7 +110,7 @@ function derived(input: FinanzasARData) {
   };
 }
 
-type View = "rendicion" | "salud" | "caja" | "pnl" | "fulfillment" | "liquidaciones" | "punto_equilibrio";
+type View = "rendicion" | "salud" | "caja" | "pnl" | "fulfillment" | "logisticas" | "punto_equilibrio";
 
 // ═══════════════════════════════════════════════════════════════════
 // COMPONENTE PRINCIPAL
@@ -123,12 +123,12 @@ export default function FinanzasDashboardAR({ mes = "agosto", mesLabel }: { mes?
 
   const tabs: { key: View; label: string }[] = [
     { key: "rendicion", label: `🧾 Rendición de caja` },
+    { key: "logisticas", label: "🚚 Saldo logísticas" },
     { key: "punto_equilibrio", label: "⚖️ Punto de equilibrio" },
     { key: "salud", label: "🩺 Salud financiera" },
     { key: "caja", label: "💰 Caja & Runway" },
     { key: "pnl", label: "📊 Resultado P&L" },
     { key: "fulfillment", label: "📦 Fulfillment" },
-    { key: "liquidaciones", label: "🏦 Liquidaciones Fixy" },
   ];
 
   const handleSave = async (next: FinanzasARData) => {
@@ -191,7 +191,7 @@ export default function FinanzasDashboardAR({ mes = "agosto", mesLabel }: { mes?
       {!loading && view === "caja" && <CajaView d={d} />}
       {!loading && view === "pnl" && <PnlView d={d} />}
       {!loading && view === "fulfillment" && <FulfillmentView d={d} />}
-      {!loading && view === "liquidaciones" && <LiquidacionesView d={d} />}
+      {!loading && view === "logisticas" && <SaldoLogisticasView d={d} />}
       {!loading && view === "punto_equilibrio" && (
         <PuntoEquilibrioAR
           mesKeys={MES_FILTER_TO_KEYS[mes] ?? ["ago"]}
@@ -624,55 +624,130 @@ function FulfillmentView({ d }: { d: ReturnType<typeof derived> }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// VIEW: LIQUIDACIONES
+// VIEW: SALDO LOGÍSTICAS — lo que nos tienen Fixy y Urbano
 // ═══════════════════════════════════════════════════════════════════
-function LiquidacionesView({ d }: { d: ReturnType<typeof derived> }) {
-  const cobrado = d.liquidaciones.filter((l) => l.estado === "cobrado").reduce((s, l) => s + (l.neto || 0), 0);
-  const retenido = d.liquidaciones.filter((l) => l.estado === "retenido").reduce((s, l) => s + (l.neto || 0), 0);
-  const aConciliar = d.liquidaciones.filter((l) => l.estado === "conciliar").length;
-  const nCobrado = d.liquidaciones.filter((l) => l.estado === "cobrado").length;
-  const nRetenido = d.liquidaciones.filter((l) => l.estado === "retenido").length;
+function TablaLiquidaciones({ rows, servicioLabel, ordenes }: { rows: FinanzasARData["liquidaciones"]; servicioLabel: string; ordenes?: boolean }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-gray-700">
+            <Th align="left">Período</Th>
+            {ordenes && <Th>Órdenes</Th>}
+            <Th>Recaudo bruto</Th>
+            <Th>{servicioLabel}</Th>
+            <Th>Neto Dropi</Th>
+            <Th align="left">Estado</Th>
+            <Th align="left">Detalle</Th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((l) => {
+            const tone: Tone = l.estado === "cobrado" ? "green" : l.estado === "retenido" ? "red" : "amber";
+            const label = l.estado === "cobrado" ? "✅ Cobrado" : l.estado === "retenido" ? "🔴 Nos debe" : "⏳ A conciliar";
+            return (
+              <tr key={l.periodo} className="border-b border-gray-800/50" style={l.estado === "cobrado" ? { opacity: 0.6 } : undefined}>
+                <Td align="left" bold>{l.periodo.replace(/ — /, " · ")}</Td>
+                {ordenes && <Td mono>{fmtNum(l.ordenes)}</Td>}
+                <Td mono>{fmtArs(l.bruto)}</Td>
+                <Td mono color={l.fixy ? C.red : C.gray}>{l.fixy ? fmtArs(-l.fixy) : "—"}</Td>
+                <Td mono bold color={tone === "green" ? C.green : tone === "red" ? C.red : C.amber}>{fmtArs(l.neto)}</Td>
+                <Td align="left"><Badge tone={tone}>{label}</Badge></Td>
+                <Td align="left" muted>{l.deposito}</Td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SaldoLogisticasView({ d }: { d: ReturnType<typeof derived> }) {
+  const fixyRows = d.liquidaciones.filter((l) => /fixy/i.test(l.periodo));
+  const urbanoRows = d.liquidaciones.filter((l) => /urbano/i.test(l.periodo));
+  const otrasRows = d.liquidaciones.filter((l) => !/fixy|urbano/i.test(l.periodo));
+  const fixyDebe = d.caja.fixyConfirmado;
+  const fixyProceso = d.caja.fixyPendienteEst;
+  const urbano = d.urbanoPendiente;
+  const total = fixyDebe + fixyProceso + urbano;
+  const fixyCobrado = fixyRows.filter((l) => l.estado === "cobrado").reduce((s, l) => s + (l.neto || 0), 0);
+  const nFixyDebe = fixyRows.filter((l) => l.estado === "retenido").length;
+  const sinCargar = fixyRows.filter((l) => l.estado === "conciliar" && l.neto === null);
+
+  // Lo que se debe por período (para el gráfico): Fixy pendiente + Urbano sin conciliar
+  const porPeriodo = [...fixyRows, ...urbanoRows]
+    .filter((l) => l.estado !== "cobrado" && (l.neto ?? 0) > 0)
+    .reduce<Record<string, { periodo: string; Fixy: number; Urbano: number }>>((acc, l) => {
+      const k = l.periodo.split(" — ")[0];
+      acc[k] ??= { periodo: k, Fixy: 0, Urbano: 0 };
+      acc[k][/urbano/i.test(l.periodo) ? "Urbano" : "Fixy"] += Math.round((l.neto ?? 0) / 1e6);
+      return acc;
+    }, {});
+  const ORDEN = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+  const clave = (p: string) => { const [m, y] = p.split(" '"); return Number(y) * 100 + ORDEN.indexOf(m); };
+  const chart = Object.values(porPeriodo).sort((a, b) => clave(a.periodo) - clave(b.periodo));
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-3 gap-3">
-        <KpiCard label="Cobrado en banco/efectivo" value={fmtArs(cobrado)} sub={`${nCobrado} liquidaciones transferidas`} tone="green" />
-        <KpiCard label="Retenido confirmado" value={fmtArs(retenido)} sub={`${nRetenido} quincenas Fixy pendientes de retiro`} tone="red" />
-        <KpiCard label="A conciliar" value={`${aConciliar} liquidaciones`} sub={`Fixy en proceso + Urbano sin conciliar (${fmtArs(d.urbanoPendiente)})`} tone="amber" />
+      <div className="glass-card p-5" style={{ borderTop: `4px solid ${C.orange}` }}>
+        <div className="text-[11px] t-muted uppercase tracking-wider">Lo que nos tienen las logísticas · al {d.corte}</div>
+        <div className="font-mono text-3xl font-bold mt-1" style={{ color: C.orange }}>{fmtArsExact(total)}</div>
+        <div className="text-xs t-secondary mt-1">
+          Fixy {fmtArs(fixyDebe + fixyProceso)} ({fmtPct(total > 0 ? (fixyDebe + fixyProceso) / total : 0)}) + Urbano {fmtArs(urbano)} ({fmtPct(total > 0 ? urbano / total : 0)}).
+          {" "}Es {total > 0 && d.cajaLiquida > 0 ? `${(total / d.cajaLiquida).toFixed(1)}×` : "—"} la caja líquida ({fmtArs(d.cajaLiquida)}).
+        </div>
       </div>
 
-      <div className="glass-card overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-gray-700">
-              <Th align="left">Período</Th>
-              <Th>Órdenes</Th>
-              <Th>Recaudo bruto</Th>
-              <Th>(-) Fixy</Th>
-              <Th>Neto Dropi</Th>
-              <Th align="left">Estado</Th>
-              <Th align="left">Depósito</Th>
-            </tr>
-          </thead>
-          <tbody>
-            {d.liquidaciones.map((l) => {
-              const tone = l.estado === "cobrado" ? "green" : l.estado === "retenido" ? "red" : "amber";
-              const label = l.estado === "cobrado" ? "✅ Cobrado" : l.estado === "retenido" ? "🔴 Retenido" : "⏳ A conciliar";
-              return (
-                <tr key={l.periodo} className="border-b border-gray-800/50">
-                  <Td align="left" bold>{l.periodo}</Td>
-                  <Td mono>{fmtNum(l.ordenes)}</Td>
-                  <Td mono>{fmtArs(l.bruto)}</Td>
-                  <Td mono color={l.fixy ? C.red : C.gray}>{l.fixy ? fmtArs(-l.fixy) : "—"}</Td>
-                  <Td mono bold color={tone === "green" ? C.green : tone === "red" ? C.red : C.gray}>{fmtArs(l.neto)}</Td>
-                  <Td align="left"><Badge tone={tone}>{label}</Badge></Td>
-                  <Td align="left" muted>{l.deposito}</Td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard label="Fixy — confirmado" value={fmtArs(fixyDebe)} sub={`${nFixyDebe} quincenas pendientes de retiro`} tone="red" />
+        <KpiCard label="Fixy — en proceso" value={fmtArs(fixyProceso)} sub={`Quincena en conciliación${sinCargar.length ? ` · ${sinCargar.length} sin cargar` : ""}`} tone="amber" />
+        <KpiCard label="Urbano — sin conciliar" value={fmtArs(urbano)} sub="Cifra informada por Urbano, falta validar" tone="amber" />
+        <KpiCard label="Fixy — ya cobrado" value={fmtArs(fixyCobrado)} sub={`${fixyRows.filter((l) => l.estado === "cobrado").length} quincenas transferidas`} tone="green" />
       </div>
+
+      {chart.length > 0 && (
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-semibold t-primary mb-1">De qué meses es la plata que nos deben ($ millones)</h3>
+          <p className="text-[11px] t-muted mb-3">Fixy pendiente de retiro o en proceso + Urbano sin conciliar, por mes de origen.</p>
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={chart}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+              <XAxis dataKey="periodo" stroke="#888" fontSize={11} />
+              <YAxis stroke="#888" fontSize={10} tickFormatter={(v) => `${v}M`} />
+              <Tooltip contentStyle={{ background: "#1a1a1a", border: `1px solid ${C.orange}`, fontSize: 12 }} itemStyle={{ color: "#fff" }} labelStyle={{ color: "#fff" }} formatter={(v) => `$${fmtNum(Number(v))}M`} />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Bar dataKey="Fixy" stackId="a" fill={C.orange} />
+              <Bar dataKey="Urbano" stackId="a" fill={C.green} radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <div className="glass-card">
+        <div className="px-5 pt-4 pb-2">
+          <h3 className="text-sm font-semibold t-primary">🟠 Fixy — por quincena</h3>
+          <p className="text-[11px] t-muted">Recaudo bruto − servicio Fixy = neto a depositar. "Nos debe" = pendiente de retiro.</p>
+        </div>
+        <TablaLiquidaciones rows={fixyRows} servicioLabel="(−) Servicio Fixy" />
+      </div>
+
+      {urbanoRows.length > 0 && (
+        <div className="glass-card">
+          <div className="px-5 pt-4 pb-2">
+            <h3 className="text-sm font-semibold t-primary">🟢 Urbano — por mes de entrega</h3>
+            <p className="text-[11px] t-muted">Neto de comisión COD, IVA, IIBB y flete. Cifras informadas por Urbano, todavía sin conciliar contra los registros de Dropi.</p>
+          </div>
+          <TablaLiquidaciones rows={urbanoRows} servicioLabel="(−) COD, flete e impuestos" ordenes />
+        </div>
+      )}
+
+      {otrasRows.length > 0 && (
+        <div className="glass-card">
+          <div className="px-5 pt-4 pb-2"><h3 className="text-sm font-semibold t-primary">Otras liquidaciones</h3></div>
+          <TablaLiquidaciones rows={otrasRows} servicioLabel="(−) Servicio" />
+        </div>
+      )}
     </div>
   );
 }
