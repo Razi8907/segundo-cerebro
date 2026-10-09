@@ -27,6 +27,7 @@ import OperationalUpload from "../components/OperationalUpload";
 import OpsBreakdown from "../components/OpsBreakdown";
 import FinanzasDashboard from "../components/FinanzasDashboard";
 import FinanzasDashboardPY_H1 from "../components/FinanzasDashboardPY_H1";
+import FinanzasDashboardPY_2026 from "../components/FinanzasDashboardPY_2026";
 import FinanzasDashboardPY_Q1 from "../components/FinanzasDashboardPY_Q1";
 import SeguimientoComercial from "../components/SeguimientoComercial";
 import EstrategiaUsuarios from "../components/EstrategiaUsuarios";
@@ -470,7 +471,15 @@ export default function ParaguayDashboard() {
 
         {!isQ2 && sector === "finanzas" && (
           <div className="space-y-8">
-            <FinanzasDashboardPY_H1 />
+            <FinanzasDashboardPY_2026 mesFilter={mesFilter} />
+            <details className="glass-card p-4">
+              <summary className="cursor-pointer text-sm font-medium t-secondary hover:text-orange-400">
+                📊 Ver informe ejecutivo H1 2026 (Ene–Jun, con guías y transportadoras)
+              </summary>
+              <div className="mt-4">
+                <FinanzasDashboardPY_H1 />
+              </div>
+            </details>
             <details className="glass-card p-4">
               <summary className="cursor-pointer text-sm font-medium t-secondary hover:text-orange-400">
                 📊 Ver informe histórico Q1 2026 (detalle)
