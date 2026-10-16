@@ -28,20 +28,22 @@ export async function GET(req: NextRequest) {
 
   const sb = getSupabase();
   const [results, transpResults] = await Promise.all([
-    Promise.all(meses.map((m) => sb.rpc("get_ops_daily_mes", { p_country: country, p_mes: m }))),
-    Promise.all(transpMeses.map((m) => sb.rpc("get_ops_transp_mes", { p_country: country, p_mes: m }))),
+    // get_ops_mes_cached guarda el resultado y solo recalcula si cambió la última carga
+    // del mes o las ingresadas del Seguimiento Diario (los meses cerrados salen del caché).
+    Promise.all(meses.map((m) => sb.rpc("get_ops_mes_cached", { p_country: country, p_mes: m, p_kind: "daily" }))),
+    Promise.all(transpMeses.map((m) => sb.rpc("get_ops_mes_cached", { p_country: country, p_mes: m, p_kind: "transp" }))),
   ]);
   const out: Record<string, unknown[]> = {};
   for (let i = 0; i < meses.length; i++) {
     const r = results[i];
     if (r.error) return NextResponse.json({ error: `${meses[i]}: ${r.error.message}` }, { status: 500 });
-    out[meses[i]] = r.data ?? [];
+    out[meses[i]] = Array.isArray(r.data) ? r.data : [];
   }
   const transp: Record<string, unknown[]> = {};
   for (let i = 0; i < transpMeses.length; i++) {
     const r = transpResults[i];
     if (r.error) return NextResponse.json({ error: `transportadoras ${transpMeses[i]}: ${r.error.message}` }, { status: 500 });
-    transp[transpMeses[i]] = r.data ?? [];
+    transp[transpMeses[i]] = Array.isArray(r.data) ? r.data : [];
   }
   return NextResponse.json({ meses: out, transp }, { headers: { "Cache-Control": "no-store" } });
 }
