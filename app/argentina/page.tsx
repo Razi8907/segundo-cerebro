@@ -10,6 +10,7 @@ import MinimoSemanal from "../components/MinimoSemanal";
 import MinimoMensual from "../components/MinimoMensual";
 import UsuariosRegistrados from "../components/UsuariosRegistrados";
 import Q2Resumen from "../components/Q2Resumen";
+import Q3Resumen from "../components/Q3Resumen";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -273,7 +274,11 @@ export default function ArgentinaDashboard() {
           <Q2Resumen country="ar" proveedores={proveedores} />
         )}
 
-        {!isQ2 && sector === "comercial" && <>
+        {isQ3 && (sector === "comercial" || sector === "operaciones") && (
+          <Q3Resumen country="ar" />
+        )}
+
+        {!isQ2 && !isQ3 && sector === "comercial" && <>
         {/* Period indicator */}
         <div className="text-center">
           <span className={`text-sm font-medium ${isOctubre ? "text-green-400" : isSeptiembre || isAgosto || isJulio || isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
@@ -460,7 +465,7 @@ export default function ArgentinaDashboard() {
           </div>
         )}
 
-        {!isQ2 && sector === "operaciones" && (
+        {!isQ2 && !isQ3 && sector === "operaciones" && (
           <OperacionesPanel country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "octubre"} />
         )}
 
