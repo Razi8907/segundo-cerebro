@@ -30,12 +30,12 @@ const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Vier
 const NO_MOV = new Set(["PENDIENTE", "PENDIENTE CONFIRMACION", "GUIA_GENERADA", "PREPARADO PARA TRANSPORTADORA", "CANCELADO", "RECHAZADO", "GUIA ANULADA", "CANCELADO POR TRANSPORTADORA"]);
 const C = { ing: "#3b82f6", mov: "#f97316", ent: "#10b981", dev: "#ef4444", proc: "#06b6d4", meta: "#a78bfa", gray: "#9ca3af", amber: "#f59e0b" };
 
+interface TranspRow { transportadora: string; guias: number; movilizadas: number; entregadas: number; devueltas: number; en_proceso: number; canceladas: number }
 interface Dia { dia: number; ingresadas: number; movilizadas: number; entregadas: number; devueltas: number; canceladas: number; en_proceso: number; guias: number }
 interface Snap {
   by_dropshipper?: { nombre: string; total: number; estados: Record<string, number> }[];
   by_proveedor?: { nombre: string; total: number; estados: Record<string, number> }[];
   by_producto?: { nombre: string; ordenes: number; cantidad: number; proveedor: string }[];
-  logistics?: { by_transportadora?: { nombre: string; total: number; entregado: number; devolucion?: number }[] };
 }
 interface Met { ing: number; mov: number; ent: number; dev: number; proc: number; canc: number; diasConDatos: number; diasMes: number; metaMov: number; metaIng: number }
 
@@ -87,6 +87,7 @@ function Td({ children, left, bold, color }: { children: React.ReactNode; left?:
 // ═══════════════════════════════════════════════════════════════════
 export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
   const [dias, setDias] = useState<Partial<Record<Mes, Dia[]>>>({});
+  const [transpData, setTranspData] = useState<Partial<Record<Mes, TranspRow[]>>>({});
   const [snaps, setSnaps] = useState<Partial<Record<Mes, Snap | null>>>({});
   const [meta, setMeta] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
@@ -99,7 +100,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     (async () => {
       try {
         const [q, dash, ...ops] = await Promise.all([
-          fetch(`/api/data/quarter?country=${country}&meses=${ALL.join(",")}`, { cache: "no-store" }).then((r) => r.json()),
+          fetch(`/api/data/quarter?country=${country}&meses=${ALL.join(",")}&transp=${Q3.join(",")}`, { cache: "no-store" }).then((r) => r.json()),
           fetch(`/api/data/${country}`).then((r) => r.json()).catch(() => null),
           ...SNAP_MESES.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}`).then((r) => r.json()).catch(() => null)),
         ]);
@@ -111,6 +112,12 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
           devueltas: Number(x.devueltas), canceladas: Number(x.canceladas), en_proceso: Number(x.en_proceso), guias: Number(x.guias),
         }));
         setDias(d);
+        const t: Partial<Record<Mes, TranspRow[]>> = {};
+        for (const m of Q3) t[m] = ((q?.transp?.[m] ?? []) as TranspRow[]).map((x) => ({
+          transportadora: String(x.transportadora), guias: Number(x.guias), movilizadas: Number(x.movilizadas), entregadas: Number(x.entregadas),
+          devueltas: Number(x.devueltas), en_proceso: Number(x.en_proceso), canceladas: Number(x.canceladas),
+        }));
+        setTranspData(t);
         const s: Partial<Record<Mes, Snap | null>> = {};
         SNAP_MESES.forEach((m, i) => { s[m] = ops[i]?.data ?? null; });
         setSnaps(s);
@@ -219,19 +226,23 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     return [...map.values()].sort((a, b) => b.ordenes - a.ordenes).slice(0, 10);
   }, [snaps]);
 
-  // ─── Transportadoras por mes ───
+  // ─── Transportadoras por mes (misma regla que Operaciones → Por Logística) ───
+  // Tasa de entrega = entregadas ÷ movilizadas · devolución = devueltas ÷ movilizadas
   const transp = useMemo(() => {
-    const map = new Map<string, Record<string, { total: number; ent: number; dev: number }>>();
-    for (const m of Q3) for (const t of snaps[m]?.logistics?.by_transportadora ?? []) {
-      const row = map.get(t.nombre) ?? {};
-      row[m] = { total: t.total || 0, ent: t.entregado || 0, dev: t.devolucion || 0 };
-      map.set(t.nombre, row);
+    type T = { mov: number; ent: number; dev: number; proc: number };
+    const map = new Map<string, Partial<Record<Mes, T>>>();
+    for (const m of Q3) for (const t of transpData[m] ?? []) {
+      if (t.movilizadas <= 0) continue;
+      const row = map.get(t.transportadora) ?? {};
+      row[m] = { mov: t.movilizadas, ent: t.entregadas, dev: t.devueltas, proc: t.en_proceso };
+      map.set(t.transportadora, row);
     }
     return [...map.entries()].map(([nombre, r]) => {
-      const tot = Q3.reduce((a, m) => ({ total: a.total + (r[m]?.total ?? 0), ent: a.ent + (r[m]?.ent ?? 0), dev: a.dev + (r[m]?.dev ?? 0) }), { total: 0, ent: 0, dev: 0 });
+      const tot = Q3.reduce((a, m) => ({ mov: a.mov + (r[m]?.mov ?? 0), ent: a.ent + (r[m]?.ent ?? 0), dev: a.dev + (r[m]?.dev ?? 0), proc: a.proc + (r[m]?.proc ?? 0) }), { mov: 0, ent: 0, dev: 0, proc: 0 });
       return { nombre, r, tot };
-    }).sort((a, b) => b.tot.total - a.tot.total);
-  }, [snaps]);
+    }).sort((a, b) => b.tot.mov - a.tot.mov);
+  }, [transpData]);
+  const movTotalTransp = transp.reduce((a, t) => a + t.tot.mov, 0);
 
   // ─── Preparación Q4 ───
   const q4 = useMemo(() => {
@@ -263,9 +274,10 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     if (pico?.prom) out.push({ tone: "info", txt: `Día más fuerte: ${pico.nombre} (${fmt(pico.prom)} ingresadas promedio). Más flojo: ${valle.nombre} (${fmt(valle.prom)}). Planificar campañas y stock según este patrón.` });
     const a = activacion.filas;
     if (a[0]?.hayDatos && a[2]?.hayDatos) out.push({ tone: a[2].activos >= a[0].activos ? "pos" : "neg", txt: `Dropshippers activos: julio ${fmt(a[0].activos)} → septiembre ${fmt(a[2].activos)}. En el trimestre se perdieron ${fmt(a.reduce((s, x) => s + x.perdidos, 0))} y entraron ${fmt(a.reduce((s, x) => s + x.nuevos, 0))} nuevos.` });
-    const peor = transp.filter((t) => t.tot.total > 500).sort((x, y) => ratio(x.tot.ent, x.tot.total) - ratio(y.tot.ent, y.tot.total))[0];
-    const mejorT = transp.filter((t) => t.tot.total > 500).sort((x, y) => ratio(y.tot.ent, y.tot.total) - ratio(x.tot.ent, x.tot.total))[0];
-    if (peor && mejorT && peor !== mejorT) out.push({ tone: "info", txt: `Transportadoras: mejor tasa de entrega ${mejorT.nombre} (${pct(mejorT.tot.ent, mejorT.tot.total)}), más baja ${peor.nombre} (${pct(peor.tot.ent, peor.tot.total)}).` });
+    const conVol = transp.filter((t) => t.tot.mov > 300);
+    const peor = [...conVol].sort((x, y) => ratio(x.tot.ent, x.tot.mov) - ratio(y.tot.ent, y.tot.mov))[0];
+    const mejorT = [...conVol].sort((x, y) => ratio(y.tot.ent, y.tot.mov) - ratio(x.tot.ent, x.tot.mov))[0];
+    if (peor && mejorT && peor !== mejorT) out.push({ tone: "info", txt: `Transportadoras (tasa de entrega sobre movilizadas): mejor ${mejorT.nombre} (${pct(mejorT.tot.ent, mejorT.tot.mov)}), más baja ${peor.nombre} (${pct(peor.tot.ent, peor.tot.mov)}).` });
     return out;
   }, [met, tQ2, tQ3, porDiaSemana, activacion, transp]);
 
@@ -543,23 +555,40 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
           </div>
         </Card>
 
-        <Card title="🚚 Transportadoras — tasa de entrega por mes" sub="Entregadas ÷ guías de la transportadora (Análisis Operacional)">
+        <Card title="🚚 Transportadoras — tasa de entrega por mes" sub="Misma regla que Operaciones → Por Logística: entregadas ÷ movilizadas (solo guías con fecha de orden del mes)">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b border-gray-700"><Th left>Transportadora</Th>{Q3.map((m) => <Th key={m}>{CORTO[m]}</Th>)}<Th>Guías Q3</Th><Th>Entrega Q3</Th><Th>Devol. Q3</Th></tr></thead>
+              <thead><tr className="border-b border-gray-700"><Th left>Transportadora</Th>{Q3.map((m) => <Th key={m}>{CORTO[m]}</Th>)}<Th>Movilizadas Q3</Th><Th>Particip.</Th><Th>Entrega Q3</Th><Th>Devol. Q3</Th><Th>En proceso</Th></tr></thead>
               <tbody>
                 {transp.map((t) => (
                   <tr key={t.nombre} className="border-b border-gray-800/50">
                     <Td left bold>{t.nombre}</Td>
-                    {Q3.map((m) => <Td key={m}>{t.r[m] ? pct(t.r[m].ent, t.r[m].total, 0) : "—"}</Td>)}
-                    <Td>{fmt(t.tot.total)}</Td>
-                    <Td bold color={ratio(t.tot.ent, t.tot.total) >= 0.55 ? "#10b981" : "#f59e0b"}>{pct(t.tot.ent, t.tot.total)}</Td>
-                    <Td color="#ef4444">{pct(t.tot.dev, t.tot.total)}</Td>
+                    {Q3.map((m) => <Td key={m}>{t.r[m] ? pct(t.r[m]!.ent, t.r[m]!.mov) : "—"}</Td>)}
+                    <Td>{fmt(t.tot.mov)}</Td>
+                    <Td>{pct(t.tot.mov, movTotalTransp, 0)}</Td>
+                    <Td bold color="#10b981">{pct(t.tot.ent, t.tot.mov)}</Td>
+                    <Td color="#ef4444">{pct(t.tot.dev, t.tot.mov)}</Td>
+                    <Td>{pct(t.tot.proc, t.tot.mov)}</Td>
                   </tr>
                 ))}
+                {transp.length > 0 && (
+                  <tr style={{ background: "rgba(249,115,22,0.08)" }}>
+                    <Td left bold>Total</Td>
+                    {Q3.map((m) => {
+                      const mm = transp.reduce((a, t) => ({ mov: a.mov + (t.r[m]?.mov ?? 0), ent: a.ent + (t.r[m]?.ent ?? 0) }), { mov: 0, ent: 0 });
+                      return <Td key={m} bold>{pct(mm.ent, mm.mov)}</Td>;
+                    })}
+                    <Td bold>{fmt(movTotalTransp)}</Td>
+                    <Td bold>100%</Td>
+                    <Td bold>{pct(transp.reduce((a, t) => a + t.tot.ent, 0), movTotalTransp)}</Td>
+                    <Td bold>{pct(transp.reduce((a, t) => a + t.tot.dev, 0), movTotalTransp)}</Td>
+                    <Td bold>{pct(transp.reduce((a, t) => a + t.tot.proc, 0), movTotalTransp)}</Td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+          {transp.length === 0 && <p className="text-xs t-muted">Sin datos de Operaciones para Q3.</p>}
         </Card>
       </div>
 
