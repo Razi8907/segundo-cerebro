@@ -804,6 +804,16 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
         setUploading(false);
         return;
       }
+      // Control de país: transportadoras que solo operan en el otro país delatan un
+      // archivo equivocado (pasó que se subió Paraguay septiembre dentro de Argentina).
+      const AJENAS: Record<string, string[]> = { ar: ["AEX", "FIXY-NEXTDAY", "PUNTO A PUNTO"], py: ["URBANO"] };
+      const ajenas = parsedAll.filter((r) => AJENAS[country]?.includes(String(r.transportadora || "").trim().toUpperCase())).length;
+      if (ajenas > parsedAll.length * 0.05) {
+        const otro = country === "ar" ? "Paraguay" : "Argentina";
+        setError(`Este archivo parece de ${otro}: ${ajenas.toLocaleString("es-AR")} de ${parsedAll.length.toLocaleString("es-AR")} guías son de transportadoras que solo operan en ${otro}. No se cargó nada; revisá el país elegido.`);
+        setUploading(false);
+        return;
+      }
       // Solo se guardan las guías cuya fecha de orden es del mes elegido: si el
       // export de Dropi trae otros meses, se mezclaban y rompían el Resumen Operacional.
       const parsed = parsedAll.filter((r) => fechaEnMes(r.fecha, mes));
