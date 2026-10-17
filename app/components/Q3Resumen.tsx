@@ -125,8 +125,9 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       try {
         const [q, dash, ...ops] = await Promise.all([
           fetch(`/api/data/quarter?country=${country}&meses=${ALL.join(",")}&transp=${Q3.join(",")}`, { cache: "no-store" }).then((r) => r.json()),
-          fetch(`/api/data/${country}`).then((r) => r.json()).catch(() => null),
-          ...SNAP_MESES.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}`).then((r) => r.json()).catch(() => null)),
+          fetch(`/api/data/${country}?solo=meta_info`).then((r) => r.json()).catch(() => null),
+          // Solo las claves que usa el Q3 (el snapshot completo de PY pesa ~1,5 MB por mes)
+          ...SNAP_MESES.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}&campos=by_dropshipper,by_proveedor,by_producto`).then((r) => r.json()).catch(() => null)),
         ]);
         if (!alive) return;
         if (q?.error) throw new Error(q.error);
@@ -336,8 +337,10 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     parrafos.push(
       `La conversión de órdenes a guías movilizadas fue del ${p1(tQ3.mov, tQ3.ing)} (${ppTxt(movQ3, movQ2)} vs Q2). ` +
       `La tasa de entrega sobre movilizadas fue ${p1(tQ3.ent, tQ3.mov)} y la efectividad sobre guías cerradas ${efQ3l.toFixed(1).replace(".", ",")}%, ` +
-      `${efQ3l >= efQ2l ? "una mejora" : "un retroceso"} de ${Math.abs(efQ3l - efQ2l).toFixed(1).replace(".", ",")} puntos frente al Q2; la devolución ${sube(ratio(tQ3.dev, tQ3.mov), ratio(tQ2.dev, tQ2.mov))} a ${p1(tQ3.dev, tQ3.mov)} (Q2: ${p1(tQ2.dev, tQ2.mov)}). ` +
-      `Dentro del trimestre la entrega ${teSep >= teJul ? "mejoró" : "se deterioró"} de ${teJul.toFixed(1).replace(".", ",")}% en julio a ${teSep.toFixed(1).replace(".", ",")}% en septiembre` +
+      `${Math.abs(efQ3l - efQ2l) < 1 ? "prácticamente igual que en el Q2" : `${efQ3l > efQ2l ? "una mejora" : "un retroceso"} de ${Math.abs(efQ3l - efQ2l).toFixed(1).replace(".", ",")} puntos frente al Q2`}; la devolución ${sube(ratio(tQ3.dev, tQ3.mov), ratio(tQ2.dev, tQ2.mov))} a ${p1(tQ3.dev, tQ3.mov)} (Q2: ${p1(tQ2.dev, tQ2.mov)}). ` +
+      (Math.abs(teSep - teJul) < 1
+        ? `Dentro del trimestre la entrega se mantuvo estable (${teJul.toFixed(1).replace(".", ",")}% en julio, ${teSep.toFixed(1).replace(".", ",")}% en septiembre)`
+        : `Dentro del trimestre la entrega ${teSep > teJul ? "mejoró" : "se deterioró"} de ${teJul.toFixed(1).replace(".", ",")}% en julio a ${teSep.toFixed(1).replace(".", ",")}% en septiembre`) +
       (met.septiembre.proc > 0 ? ` (septiembre todavía tiene ${fmt(met.septiembre.proc)} guías en proceso, por lo que su tasa final puede subir).` : "."),
     );
     if (teQ3 < teQ2 || teSep < teJul - 2) prioridades.push(`Calidad de entrega: la tasa cayó ${teSep < teJul ? `${(teJul - teSep).toFixed(1).replace(".", ",")} puntos entre julio y septiembre` : `frente al Q2`}. Revisar novedades, confirmación de pedidos y devoluciones por zona antes de escalar volumen.`);

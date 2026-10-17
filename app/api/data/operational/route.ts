@@ -10,10 +10,25 @@ const isColumnMissing = (err: any) => {
 
 // GET /api/data/operational?country=ar&mes=abril
 // Resiliente: si la columna `mes` no existe, para abril cae al SELECT sin filtro.
+// ?campos=by_dropshipper,by_proveedor → devuelve solo esas claves del snapshot (mucho más
+// liviano: el snapshot completo de PY pesa ~1,5 MB y tarda varios segundos).
+const CAMPOS_VALIDOS = ["by_dropshipper", "by_proveedor", "by_producto", "by_status", "by_date", "by_ds_daily", "by_prov_daily", "by_ds_producto", "by_departamento", "logistics", "date_range", "total_orders"];
+
 export async function GET(req: NextRequest) {
   const country = req.nextUrl.searchParams.get("country") || "ar";
   const mes = req.nextUrl.searchParams.get("mes") || "abril";
   const supabase = getSupabase();
+
+  const campos = (req.nextUrl.searchParams.get("campos") || "").split(",").map((c) => c.trim()).filter((c) => CAMPOS_VALIDOS.includes(c));
+  if (campos.length > 0) {
+    const sel = [...campos.map((c) => `${c}:data->${c}`), "raw_count", "uploaded_at"].join(", ");
+    const r = await supabase.from("operational_snapshots").select(sel).eq("country", country).eq("mes", mes).maybeSingle();
+    if (r.error || !r.data) return NextResponse.json({ data: null });
+    const row = r.data as unknown as Record<string, unknown>;
+    const data: Record<string, unknown> = {};
+    for (const c of campos) data[c] = row[c] ?? null;
+    return NextResponse.json({ data, raw_count: row.raw_count, uploaded_at: row.uploaded_at });
+  }
 
   // Intento con filtro mes
   const filtered = await supabase
