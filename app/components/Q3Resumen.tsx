@@ -10,10 +10,12 @@
 //   - /api/data/{country} → metas (meta_info)
 // ═══════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
+import { useUser } from "../lib/useUser";
+import { exportarSeccionesPdf } from "../lib/export-pdf";
 
 type Mes = "abril" | "mayo" | "junio" | "julio" | "agosto" | "septiembre" | "octubre" | "noviembre" | "diciembre";
 const Q2: Mes[] = ["abril", "mayo", "junio"];
@@ -60,7 +62,7 @@ function sumMet(ms: Met[]): Met {
 // ─── UI ───
 function Card({ title, sub, children }: { title: string; sub?: string; children: React.ReactNode }) {
   return (
-    <div className="glass-card p-5">
+    <div className="glass-card p-5" data-pdf-section>
       <h3 className="text-sm font-bold t-primary">{title}</h3>
       {sub && <p className="text-[11px] t-muted mt-0.5 mb-3">{sub}</p>}
       {!sub && <div className="mb-3" />}
@@ -92,6 +94,27 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
   const [meta, setMeta] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { canDownload } = useUser();
+  const [exportando, setExportando] = useState(false);
+  const descargarPdf = async () => {
+    if (!rootRef.current || exportando) return;
+    setExportando(true);
+    try {
+      await exportarSeccionesPdf({
+        root: rootRef.current,
+        pais: country,
+        titulo: "Resumen Q3 2026",
+        periodo: "Julio – Septiembre 2026 (con avance de Octubre)",
+        archivo: `Q3-2026-${country === "ar" ? "Argentina" : "Paraguay"}`,
+      });
+    } catch (e) {
+      console.error("PDF Q3:", e);
+      alert("No se pudo generar el PDF. Probá de nuevo.");
+    } finally {
+      setExportando(false);
+    }
+  };
   const [avisos, setAvisos] = useState<{ mes: string; tipo: string; estado: string; guardadoEl?: string }[]>([]);
 
   useEffect(() => {
@@ -319,10 +342,21 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
   const efQ3 = ratio(tQ3.ent, tQ3.ent + tQ3.dev) * 100, efQ2 = ratio(tQ2.ent, tQ2.ent + tQ2.dev) * 100;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" ref={rootRef}>
       {/* Encabezado */}
       <div className="rounded-xl p-5 border-2 border-orange-500/40" style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.08), rgba(6,182,212,0.05))" }}>
-        <h2 className="text-lg font-bold t-primary mb-1">📊 Resumen Q3 2026 — {country === "ar" ? "Argentina" : "Paraguay"}</h2>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
+          <h2 className="text-lg font-bold t-primary">📊 Resumen Q3 2026 — {country === "ar" ? "Argentina" : "Paraguay"}</h2>
+          {canDownload && (
+            <button
+              onClick={descargarPdf}
+              disabled={exportando}
+              className="text-xs px-4 py-2 rounded-full bg-orange-500 text-white border border-orange-500 shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:opacity-60 transition-all"
+            >
+              {exportando ? "Generando PDF…" : "📄 Descargar PDF"}
+            </button>
+          )}
+        </div>
         <p className="text-xs t-muted">
           Julio + Agosto + Septiembre, comparado con Q2 y con el arranque de Q4. Mismas reglas que Operaciones: ingresadas del Seguimiento Diario, movilizadas/entregadas/devueltas del último archivo de cada mes (solo guías con fecha de orden del mes).
         </p>
@@ -342,7 +376,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       )}
 
       {/* Meta Q3 */}
-      <div className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(167,139,250,0.10), rgba(249,115,22,0.08))", borderColor: "rgba(167,139,250,0.4)" }}>
+      <div data-pdf-section className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(167,139,250,0.10), rgba(249,115,22,0.08))", borderColor: "rgba(167,139,250,0.4)" }}>
         <h3 className="text-base font-bold t-primary mb-3">🎯 Meta Q3 — cumplimiento trimestral</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[{ l: "Movilizadas", real: tQ3.mov, meta: tQ3.metaMov, color: C.mov }, { l: "Ingresadas", real: tQ3.ing, meta: tQ3.metaIng, color: C.ing }].map((x) => (
@@ -370,7 +404,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       </div>
 
       {/* KPIs Q3 vs Q2 */}
-      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
+      <div data-pdf-section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
         <Kpi label="Ingresadas Q3" value={fmt(tQ3.ing)} sub={`${deltaTxt(tQ3.ing, tQ2.ing)} vs Q2`} good={tQ3.ing >= tQ2.ing} color={C.ing} />
         <Kpi label="Movilizadas Q3" value={fmt(tQ3.mov)} sub={`${deltaTxt(tQ3.mov, tQ2.mov)} vs Q2`} good={tQ3.mov >= tQ2.mov} color={C.mov} />
         <Kpi label="% movilización" value={pct(tQ3.mov, tQ3.ing)} sub={`Q2: ${pct(tQ2.mov, tQ2.ing)}`} good={ratio(tQ3.mov, tQ3.ing) >= ratio(tQ2.mov, tQ2.ing)} color={C.mov} />
@@ -608,7 +642,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       </div>
 
       {/* Preparación Q4 */}
-      <div className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.10), rgba(59,130,246,0.08))", borderColor: "rgba(16,185,129,0.4)" }}>
+      <div data-pdf-section className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.10), rgba(59,130,246,0.08))", borderColor: "rgba(16,185,129,0.4)" }}>
         <h3 className="text-base font-bold t-primary mb-1">🚀 Preparando el Q4 — base para planificar</h3>
         <p className="text-[11px] t-muted mb-4">Octubre en curso contra su meta, y la base que deja el Q3 para fijar noviembre y diciembre.</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
