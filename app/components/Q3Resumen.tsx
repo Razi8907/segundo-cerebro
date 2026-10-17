@@ -163,7 +163,9 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       const ds = dias[m] ?? [];
       const s = (k: keyof Dia) => ds.reduce((a, x) => a + (x[k] || 0), 0);
       out[m] = {
-        ing: s("ingresadas"), mov: s("movilizadas"), ent: s("entregadas"), dev: s("devueltas"), proc: s("en_proceso"), canc: s("canceladas"),
+        // Movilizadas: si hay cierre oficial cargado (meta_info.cierre_movilizadas_<mes>) manda
+        // sobre lo calculado desde las guías (archivos viejos pueden no reflejar el cierre real).
+        ing: s("ingresadas"), mov: Number(meta[`cierre_movilizadas_${m}`]) || s("movilizadas"), ent: s("entregadas"), dev: s("devueltas"), proc: s("en_proceso"), canc: s("canceladas"),
         diasConDatos: ds.filter((x) => x.ingresadas > 0).length, diasMes: DIAS_MES(m),
         metaMov: Number(meta[`meta_movilizadas_${m}`]) || 0, metaIng: Number(meta[`meta_ingresadas_${m}`]) || 0,
       };
@@ -409,6 +411,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
 
   // Cuadro comparativo: columnas agrupadas por trimestre y filas agrupadas por tema
   type Fila = { label: string; get: (x: Met) => string; delta?: (a: Met, b: Met) => { txt: string; good: boolean }; tasa?: boolean; color?: (x: Met) => string | undefined };
+  const mesesConCierre = ALL.filter((m) => Number(meta[`cierre_movilizadas_${m}`]) > 0);
   const colorCumpl = (x: Met) => (!x.metaMov ? undefined : x.mov >= x.metaMov ? "#10b981" : x.mov >= x.metaMov * 0.9 ? "#f59e0b" : "#ef4444");
   const gruposComp: { titulo: string; filas: Fila[] }[] = [
     { titulo: "Volumen", filas: [
@@ -592,6 +595,11 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
             </tbody>
           </table>
         </div>
+        {mesesConCierre.length > 0 && (
+          <p className="text-[11px] mt-3" style={{ color: "#f59e0b" }}>
+            * Movilizadas de {mesesConCierre.map((m) => LABEL[m].toLowerCase()).join(", ")}: cierre oficial cargado manualmente (reemplaza el cálculo desde las guías de Operaciones). Las tasas de entrega y devolución de esos meses se calculan sobre ese cierre.
+          </p>
+        )}
         <p className="text-[11px] t-muted mt-3">Cumplimiento de meta: verde ≥ 100% · amarillo ≥ 90% · rojo &lt; 90%. Tasa de entrega y devolución sobre guías movilizadas; efectividad sobre guías ya cerradas (entregadas + devueltas).</p>
       </Card>
 
