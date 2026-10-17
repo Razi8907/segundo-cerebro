@@ -306,6 +306,98 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     return out;
   }, [met, tQ2, tQ3, porDiaSemana, activacion, transp]);
 
+  // ─── Lectura del Q3: resumen ejecutivo redactado con los datos ───
+  const lectura = useMemo(() => {
+    const pais = country === "ar" ? "Argentina" : "Paraguay";
+    const p1 = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1).replace(".", ",")}%` : "—");
+    const sube = (a: number, b: number) => (a >= b ? "subió" : "bajó");
+    const parrafos: string[] = [];
+    const prioridades: string[] = [];
+
+    // 1. Volumen y meta
+    const mejor = [...Q3].sort((a, b) => met[b].mov - met[a].mov)[0];
+    const cumpl = ratio(tQ3.mov, tQ3.metaMov);
+    const tendMes = delta(met.septiembre.mov, met.julio.mov);
+    parrafos.push(
+      `En el Q3 2026 ${pais} movilizó ${fmt(tQ3.mov)} guías sobre ${fmt(tQ3.ing)} órdenes ingresadas, ${deltaTxt(tQ3.mov, tQ2.mov)} contra el Q2 (${fmt(tQ2.mov)} movilizadas)` +
+      (tQ3.metaMov ? `, con un cumplimiento de meta del ${p1(tQ3.mov, tQ3.metaMov)} (${tQ3.mov >= tQ3.metaMov ? `${fmt(tQ3.mov - tQ3.metaMov)} guías por encima` : `faltaron ${fmt(tQ3.metaMov - tQ3.mov)} guías`} de las ${fmt(tQ3.metaMov)} planificadas)` : "") +
+      `. El trimestre fue ${tendMes >= 3 ? "de crecimiento sostenido" : tendMes <= -3 ? "de caída progresiva" : "estable"} mes a mes: julio ${fmt(met.julio.mov)}, agosto ${fmt(met.agosto.mov)} y septiembre ${fmt(met.septiembre.mov)} movilizadas (${deltaTxt(met.septiembre.mov, met.julio.mov)} de julio a septiembre); el mejor mes fue ${LABEL[mejor].toLowerCase()}. ` +
+      `El promedio diario de ingresadas fue ${fmt(ratio(tQ3.ing, tQ3.diasMes))}, contra ${fmt(ratio(tQ2.ing, tQ2.diasMes))} en el Q2.`,
+    );
+    if (tQ3.metaMov && cumpl < 1) prioridades.push(`Recuperar el ritmo: el Q3 cerró en ${p1(tQ3.mov, tQ3.metaMov)} de la meta; el Q4 necesita sostener al menos ${fmt(ratio(tQ3.metaMov, 3))} movilizadas por mes para no repetir la brecha.`);
+
+    // 2. Conversión y calidad de entrega
+    const movQ3 = ratio(tQ3.mov, tQ3.ing) * 100, movQ2 = ratio(tQ2.mov, tQ2.ing) * 100;
+    const teQ3 = ratio(tQ3.ent, tQ3.mov) * 100, teQ2 = ratio(tQ2.ent, tQ2.mov) * 100;
+    const efQ3l = ratio(tQ3.ent, tQ3.ent + tQ3.dev) * 100, efQ2l = ratio(tQ2.ent, tQ2.ent + tQ2.dev) * 100;
+    const teJul = ratio(met.julio.ent, met.julio.mov) * 100, teSep = ratio(met.septiembre.ent, met.septiembre.mov) * 100;
+    parrafos.push(
+      `La conversión de órdenes a guías movilizadas fue del ${p1(tQ3.mov, tQ3.ing)} (${ppTxt(movQ3, movQ2)} vs Q2). ` +
+      `La tasa de entrega sobre movilizadas fue ${p1(tQ3.ent, tQ3.mov)} y la efectividad sobre guías cerradas ${efQ3l.toFixed(1).replace(".", ",")}%, ` +
+      `${efQ3l >= efQ2l ? "una mejora" : "un retroceso"} de ${Math.abs(efQ3l - efQ2l).toFixed(1).replace(".", ",")} puntos frente al Q2; la devolución ${sube(ratio(tQ3.dev, tQ3.mov), ratio(tQ2.dev, tQ2.mov))} a ${p1(tQ3.dev, tQ3.mov)} (Q2: ${p1(tQ2.dev, tQ2.mov)}). ` +
+      `Dentro del trimestre la entrega ${teSep >= teJul ? "mejoró" : "se deterioró"} de ${teJul.toFixed(1).replace(".", ",")}% en julio a ${teSep.toFixed(1).replace(".", ",")}% en septiembre` +
+      (met.septiembre.proc > 0 ? ` (septiembre todavía tiene ${fmt(met.septiembre.proc)} guías en proceso, por lo que su tasa final puede subir).` : "."),
+    );
+    if (teQ3 < teQ2 || teSep < teJul - 2) prioridades.push(`Calidad de entrega: la tasa cayó ${teSep < teJul ? `${(teJul - teSep).toFixed(1).replace(".", ",")} puntos entre julio y septiembre` : `frente al Q2`}. Revisar novedades, confirmación de pedidos y devoluciones por zona antes de escalar volumen.`);
+
+    // 3. Transportadoras
+    const movT = transp.reduce((a, t) => a + t.tot.mov, 0);
+    const conVol = transp.filter((t) => t.tot.mov > Math.max(300, movT * 0.03));
+    if (conVol.length) {
+      const orden = [...conVol].sort((x, y) => ratio(y.tot.ent, y.tot.mov) - ratio(x.tot.ent, x.tot.mov));
+      const mejorT = orden[0], peorT = orden[orden.length - 1];
+      const detalle = conVol.map((t) => `${t.nombre} ${p1(t.tot.ent, t.tot.mov)} de entrega con ${p1(t.tot.mov, movT)} del volumen`).join("; ");
+      parrafos.push(
+        `Por transportadora (misma regla que Operaciones): ${detalle}. ` +
+        (mejorT !== peorT ? `La brecha entre la mejor (${mejorT.nombre}) y la más baja (${peorT.nombre}) es de ${((ratio(mejorT.tot.ent, mejorT.tot.mov) - ratio(peorT.tot.ent, peorT.tot.mov)) * 100).toFixed(1).replace(".", ",")} puntos de entrega.` : ""),
+      );
+      if (mejorT !== peorT && ratio(peorT.tot.mov, movT) > 0.15) prioridades.push(`Logística: ${peorT.nombre} mueve ${p1(peorT.tot.mov, movT)} del volumen con la entrega más baja (${p1(peorT.tot.ent, peorT.tot.mov)}). Evaluar derivar zonas o volumen hacia ${mejorT.nombre} (${p1(mejorT.tot.ent, mejorT.tot.mov)}) y negociar metas de entrega.`);
+    }
+
+    // 4. Base de dropshippers y concentración
+    const a = activacion.filas;
+    if (a[0]?.hayDatos && a[2]?.hayDatos) {
+      const nuevos = a.reduce((s, x) => s + x.nuevos, 0), perdidos = a.reduce((s, x) => s + x.perdidos, 0);
+      let dsTot = 0;
+      for (const m of Q3) for (const r of snaps[m]?.by_dropshipper ?? []) dsTot += movOf(r.estados || {});
+      const top10 = topDs.reduce((s, r) => s + r.mov, 0);
+      parrafos.push(
+        `La base activa pasó de ${fmt(a[0].activos)} dropshippers con órdenes en julio a ${fmt(a[2].activos)} en septiembre (${fmt(activacion.unicos)} distintos en el trimestre, ${fmt(activacion.los3)} activos los tres meses). ` +
+        `Entraron ${fmt(nuevos)} nuevos y se perdieron ${fmt(perdidos)}, un saldo ${nuevos >= perdidos ? "positivo" : "negativo"} de ${fmt(Math.abs(nuevos - perdidos))}. ` +
+        `El negocio está concentrado: en septiembre ${fmt(a[2].pareto)} dropshippers generaron el 80% de las órdenes` +
+        (dsTot ? ` y el top 10 explica el ${p1(top10, dsTot)} de las movilizadas del trimestre` : "") +
+        (topDs[0] ? `, liderado por ${topDs[0].nombre} (${fmt(topDs[0].mov)}).` : "."),
+      );
+      if (perdidos > nuevos) prioridades.push(`Retención: se perdieron más dropshippers (${fmt(perdidos)}) de los que entraron (${fmt(nuevos)}). Armar un plan de reactivación con la lista de "perdidos" y seguimiento semanal del top 20.`);
+      if (dsTot && ratio(top10, dsTot) > 0.4) prioridades.push(`Dependencia: el top 10 concentra ${p1(top10, dsTot)} del volumen. Cuidar a esas cuentas (stock, tiempos, atención) y desarrollar la segunda línea para bajar el riesgo.`);
+    }
+
+    // 5. Proveedores y productos
+    if (topProv[0] || topProd[0]) {
+      const caen = topProv.filter((r) => r.jul > 0 && r.sep < r.jul * 0.8).map((r) => r.nombre);
+      parrafos.push(
+        (topProv[0] ? `Entre los proveedores lideró ${topProv[0].nombre} (${fmt(topProv[0].mov)} movilizadas)${topProv[1] ? `, seguido por ${topProv[1].nombre} y ${topProv[2]?.nombre ?? "—"}` : ""}. ` : "") +
+        (caen.length ? `Dentro del top 10, ${caen.slice(0, 3).join(", ")} ${caen.length === 1 ? "cayó" : "cayeron"} más de 20% de julio a septiembre. ` : "") +
+        (topProd[0] ? `El producto más pedido fue "${topProd[0].nombre}" con ${fmt(topProd[0].ordenes)} órdenes en el trimestre.` : ""),
+      );
+      if (caen.length) prioridades.push(`Proveedores en baja: revisar stock, precio y calidad con ${caen.slice(0, 3).join(", ")} antes de las campañas de fin de año.`);
+    }
+
+    // 6. Arranque del Q4
+    const pico = [...porDiaSemana].sort((x, y) => y.prom - x.prom)[0];
+    parrafos.push(
+      `Para el Q4: octubre lleva ${fmt(q4.oct.ing)} ingresadas al día ${q4.ultimoDia} (${fmt(q4.promOct)} por día, ${q4.promOct >= q4.promQ3 ? "por encima" : "por debajo"} del promedio del Q3 de ${fmt(q4.promQ3)}). ` +
+      `Al ritmo actual cerraría en ~${fmt(q4.proyIng)} ingresadas y ~${fmt(q4.proyMov)} movilizadas` +
+      (q4.oct.metaMov ? `, ${q4.proyMov >= q4.oct.metaMov ? "superando" : "por debajo de"} la meta de ${fmt(q4.oct.metaMov)} movilizadas` : "") +
+      (q4.restantes > 0 && q4.oct.metaIng ? `; para llegar a la meta de ingresadas hacen falta ${fmt(q4.necesarioDiaIng)} por día en los ${q4.restantes} días que quedan.` : ".") +
+      (pico?.prom ? ` ${pico.nombre} es el día de mayor demanda: conviene concentrar ahí campañas y reposición.` : ""),
+    );
+    if (q4.oct.metaMov && q4.proyMov < q4.oct.metaMov) prioridades.push(`Octubre: la proyección (${fmt(q4.proyMov)}) no alcanza la meta (${fmt(q4.oct.metaMov)}). Activar acciones comerciales con el top de dropshippers y proveedores en esta quincena.`);
+    if (!met.noviembre.metaMov) prioridades.push(`Definir metas de noviembre y diciembre: la base sugerida por la tendencia del Q3 es ~${fmt(q4.baseMensualQ4)} movilizadas por mes.`);
+
+    return { parrafos, prioridades };
+  }, [country, met, tQ2, tQ3, transp, activacion, snaps, topDs, topProv, topProd, porDiaSemana, q4]);
+
   if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando resumen Q3… (calcula julio a octubre con los datos de Operaciones)</div>;
   if (err) return <div className="glass-card p-6 text-sm text-red-400">No se pudo cargar el resumen Q3: {err}</div>;
 
@@ -315,28 +407,35 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     efectividad: +(ratio(met[m].ent, met[m].ent + met[m].dev) * 100).toFixed(1), tasaMov: +(ratio(met[m].mov, met[m].ing) * 100).toFixed(1),
   }));
 
-  // Filas del cuadro comparativo
-  type Col = { label: string; m: Met; strong?: boolean; tag?: string };
-  const colsComp: Col[] = [
-    ...Q2.map((m) => ({ label: CORTO[m], m: met[m] })),
-    { label: "Q2", m: tQ2, strong: true },
-    ...Q3.map((m) => ({ label: CORTO[m], m: met[m] })),
-    { label: "Q3", m: tQ3, strong: true },
+  // Cuadro comparativo: columnas agrupadas por trimestre y filas agrupadas por tema
+  type Fila = { label: string; get: (x: Met) => string; delta?: (a: Met, b: Met) => { txt: string; good: boolean }; tasa?: boolean; color?: (x: Met) => string | undefined };
+  const colorCumpl = (x: Met) => (!x.metaMov ? undefined : x.mov >= x.metaMov ? "#10b981" : x.mov >= x.metaMov * 0.9 ? "#f59e0b" : "#ef4444");
+  const gruposComp: { titulo: string; filas: Fila[] }[] = [
+    { titulo: "Volumen", filas: [
+      { label: "Ingresadas", get: (x) => fmt(x.ing), delta: (a, b) => ({ txt: deltaTxt(a.ing, b.ing), good: a.ing >= b.ing }) },
+      { label: "Promedio diario de ingresadas", get: (x) => fmt(ratio(x.ing, x.diasMes)), delta: (a, b) => ({ txt: deltaTxt(ratio(a.ing, a.diasMes), ratio(b.ing, b.diasMes)), good: ratio(a.ing, a.diasMes) >= ratio(b.ing, b.diasMes) }) },
+      { label: "Movilizadas", get: (x) => fmt(x.mov), delta: (a, b) => ({ txt: deltaTxt(a.mov, b.mov), good: a.mov >= b.mov }) },
+      { label: "% movilización (mov ÷ ing)", tasa: true, get: (x) => pct(x.mov, x.ing), delta: (a, b) => ({ txt: ppTxt(ratio(a.mov, a.ing) * 100, ratio(b.mov, b.ing) * 100), good: ratio(a.mov, a.ing) >= ratio(b.mov, b.ing) }) },
+    ] },
+    { titulo: "Meta", filas: [
+      { label: "Meta de movilizadas", get: (x) => (x.metaMov ? fmt(x.metaMov) : "—") },
+      { label: "Cumplimiento de meta", tasa: true, get: (x) => pct(x.mov, x.metaMov), color: colorCumpl, delta: (a, b) => ({ txt: ppTxt(ratio(a.mov, a.metaMov) * 100, ratio(b.mov, b.metaMov) * 100), good: ratio(a.mov, a.metaMov) >= ratio(b.mov, b.metaMov) }) },
+    ] },
+    { titulo: "Entrega", filas: [
+      { label: "Entregadas", get: (x) => fmt(x.ent), delta: (a, b) => ({ txt: deltaTxt(a.ent, b.ent), good: a.ent >= b.ent }) },
+      { label: "Tasa de entrega (ent ÷ mov)", tasa: true, get: (x) => pct(x.ent, x.mov), delta: (a, b) => ({ txt: ppTxt(ratio(a.ent, a.mov) * 100, ratio(b.ent, b.mov) * 100), good: ratio(a.ent, a.mov) >= ratio(b.ent, b.mov) }) },
+      { label: "Efectividad (ent ÷ ent + dev)", tasa: true, get: (x) => pct(x.ent, x.ent + x.dev), delta: (a, b) => ({ txt: ppTxt(ratio(a.ent, a.ent + a.dev) * 100, ratio(b.ent, b.ent + b.dev) * 100), good: ratio(a.ent, a.ent + a.dev) >= ratio(b.ent, b.ent + b.dev) }) },
+    ] },
+    { titulo: "Devolución y pendientes", filas: [
+      { label: "Devueltas", get: (x) => fmt(x.dev), delta: (a, b) => ({ txt: deltaTxt(a.dev, b.dev), good: a.dev <= b.dev }) },
+      { label: "Tasa de devolución (dev ÷ mov)", tasa: true, get: (x) => pct(x.dev, x.mov), delta: (a, b) => ({ txt: ppTxt(ratio(a.dev, a.mov) * 100, ratio(b.dev, b.mov) * 100), good: ratio(a.dev, a.mov) <= ratio(b.dev, b.mov) }) },
+      { label: "En proceso", get: (x) => fmt(x.proc) },
+      { label: "Canceladas", get: (x) => fmt(x.canc) },
+    ] },
   ];
-  const filasComp: { label: string; get: (x: Met) => string; delta?: (a: Met, b: Met) => { txt: string; good: boolean } }[] = [
-    { label: "Ingresadas", get: (x) => fmt(x.ing), delta: (a, b) => ({ txt: deltaTxt(a.ing, b.ing), good: a.ing >= b.ing }) },
-    { label: "Promedio diario ingresadas", get: (x) => fmt(ratio(x.ing, x.diasMes)), delta: (a, b) => ({ txt: deltaTxt(ratio(a.ing, a.diasMes), ratio(b.ing, b.diasMes)), good: ratio(a.ing, a.diasMes) >= ratio(b.ing, b.diasMes) }) },
-    { label: "Movilizadas", get: (x) => fmt(x.mov), delta: (a, b) => ({ txt: deltaTxt(a.mov, b.mov), good: a.mov >= b.mov }) },
-    { label: "Meta movilizadas", get: (x) => (x.metaMov ? fmt(x.metaMov) : "—") },
-    { label: "Cumplimiento meta", get: (x) => pct(x.mov, x.metaMov) },
-    { label: "% movilización (mov ÷ ing)", get: (x) => pct(x.mov, x.ing), delta: (a, b) => ({ txt: ppTxt(ratio(a.mov, a.ing) * 100, ratio(b.mov, b.ing) * 100), good: ratio(a.mov, a.ing) >= ratio(b.mov, b.ing) }) },
-    { label: "Entregadas", get: (x) => fmt(x.ent), delta: (a, b) => ({ txt: deltaTxt(a.ent, b.ent), good: a.ent >= b.ent }) },
-    { label: "Tasa de entrega (ent ÷ mov)", get: (x) => pct(x.ent, x.mov), delta: (a, b) => ({ txt: ppTxt(ratio(a.ent, a.mov) * 100, ratio(b.ent, b.mov) * 100), good: ratio(a.ent, a.mov) >= ratio(b.ent, b.mov) }) },
-    { label: "Efectividad (ent ÷ ent+dev)", get: (x) => pct(x.ent, x.ent + x.dev), delta: (a, b) => ({ txt: ppTxt(ratio(a.ent, a.ent + a.dev) * 100, ratio(b.ent, b.ent + b.dev) * 100), good: ratio(a.ent, a.ent + a.dev) >= ratio(b.ent, b.ent + b.dev) }) },
-    { label: "Devueltas", get: (x) => fmt(x.dev), delta: (a, b) => ({ txt: deltaTxt(a.dev, b.dev), good: a.dev <= b.dev }) },
-    { label: "Tasa de devolución (dev ÷ mov)", get: (x) => pct(x.dev, x.mov), delta: (a, b) => ({ txt: ppTxt(ratio(a.dev, a.mov) * 100, ratio(b.dev, b.mov) * 100), good: ratio(a.dev, a.mov) <= ratio(b.dev, b.mov) }) },
-    { label: "En proceso", get: (x) => fmt(x.proc) },
-    { label: "Canceladas", get: (x) => fmt(x.canc) },
+  const colsQ: { titulo: string; meses: Mes[]; total: Met; color: string }[] = [
+    { titulo: "Q2 · Abr – Jun", meses: Q2, total: tQ2, color: "#64748b" },
+    { titulo: "Q3 · Jul – Sep", meses: Q3, total: tQ3, color: "#f97316" },
   ];
 
   const efQ3 = ratio(tQ3.ent, tQ3.ent + tQ3.dev) * 100, efQ2 = ratio(tQ2.ent, tQ2.ent + tQ2.dev) * 100;
@@ -374,6 +473,23 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
           ))}
         </div>
       )}
+
+      {/* Lectura del Q3 */}
+      <Card title={`📝 Lectura del Q3 — ${country === "ar" ? "Argentina" : "Paraguay"}`} sub="Resumen ejecutivo redactado con los datos del trimestre (se actualiza solo con cada carga)">
+        <div className="space-y-2.5">
+          {lectura.parrafos.map((t, i) => (
+            <p key={i} className="text-[13px] leading-relaxed t-secondary">{t}</p>
+          ))}
+        </div>
+        {lectura.prioridades.length > 0 && (
+          <div className="mt-4 rounded-xl p-4" style={{ background: "rgba(249,115,22,0.07)", borderLeft: "4px solid #f97316" }}>
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "#f97316" }}>Prioridades para el Q4</p>
+            <ol className="space-y-1.5 list-decimal pl-5">
+              {lectura.prioridades.map((t, i) => <li key={i} className="text-[12.5px] leading-relaxed t-secondary">{t}</li>)}
+            </ol>
+          </div>
+        )}
+      </Card>
 
       {/* Meta Q3 */}
       <div data-pdf-section className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(167,139,250,0.10), rgba(249,115,22,0.08))", borderColor: "rgba(167,139,250,0.4)" }}>
@@ -428,32 +544,55 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       </Card>
 
       {/* Cuadro comparativo */}
-      <Card title="📋 Cuadro comparativo — Q2 vs Q3 mes a mes" sub="Δ Q3 vs Q2 compara los totales trimestrales (en tasas, la diferencia en puntos porcentuales)">
+      <Card title="📋 Cuadro comparativo — Q2 vs Q3 mes a mes" sub="Totales de cada trimestre resaltados. Δ compara el total del Q3 contra el del Q2 (en tasas, diferencia en puntos porcentuales).">
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[860px] text-[12px]" style={{ fontVariantNumeric: "tabular-nums", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
-              <tr className="border-b border-gray-700">
-                <Th left>Concepto</Th>
-                {colsComp.map((c) => <Th key={c.label}>{c.label}</Th>)}
-                <Th>Δ Q3 vs Q2</Th>
+              <tr>
+                <th rowSpan={2} className="text-left align-bottom py-2 px-3 text-[11px] uppercase tracking-wider t-muted border-b-2 border-gray-600">Concepto</th>
+                {colsQ.map((q) => (
+                  <th key={q.titulo} colSpan={4} className="py-1.5 px-3 text-center text-[11px] font-bold uppercase tracking-wider text-white rounded-t-lg" style={{ background: q.color, borderLeft: "3px solid transparent", backgroundClip: "padding-box" }}>{q.titulo}</th>
+                ))}
+                <th rowSpan={2} className="align-bottom py-2 px-3 text-center text-[11px] uppercase tracking-wider t-muted border-b-2 border-gray-600">Δ Q3 vs Q2</th>
+              </tr>
+              <tr>
+                {colsQ.flatMap((q, qi) => [
+                  ...q.meses.map((m, mi) => (
+                    <th key={m} className="py-1.5 px-3 text-right text-[11px] font-semibold t-secondary border-b-2 border-gray-600" style={mi === 0 && qi > 0 ? { borderLeft: "3px solid rgba(148,163,184,0.35)" } : undefined}>{CORTO[m]}</th>
+                  )),
+                  <th key={`t-${q.titulo}`} className="py-1.5 px-3 text-right text-[11px] font-bold border-b-2 border-gray-600" style={{ color: q.color, background: `${q.color}1f` }}>Total</th>,
+                ])}
               </tr>
             </thead>
             <tbody>
-              {filasComp.map((f) => {
-                const d = f.delta?.(tQ3, tQ2);
-                return (
-                  <tr key={f.label} className="border-b border-gray-800/50">
-                    <Td left>{f.label}</Td>
-                    {colsComp.map((c) => (
-                      <td key={c.label} className={`py-1.5 px-2 text-xs text-right font-mono whitespace-nowrap ${c.strong ? "font-bold" : ""}`} style={c.strong ? { background: "rgba(249,115,22,0.08)" } : undefined}>{f.get(c.m)}</td>
-                    ))}
-                    <Td bold color={d ? (d.good ? "#10b981" : "#ef4444") : undefined}>{d?.txt ?? ""}</Td>
-                  </tr>
-                );
-              })}
+              {gruposComp.map((g) => [
+                <tr key={`g-${g.titulo}`}>
+                  <td colSpan={2 + colsQ.length * 4} className="pt-3 pb-1 px-3 text-[10px] font-bold uppercase tracking-widest" style={{ color: "#f97316" }}>{g.titulo}</td>
+                </tr>,
+                ...g.filas.map((f, fi) => {
+                  const d = f.delta?.(tQ3, tQ2);
+                  return (
+                    <tr key={f.label} style={{ background: fi % 2 ? "rgba(148,163,184,0.06)" : undefined }}>
+                      <td className={`py-1.5 px-3 whitespace-nowrap ${f.tasa ? "t-secondary italic" : "t-primary font-medium"}`}>{f.label}</td>
+                      {colsQ.flatMap((q, qi) => [
+                        ...q.meses.map((m, mi) => (
+                          <td key={m} className="py-1.5 px-3 text-right font-mono whitespace-nowrap t-secondary" style={{ ...(mi === 0 && qi > 0 ? { borderLeft: "3px solid rgba(148,163,184,0.35)" } : {}), color: f.color?.(met[m]) }}>{f.get(met[m])}</td>
+                        )),
+                        <td key={`t-${q.titulo}`} className="py-1.5 px-3 text-right font-mono font-bold whitespace-nowrap" style={{ background: `${q.color}1f`, color: f.color?.(q.total) }}>{f.get(q.total)}</td>,
+                      ])}
+                      <td className="py-1.5 px-3 text-center whitespace-nowrap">
+                        {d && d.txt !== "—" && (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[11px] font-bold font-mono" style={{ background: d.good ? "rgba(16,185,129,0.15)" : "rgba(239,68,68,0.15)", color: d.good ? "#10b981" : "#ef4444" }}>{d.txt}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }),
+              ])}
             </tbody>
           </table>
         </div>
+        <p className="text-[11px] t-muted mt-3">Cumplimiento de meta: verde ≥ 100% · amarillo ≥ 90% · rojo &lt; 90%. Tasa de entrega y devolución sobre guías movilizadas; efectividad sobre guías ya cerradas (entregadas + devueltas).</p>
       </Card>
 
       {/* Evolución mensual */}
