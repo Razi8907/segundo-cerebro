@@ -11,87 +11,41 @@ const isColumnMissing = (err: any) => {
 };
 
 // GET /api/data/operations?country=py&mes=abril
-// Devuelve SOLO las filas de la última fecha_carga (la única que se renderiza
-// tras el dedup por guía). Históricamente la tabla tiene cientos de miles
-// de filas acumuladas día a día → bajarlas todas tumba el endpoint.
-// El historial agregado (count por fecha_carga) se trae con un RPC.
+// Devuelve las filas de la carga a usar del mes: la última, salvo que esté cortada
+// (menos del 70% de las ingresadas del Seguimiento Diario) → la anterior completa
+// (ops_mes_fecha_carga). Las filas se leen por páginas con get_ops_page, que fuerza el
+// índice (country, mes, fecha_carga): en días con muchas cargas, el índice de fecha_carga
+// sola recorría cientos de miles de filas de otros meses y la consulta se cortaba (julio).
+// El historial de cargas viene de ops_upload_history_fast (sin contar todo el mes).
 export async function GET(req: NextRequest) {
   const country = req.nextUrl.searchParams.get("country") || "py";
   const mes = req.nextUrl.searchParams.get("mes") || "abril";
-
   const supabase = getSupabase();
-  let columnMissing = false;
 
-  // 1) Buscar la última fecha_carga
-  let latestQ = supabase
-    .from("operations_data")
-    .select("fecha_carga")
-    .eq("country", country)
-    .order("fecha_carga", { ascending: false })
-    .limit(1);
-  if (!columnMissing) latestQ = latestQ.eq("mes", mes);
-
-  const latestRes = await latestQ;
-  if (latestRes.error) {
-    if (isColumnMissing(latestRes.error) && mes === "abril") {
-      columnMissing = true;
-    } else if (isColumnMissing(latestRes.error)) {
-      // Pre-migración no hay forma de tener data de mayo
-      return NextResponse.json({ rows: [], uploadHistory: [], latestFechaCarga: "" });
-    } else {
-      return NextResponse.json({ error: latestRes.error.message }, { status: 500 });
-    }
-  }
-
-  let latestFechaCarga = "";
-  if (columnMissing) {
-    const r = await supabase
-      .from("operations_data")
-      .select("fecha_carga")
-      .eq("country", country)
-      .order("fecha_carga", { ascending: false })
-      .limit(1);
-    if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
-    latestFechaCarga = r.data?.[0]?.fecha_carga || "";
-  } else {
-    latestFechaCarga = latestRes.data?.[0]?.fecha_carga || "";
-  }
-
+  const fcRes = await supabase.rpc("ops_mes_fecha_carga", { p_country: country, p_mes: mes });
+  if (fcRes.error) return NextResponse.json({ error: fcRes.error.message }, { status: 500 });
+  const latestFechaCarga = (fcRes.data as string | null) || "";
   if (!latestFechaCarga) {
     return NextResponse.json({ rows: [], uploadHistory: [], latestFechaCarga: "" });
   }
 
-  // 2) Traer todas las filas SOLO de esa fecha_carga (paginado)
   const PAGE_SIZE = 1000;
   const allRows: any[] = [];
-  let from = 0;
-  let hasMore = true;
-  while (hasMore) {
-    let q = supabase
-      .from("operations_data")
-      .select("*")
-      .eq("country", country)
-      .eq("fecha_carga", latestFechaCarga);
-    if (!columnMissing) q = q.eq("mes", mes);
-    const { data, error } = await q.range(from, from + PAGE_SIZE - 1);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    if (data && data.length > 0) {
-      allRows.push(...data);
-      from += PAGE_SIZE;
-      hasMore = data.length === PAGE_SIZE;
-    } else {
-      hasMore = false;
-    }
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase.rpc("get_ops_page", {
+      p_country: country, p_mes: mes, p_fecha_carga: latestFechaCarga, p_offset: from, p_limit: PAGE_SIZE,
+    });
+    if (error) return NextResponse.json({ error: `página ${from / PAGE_SIZE + 1}: ${error.message}` }, { status: 500 });
+    const page = (data as any[]) || [];
+    allRows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    if (from > 300000) break;
   }
 
-  // 3) Historial agregado vía RPC (si existe). Si no, devolvemos solo último día.
   let uploadHistory: { fecha_carga: string; cnt: number }[] = [];
-  const rpc = await supabase.rpc("ops_upload_history", { p_country: country, p_mes: mes });
+  const rpc = await supabase.rpc("ops_upload_history_fast", { p_country: country, p_mes: mes });
   if (!rpc.error && Array.isArray(rpc.data)) {
-    uploadHistory = rpc.data.map((r: any) => ({
-      fecha_carga: r.fecha_carga,
-      cnt: Number(r.cnt) || 0,
-    }));
+    uploadHistory = rpc.data.map((r: any) => ({ fecha_carga: r.fecha_carga, cnt: Number(r.cnt) || 0 }));
   } else {
     uploadHistory = [{ fecha_carga: latestFechaCarga, cnt: allRows.length }];
   }

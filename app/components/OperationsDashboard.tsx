@@ -1503,7 +1503,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
         <div>
           <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"} · {MES_LABEL[mes]}</h2>
           <p className="text-xs t-secondary">
-            {dedupedRows.length.toLocaleString()} guias en último día ({totalFilasHistoricas.toLocaleString()} filas históricas) | Ultima carga: {latestFechaCarga} | {fechasCarga.length} día(s) acumulados
+            {dedupedRows.length.toLocaleString()} guias en la carga usada ({totalFilasHistoricas.toLocaleString()} filas en las últimas cargas) | Ultima carga: {latestFechaCarga} | {fechasCarga.length} día(s) acumulados
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -1704,7 +1704,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
               {uploadHistory.map((h) => (
                 <div key={h.name} className="rounded-lg p-2 border border-cyan-500/10" style={{ background: "var(--bg-input)" }}>
                   <p className="text-[10px] t-muted">{h.name}</p>
-                  <p className="text-sm font-bold" style={{ color: "#ea580c" }}>{h.count} filas</p>
+                  <p className="text-sm font-bold" style={{ color: "#ea580c" }}>{h.count ? `${h.count.toLocaleString("es-AR")} filas` : "cargada"}</p>
                 </div>
               ))}
             </div>
