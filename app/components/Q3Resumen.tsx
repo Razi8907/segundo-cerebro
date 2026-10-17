@@ -92,6 +92,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
   const [meta, setMeta] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
+  const [avisos, setAvisos] = useState<{ mes: string; tipo: string; estado: string; guardadoEl?: string }[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -121,6 +122,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
         const s: Partial<Record<Mes, Snap | null>> = {};
         SNAP_MESES.forEach((m, i) => { s[m] = ops[i]?.data ?? null; });
         setSnaps(s);
+        setAvisos(Array.isArray(q?.avisos) ? q.avisos : []);
         setMeta(dash?.meta_info ?? {});
       } catch (e) {
         if (alive) setErr(e instanceof Error ? e.message : "Error al cargar");
@@ -325,6 +327,19 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
           Julio + Agosto + Septiembre, comparado con Q2 y con el arranque de Q4. Mismas reglas que Operaciones: ingresadas del Seguimiento Diario, movilizadas/entregadas/devueltas del último archivo de cada mes (solo guías con fecha de orden del mes).
         </p>
       </div>
+
+      {avisos.length > 0 && (
+        <div className="rounded-xl p-3 border border-amber-500/40 text-xs" style={{ background: "rgba(245,158,11,0.08)", color: "#f59e0b" }}>
+          {avisos.map((a, i) => (
+            <p key={i}>
+              ⚠ {LABEL[a.mes as Mes] ?? a.mes}{a.tipo === "transp" ? " (transportadoras)" : ""}:{" "}
+              {a.estado === "guardado"
+                ? `la base tardó demasiado; se muestra el último cálculo guardado${a.guardadoEl ? ` (${new Date(a.guardadoEl).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })})` : ""}.`
+                : "no se pudo calcular ahora (la base tardó demasiado). Recargá en unos minutos."}
+            </p>
+          ))}
+        </div>
+      )}
 
       {/* Meta Q3 */}
       <div className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(167,139,250,0.10), rgba(249,115,22,0.08))", borderColor: "rgba(167,139,250,0.4)" }}>
