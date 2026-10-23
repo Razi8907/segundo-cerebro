@@ -676,6 +676,9 @@ const MES_LABEL: Record<MesOps, string> = { abril: "Abril 2026", mayo: "Mayo 202
 export default function OperationsDashboard({ country, mes: mesProp }: { country: "py" | "ar"; mes?: string }) {
   const [rows, setRows] = useState<GuideRow[]>([]);
   const [prevRows, setPrevRows] = useState<GuideRow[]>([]);
+  // Carga del mes anterior usada para comparar (si el mes está en curso, la de la misma
+  // fecha del mes anterior: así se compara "en vivo contra en vivo").
+  const [prevFechaCarga, setPrevFechaCarga] = useState("");
   // operational_snapshots: data agregada del área Comercial (by_dropshipper, by_proveedor para per-entity)
   const [opCurr, setOpCurr] = useState<any>(null);
   const [opPrev, setOpPrev] = useState<any>(null);
@@ -753,10 +756,16 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
     setDailyPrev([]);
     setServerUploadHistory([]);
     const prevMes: MesOps = mes === "octubre" ? "septiembre" : mes === "septiembre" ? "agosto" : mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : "mayo";
+    // Mes en curso → el mes anterior se pide como estaba en el mismo día (carga de esa fecha)
+    const hoy = new Date();
+    const hoyIso = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}-${String(hoy.getDate()).padStart(2, "0")}`;
+    const enCursoFetch = hoy.getFullYear() === 2026 && hoy.getMonth() + 1 === MES_MONTH_NUM[mes];
+    const alPrev = enCursoFetch ? `&al=${shiftDateToMes(hoyIso, prevMes)}` : "";
+    setPrevFechaCarga("");
     try {
       const [resCur, resPrev, resOpCur, resOpPrev, resDailyCur, resDailyPrev] = await Promise.all([
         fetch(`/api/data/operations?country=${country}&mes=${mes}`),
-        fetch(`/api/data/operations?country=${country}&mes=${prevMes}`),
+        fetch(`/api/data/operations?country=${country}&mes=${prevMes}${alPrev}`),
         fetch(`/api/data/operational?country=${country}&mes=${mes}`),
         fetch(`/api/data/operational?country=${country}&mes=${prevMes}`),
         fetch(`/api/data/daily-tracking?country=${country}&mes=${mes}`),
@@ -770,6 +779,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
         const dataPrev = await resPrev.json();
         const rawPrev = Array.isArray(dataPrev) ? dataPrev : dataPrev.rows || [];
         setPrevRows(rawPrev.map(mapRow));
+        setPrevFechaCarga(String(dataPrev?.latestFechaCarga || ""));
       }
       if (resCur.ok) {
         const data = await resCur.json();
@@ -1025,7 +1035,29 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
   }, [dateMode]);
 
   const rangedRows = useMemo(() => applyDateRange(filteredRows, dateFrom, dateTo), [filteredRows, applyDateRange, dateFrom, dateTo]);
-  const prevRangedRows = useMemo(() => applyDateRange(prevFilteredRows, prevDateFrom, prevDateTo), [prevFilteredRows, applyDateRange, prevDateFrom, prevDateTo]);
+
+  // Mes en curso: con "Todo el mes" el mes anterior se corta en el mismo día que va el actual
+  // (octubre al 23 vs septiembre 1–23), para comparar períodos equivalentes.
+  const hoyD = new Date();
+  const mesEnCurso = hoyD.getFullYear() === 2026 && hoyD.getMonth() + 1 === MES_MONTH_NUM[mes];
+  const diaCorte = useMemo(() => {
+    let max = 0;
+    for (const r of filteredRows) { const iso = toIsoDate(r.fecha); const d = parseInt(iso.slice(8, 10), 10); if (d > max) max = d; }
+    return max;
+  }, [filteredRows]);
+  const prevMode: "all" | "range" = mesEnCurso && dateMode === "all" && diaCorte > 0 ? "range" : dateMode;
+  const prevFromEf = prevMode === "range" && dateMode === "all" ? shiftDateToMes(`2026-${String(MES_MONTH_NUM[mes]).padStart(2, "0")}-01`, prevMes) : prevDateFrom;
+  const prevToEf = prevMode === "range" && dateMode === "all" ? shiftDateToMes(`2026-${String(MES_MONTH_NUM[mes]).padStart(2, "0")}-${String(diaCorte).padStart(2, "0")}`, prevMes) : prevDateTo;
+  const prevRangedRows = useMemo(() => {
+    if (prevMode !== "range" || (!prevFromEf && !prevToEf)) return prevFilteredRows;
+    return prevFilteredRows.filter((r) => {
+      const iso = toIsoDate(r.fecha);
+      if (!iso) return false;
+      if (prevFromEf && iso < prevFromEf) return false;
+      if (prevToEf && iso > prevToEf) return false;
+      return true;
+    });
+  }, [prevFilteredRows, prevMode, prevFromEf, prevToEf]);
 
   const hasAnyFilter = fComercial || fTransportadora || fDropshipper || fProveedor;
   const clearFilters = () => { setFComercial(""); setFTransportadora(""); setFDropshipper(""); setFProveedor(""); };
@@ -1049,8 +1081,8 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
     [dailyCurr, dateMode, dateFrom, dateTo],
   );
   const prevIngresadas = useMemo(
-    () => ingresadasInRange(dailyPrev, dateMode, prevDateFrom, prevDateTo),
-    [dailyPrev, dateMode, prevDateFrom, prevDateTo],
+    () => ingresadasInRange(dailyPrev, prevMode, prevFromEf, prevToEf),
+    [dailyPrev, prevMode, prevFromEf, prevToEf],
   );
   const ingByDsCurr = useMemo(
     () => ingresadasByEntity(opCurr, "ds", dateMode, dateFrom, dateTo),
@@ -1594,7 +1626,9 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
             dateTo={dateTo} setDateTo={setDateTo}
             showComparison={showComparison} setShowComparison={setShowComparison}
             prevMesLabel={MES_LABEL[prevMes]}
-            prevDateFrom={prevDateFrom} prevDateTo={prevDateTo}
+            prevDateFrom={prevFromEf} prevDateTo={prevToEf}
+            prevMode={prevMode}
+            prevFechaCarga={mesEnCurso ? prevFechaCarga : ""}
           />
           {dailyCurr.length === 0 && (
             <div className="rounded-lg p-3 border border-amber-500/30 text-xs text-amber-300" style={{ background: "rgba(245,158,11,0.08)" }}>
@@ -1800,7 +1834,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
             dateTo={dateTo} setDateTo={setDateTo}
             showComparison={showComparison} setShowComparison={setShowComparison}
             prevMesLabel={MES_LABEL[prevMes]}
-            prevDateFrom={prevDateFrom} prevDateTo={prevDateTo}
+            prevDateFrom={prevFromEf} prevDateTo={prevToEf} prevMode={prevMode} prevFechaCarga={mesEnCurso ? prevFechaCarga : ""}
           />
           <MovEntityRanking
             rows={rangedRows}
@@ -1844,7 +1878,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
             dateTo={dateTo} setDateTo={setDateTo}
             showComparison={showComparison} setShowComparison={setShowComparison}
             prevMesLabel={MES_LABEL[prevMes]}
-            prevDateFrom={prevDateFrom} prevDateTo={prevDateTo}
+            prevDateFrom={prevFromEf} prevDateTo={prevToEf} prevMode={prevMode} prevFechaCarga={mesEnCurso ? prevFechaCarga : ""}
           />
           <MovEntityRanking
             rows={rangedRows}
@@ -2043,7 +2077,7 @@ function OpMetricsSection({ country, metrics }: { country: "py" | "ar"; metrics:
 /* ───────── DATE RANGE BAR ───────── */
 function DateRangeBar({
   dateMode, setDateMode, dateFrom, setDateFrom, dateTo, setDateTo,
-  showComparison, setShowComparison, prevMesLabel, prevDateFrom, prevDateTo,
+  showComparison, setShowComparison, prevMesLabel, prevDateFrom, prevDateTo, prevMode, prevFechaCarga,
 }: {
   dateMode: "all" | "range";
   setDateMode: (m: "all" | "range") => void;
@@ -2056,7 +2090,10 @@ function DateRangeBar({
   prevMesLabel: string;
   prevDateFrom: string;
   prevDateTo: string;
+  prevMode?: "all" | "range";
+  prevFechaCarga?: string;
 }) {
+  const fmtDia = (iso: string) => (iso ? iso.slice(8, 10) + "/" + iso.slice(5, 7) : "—");
   return (
     <div className="flex flex-wrap items-end gap-3 p-3 rounded-lg" style={{ background: "var(--bg-page)" }}>
       <div className="flex flex-col gap-1">
@@ -2082,9 +2119,10 @@ function DateRangeBar({
         <input type="checkbox" checked={showComparison} onChange={(e) => setShowComparison(e.target.checked)} className="accent-orange-500" />
         Comparar con {prevMesLabel}
       </label>
-      {showComparison && dateMode === "range" && (prevDateFrom || prevDateTo) && (
+      {showComparison && (prevMode ?? dateMode) === "range" && (prevDateFrom || prevDateTo) && (
         <span className="text-[10px] t-muted ml-2 self-end pb-1">
-          Espejo: <strong className="t-secondary">{prevDateFrom || "—"} → {prevDateTo || "—"}</strong>
+          Compara con {prevMesLabel}: <strong className="t-secondary">{fmtDia(prevDateFrom)} al {fmtDia(prevDateTo)}</strong>
+          {prevFechaCarga && <> · estado al <strong className="t-secondary">{fmtDia(prevFechaCarga)}</strong> (mismo momento del mes)</>}
         </span>
       )}
     </div>

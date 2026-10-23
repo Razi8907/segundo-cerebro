@@ -22,9 +22,22 @@ export async function GET(req: NextRequest) {
   const mes = req.nextUrl.searchParams.get("mes") || "abril";
   const supabase = getSupabase();
 
-  const fcRes = await supabase.rpc("ops_mes_fecha_carga", { p_country: country, p_mes: mes });
-  if (fcRes.error) return NextResponse.json({ error: fcRes.error.message }, { status: 500 });
-  const latestFechaCarga = (fcRes.data as string | null) || "";
+  // ?al=YYYY-MM-DD → usa la carga de ese momento (la última con fecha_carga <= al), para
+  // comparar el mes anterior tal como estaba en el mismo punto del mes (no ya cerrado).
+  const al = req.nextUrl.searchParams.get("al") || "";
+  let latestFechaCarga = "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(al)) {
+    const r = await supabase.from("operations_data").select("fecha_carga")
+      .eq("country", country).eq("mes", mes).lte("fecha_carga", al)
+      .order("fecha_carga", { ascending: false }).limit(1);
+    if (r.error) return NextResponse.json({ error: r.error.message }, { status: 500 });
+    latestFechaCarga = (r.data?.[0]?.fecha_carga as string) || "";
+  }
+  if (!latestFechaCarga) {
+    const fcRes = await supabase.rpc("ops_mes_fecha_carga", { p_country: country, p_mes: mes });
+    if (fcRes.error) return NextResponse.json({ error: fcRes.error.message }, { status: 500 });
+    latestFechaCarga = (fcRes.data as string | null) || "";
+  }
   if (!latestFechaCarga) {
     return NextResponse.json({ rows: [], uploadHistory: [], latestFechaCarga: "" });
   }
