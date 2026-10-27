@@ -10,7 +10,7 @@ import MinimoSemanal from "../components/MinimoSemanal";
 import MinimoMensual from "../components/MinimoMensual";
 import UsuariosRegistrados from "../components/UsuariosRegistrados";
 import Q2Resumen from "../components/Q2Resumen";
-import Q3Resumen from "../components/Q3Resumen";
+import TrimestreResumen from "../components/TrimestreResumen";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -70,6 +70,15 @@ function getResumenByMes(mes: MesFilter, allData: any) {
       movilizadas: a.movilizadas + m.movilizadas + j.movilizadas,
       entregados: a.entregados + m.entregados + j.entregados,
       devoluciones: a.devoluciones + m.devoluciones + j.devoluciones,
+    };
+  }
+  if (mes === "q4") {
+    const o = norm(r.octubre), n = norm(r.noviembre), d = norm(r.diciembre);
+    return {
+      ingresadas: o.ingresadas + n.ingresadas + d.ingresadas,
+      movilizadas: o.movilizadas + n.movilizadas + d.movilizadas,
+      entregados: o.entregados + n.entregados + d.entregados,
+      devoluciones: o.devoluciones + n.devoluciones + d.devoluciones,
     };
   }
   if (mes === "q3") {
@@ -151,6 +160,28 @@ function getResumenByMes(mes: MesFilter, allData: any) {
       devoluciones: Math.round(metaMov * 0.26),
     };
   }
+  if (mes === "noviembre") {
+    // Mes meta activo: mostrar la META en los KPI cards. Data real se ve en Operaciones.
+    const metaMov = allData.meta_info?.meta_movilizadas_noviembre ?? allData.meta_info?.meta_movilizadas_octubre ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_noviembre ?? allData.meta_info?.meta_ingresadas_octubre ?? 0;
+    return {
+      ingresadas: metaIng,
+      movilizadas: metaMov,
+      entregados: Math.round(metaMov * 0.60),
+      devoluciones: Math.round(metaMov * 0.26),
+    };
+  }
+  if (mes === "diciembre") {
+    // Mes meta activo: mostrar la META en los KPI cards. Data real se ve en Operaciones.
+    const metaMov = allData.meta_info?.meta_movilizadas_diciembre ?? allData.meta_info?.meta_movilizadas_noviembre ?? 0;
+    const metaIng = allData.meta_info?.meta_ingresadas_diciembre ?? allData.meta_info?.meta_ingresadas_noviembre ?? 0;
+    return {
+      ingresadas: metaIng,
+      movilizadas: metaMov,
+      entregados: Math.round(metaMov * 0.60),
+      devoluciones: Math.round(metaMov * 0.26),
+    };
+  }
   return norm(r[mes]);
 }
 
@@ -170,6 +201,7 @@ export default function ArgentinaDashboard() {
     q1: "Q1 2026 (Ene-Mar)",
     q2: "Q2 2026 (Abr-Jun)",
     q3: "Q3 2026 (Jul-Sep)",
+    q4: "Q4 2026 (Oct-Dic)",
     enero: "Enero 2026",
     febrero: "Febrero 2026",
     marzo: "Marzo 2026",
@@ -179,11 +211,16 @@ export default function ArgentinaDashboard() {
     julio: "Julio 2026",
     agosto: "Agosto 2026",
     septiembre: "Septiembre 2026",
-    octubre: "Octubre 2026 (Meta)",
+    octubre: "Octubre 2026",
+    noviembre: "Noviembre 2026",
+    diciembre: "Diciembre 2026",
   };
 
   const isQ2 = mesFilter === "q2";
   const isQ3 = mesFilter === "q3";
+  const isQ4 = mesFilter === "q4";
+  // Mes meta = el mes calendario en curso (se mueve solo cada 1° de mes)
+  const MES_META = (["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"] as MesFilter[])[new Date().getMonth()];
   const isAbril = mesFilter === "abril";
   const isMayo = mesFilter === "mayo";
   const isJunio = mesFilter === "junio";
@@ -191,7 +228,9 @@ export default function ArgentinaDashboard() {
   const isAgosto = mesFilter === "agosto";
   const isSeptiembre = mesFilter === "septiembre";
   const isOctubre = mesFilter === "octubre";
-  const isPlanning = isAbril || isMayo || isJunio || isJulio || isAgosto || isSeptiembre || isOctubre;
+  const isNoviembre = mesFilter === "noviembre";
+  const isDiciembre = mesFilter === "diciembre";
+  const isPlanning = isAbril || isMayo || isJunio || isJulio || isAgosto || isSeptiembre || isOctubre || isNoviembre || isDiciembre;
   const [comercialSub, setComercialSub] = useState<ComercialSub>("general");
   const [estrategiaSub, setEstrategiaSub] = useState<EstrategiaSub>("segmentos");
 
@@ -216,19 +255,19 @@ export default function ArgentinaDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {(["q1", "q2", "q3", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre"] as MesFilter[]).map((m) => (
+            {(["q1", "q2", "q3", "q4", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"] as MesFilter[]).map((m) => (
               <button
                 key={m}
                 onClick={() => setMesFilter(m)}
                 className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
                   mesFilter === m
-                    ? m === "octubre"
+                    ? m === MES_META
                       ? "bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20"
                       : "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20"
                     : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"
                 }`}
               >
-                {m === "q1" ? "Q1 Completo" : m === "octubre" ? "🎯 Octubre (Meta)" : m.charAt(0).toUpperCase() + m.slice(1)}
+                {m === "q1" ? "Q1 Completo" : m === MES_META ? `🎯 ${m.charAt(0).toUpperCase() + m.slice(1)} (Meta)` : m.charAt(0).toUpperCase() + m.slice(1)}
               </button>
             ))}
             <span className="text-xs px-3 py-1.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20 ml-2">
@@ -275,21 +314,27 @@ export default function ArgentinaDashboard() {
         )}
 
         {isQ3 && (sector === "comercial" || sector === "operaciones") && (
-          <Q3Resumen country="ar" />
+          <TrimestreResumen country="ar" trimestre="q3" />
         )}
 
-        {!isQ2 && !isQ3 && sector === "comercial" && <>
+        {isQ4 && (sector === "comercial" || sector === "operaciones") && (
+          <TrimestreResumen country="ar" trimestre="q4" />
+        )}
+
+        {!isQ2 && !isQ3 && !isQ4 && sector === "comercial" && <>
         {/* Period indicator */}
         <div className="text-center">
-          <span className={`text-sm font-medium ${isOctubre ? "text-green-400" : isSeptiembre || isAgosto || isJulio || isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
-            {mesLabels[mesFilter]}
+          <span className={`text-sm font-medium ${isDiciembre ? "text-green-400" : isNoviembre ? "text-green-400" : isOctubre ? "text-green-400" : isSeptiembre || isAgosto || isJulio || isJunio || isMayo ? "text-green-400" : "text-orange-400"}`}>
+            {mesLabels[mesFilter]}{mesFilter === MES_META ? " (Meta)" : ""}
             {isAbril && ` — ${meta_info.meta_movilizadas_abril.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_abril.toLocaleString()} ingresadas`}
             {isMayo && ` — ${meta_info.meta_movilizadas_mayo.toLocaleString()} movilizadas / ${meta_info.meta_ingresadas_mayo.toLocaleString()} ingresadas`}
             {isJunio && (meta_info as any).meta_movilizadas_junio != null && ` — ${(meta_info as any).meta_movilizadas_junio.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_junio?.toLocaleString?.() || "—"} ingresadas`}
             {isJulio && (meta_info as any).meta_movilizadas_julio != null && ` — ${(meta_info as any).meta_movilizadas_julio.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_julio?.toLocaleString?.() || "—"} ingresadas`}
             {isAgosto && (meta_info as any).meta_movilizadas_agosto != null && ` — ${(meta_info as any).meta_movilizadas_agosto.toLocaleString()} movilizadas / ${(meta_info as any).meta_ingresadas_agosto?.toLocaleString?.() || "—"} ingresadas`}
             {isSeptiembre && ((meta_info as any).meta_movilizadas_septiembre ?? (meta_info as any).meta_movilizadas_agosto) != null && ` — ${((meta_info as any).meta_movilizadas_septiembre ?? (meta_info as any).meta_movilizadas_agosto).toLocaleString()} movilizadas / ${((meta_info as any).meta_ingresadas_septiembre ?? (meta_info as any).meta_ingresadas_agosto)?.toLocaleString?.() || "—"} ingresadas`}
-            {isOctubre && ((meta_info as any).meta_movilizadas_octubre ?? (meta_info as any).meta_movilizadas_septiembre) != null && ` — Meta: ${((meta_info as any).meta_movilizadas_octubre ?? (meta_info as any).meta_movilizadas_septiembre).toLocaleString()} movilizadas / ${((meta_info as any).meta_ingresadas_octubre ?? (meta_info as any).meta_ingresadas_septiembre)?.toLocaleString?.() || "—"} ingresadas`}
+            {isOctubre && ((meta_info as any).meta_movilizadas_octubre ?? (meta_info as any).meta_movilizadas_septiembre) != null && ` — ${mesFilter === MES_META ? "Meta: " : ""}${((meta_info as any).meta_movilizadas_octubre ?? (meta_info as any).meta_movilizadas_septiembre).toLocaleString()} movilizadas / ${((meta_info as any).meta_ingresadas_octubre ?? (meta_info as any).meta_ingresadas_septiembre)?.toLocaleString?.() || "—"} ingresadas`}
+            {isNoviembre && ((meta_info as any).meta_movilizadas_noviembre ?? (meta_info as any).meta_movilizadas_octubre) != null && ` — ${mesFilter === MES_META ? "Meta: " : ""}${((meta_info as any).meta_movilizadas_noviembre ?? (meta_info as any).meta_movilizadas_octubre).toLocaleString()} movilizadas / ${((meta_info as any).meta_ingresadas_noviembre ?? (meta_info as any).meta_ingresadas_octubre)?.toLocaleString?.() || "—"} ingresadas`}
+            {isDiciembre && ((meta_info as any).meta_movilizadas_diciembre ?? (meta_info as any).meta_movilizadas_noviembre) != null && ` — ${mesFilter === MES_META ? "Meta: " : ""}${((meta_info as any).meta_movilizadas_diciembre ?? (meta_info as any).meta_movilizadas_noviembre).toLocaleString()} movilizadas / ${((meta_info as any).meta_ingresadas_diciembre ?? (meta_info as any).meta_ingresadas_noviembre)?.toLocaleString?.() || "—"} ingresadas`}
           </span>
         </div>
 
@@ -349,14 +394,14 @@ export default function ArgentinaDashboard() {
               <>
                 {isAbril && <ArgentinaPlanAbril />}
                 <DailyTracker
-                  marzoData={isOctubre ? [] : isSeptiembre ? [] : isAgosto ? [] : isJulio ? [] : isJunio ? (seguimiento_mayo || []) : isMayo ? (seguimiento_abril || []) : seguimiento_diario}
+                  marzoData={isDiciembre ? [] : isNoviembre ? [] : isOctubre ? [] : isSeptiembre ? [] : isAgosto ? [] : isJulio ? [] : isJunio ? (seguimiento_mayo || []) : isMayo ? (seguimiento_abril || []) : seguimiento_diario}
                   metaInfo={meta_info}
-                  abrilRealData={isOctubre ? [] : isSeptiembre ? [] : isAgosto ? [] : isJulio ? [] : isJunio ? [] : isMayo ? (seguimiento_mayo || []) : seguimiento_abril}
+                  abrilRealData={isDiciembre ? [] : isNoviembre ? [] : isOctubre ? [] : isSeptiembre ? [] : isAgosto ? [] : isJulio ? [] : isJunio ? [] : isMayo ? (seguimiento_mayo || []) : seguimiento_abril}
                   mesFilter={mesFilter}
                   resumen={resumen}
                   country="ar"
                 />
-                <OperationalUpload country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+                <OperationalUpload country="ar" mes={isDiciembre ? "diciembre" : isNoviembre ? "noviembre" : isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
                 <StrategicSimulator proveedores={proveedores} resumen={resumen} metaInfo={meta_info} mesFilter={mesFilter} country="ar" />
                 <ProductGoalPlanner proveedores={proveedores} mesFilter={mesFilter} country="ar" />
               </>
@@ -372,25 +417,25 @@ export default function ArgentinaDashboard() {
 
             {comercialSub === "dropshippers" && (
               <>
-                <OpsBreakdown country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} category="dropshipper" />
+                <OpsBreakdown country="ar" mes={isDiciembre ? "diciembre" : isNoviembre ? "noviembre" : isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} category="dropshipper" />
                 <DropshipperManager dropshippers={dropshippers} proveedores={proveedores} mesFilter={mesFilter} metaInfo={meta_info} country="ar" />
               </>
             )}
 
             {comercialSub === "proveedores" && (
-              <ProveedoresPanel country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <ProveedoresPanel country="ar" mes={isDiciembre ? "diciembre" : isNoviembre ? "noviembre" : isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "minimo" && (
-              <MinimoDiario country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <MinimoDiario country="ar" mes={isDiciembre ? "diciembre" : isNoviembre ? "noviembre" : isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "minimo_sem" && (
-              <MinimoSemanal country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <MinimoSemanal country="ar" mes={isDiciembre ? "diciembre" : isNoviembre ? "noviembre" : isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "minimo_mes" && (
-              <MinimoMensual country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
+              <MinimoMensual country="ar" mes={isDiciembre ? "diciembre" : isNoviembre ? "noviembre" : isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : "abril"} />
             )}
 
             {comercialSub === "crm" && (
@@ -465,8 +510,8 @@ export default function ArgentinaDashboard() {
           </div>
         )}
 
-        {!isQ2 && !isQ3 && sector === "operaciones" && (
-          <OperacionesPanel country="ar" mes={isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : "octubre"} />
+        {!isQ2 && !isQ3 && !isQ4 && sector === "operaciones" && (
+          <OperacionesPanel country="ar" mes={isDiciembre ? "diciembre" : isNoviembre ? "noviembre" : isOctubre ? "octubre" : isSeptiembre ? "septiembre" : isAgosto ? "agosto" : isJulio ? "julio" : isJunio ? "junio" : isMayo ? "mayo" : isAbril ? "abril" : MES_META} />
         )}
 
         {!isQ2 && sector === "finanzas" && <FinanzasDashboardAR mes={mesFilter} mesLabel={mesLabels[mesFilter]} />}

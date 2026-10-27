@@ -7,14 +7,14 @@ const NO_MOV = new Set([
   "CANCELADO","RECHAZADO","GUIA ANULADA","CANCELADO POR TRANSPORTADORA",
 ]);
 
-type Mes = "abril" | "mayo" | "junio" | "julio" | "agosto" | "septiembre" | "octubre";
+type Mes = "abril" | "mayo" | "junio" | "julio" | "agosto" | "septiembre" | "octubre" | "noviembre" | "diciembre";
 type ByDS = { nombre: string; total: number; estados: Record<string, number> };
 type ByDSDaily = { ds: string; fecha: string; ordenes: number };
 type ByDate = { fecha: string; total: number; estados: Record<string, number> };
 
-const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio", agosto: "Agosto", septiembre: "Septiembre", octubre: "Octubre" };
-const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31, agosto: 31, septiembre: 30, octubre: 31 };
-const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10 };
+const MES_LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio", agosto: "Agosto", septiembre: "Septiembre", octubre: "Octubre", noviembre: "Noviembre", diciembre: "Diciembre" };
+const MES_DIAS: Record<Mes, number> = { abril: 30, mayo: 31, junio: 30, julio: 31, agosto: 31, septiembre: 30, octubre: 31, noviembre: 30, diciembre: 31 };
+const MES_MONTH_NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
 
 function dayOfMonth(s: string): number | null {
   const m = s.match(/^(\d{1,2})[-/]/);
@@ -84,7 +84,7 @@ function aggregateRange(
 }
 
 export default function MinimoSemanal({ country, mes }: { country: "ar" | "py"; mes: Mes }) {
-  const mesAnterior: Mes | null = mes === "octubre" ? "septiembre" : mes === "septiembre" ? "agosto" : mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
+  const mesAnterior: Mes | null = mes === "diciembre" ? "noviembre" : mes === "noviembre" ? "octubre" : mes === "octubre" ? "septiembre" : mes === "septiembre" ? "agosto" : mes === "agosto" ? "julio" : mes === "julio" ? "junio" : mes === "junio" ? "mayo" : mes === "mayo" ? "abril" : null;
 
   const [opsTarget, setOpsTarget] = useState<ByDS[]>([]);
   const [opsBase, setOpsBase] = useState<ByDS[]>([]);
@@ -101,7 +101,7 @@ export default function MinimoSemanal({ country, mes }: { country: "ar" | "py"; 
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
-      const meses: Mes[] = ["abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre"];
+      const meses: Mes[] = ["abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
       const results = await Promise.all(
         meses.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}`).then(r => r.json()).catch(() => null))
       );

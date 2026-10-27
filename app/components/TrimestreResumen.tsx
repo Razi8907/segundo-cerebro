@@ -1,7 +1,9 @@
 "use client";
 
 // ═══════════════════════════════════════════════════════════════════
-// RESUMEN Q3 2026 (Jul–Sep) — centraliza todo el trimestre y prepara Q4.
+// RESUMEN TRIMESTRAL 2026 (Q3 / Q4) — centraliza el trimestre y prepara el siguiente.
+// Trimestre cerrado: resumen completo vs el trimestre anterior.
+// Trimestre en curso: avance vs meta, comparación proporcional a los días transcurridos y proyección.
 // Fuentes:
 //   - /api/data/quarter  → por mes y por día con la regla de Operaciones
 //     (solo guías cuya fecha de orden es del mes; ingresadas = Seguimiento Diario)
@@ -18,11 +20,14 @@ import { useUser } from "../lib/useUser";
 import { exportarSeccionesPdf } from "../lib/export-pdf";
 
 type Mes = "abril" | "mayo" | "junio" | "julio" | "agosto" | "septiembre" | "octubre" | "noviembre" | "diciembre";
-const Q2: Mes[] = ["abril", "mayo", "junio"];
-const Q3: Mes[] = ["julio", "agosto", "septiembre"];
-const Q4: Mes[] = ["octubre", "noviembre", "diciembre"];
-const ALL: Mes[] = [...Q2, ...Q3, "octubre"];
-const SNAP_MESES: Mes[] = ["junio", ...Q3, "octubre"];
+type Trim = "q3" | "q4";
+// prev = trimestre con el que se compara · cur = trimestre del resumen · next = el que se prepara
+const TRIMS: Record<Trim, { nombre: string; prevNombre: string; nextNombre: string; prev: Mes[]; cur: Mes[]; next: Mes[] }> = {
+  q3: { nombre: "Q3", prevNombre: "Q2", nextNombre: "Q4", prev: ["abril", "mayo", "junio"], cur: ["julio", "agosto", "septiembre"], next: ["octubre", "noviembre", "diciembre"] },
+  q4: { nombre: "Q4", prevNombre: "Q3", nextNombre: "Q1 2027", prev: ["julio", "agosto", "septiembre"], cur: ["octubre", "noviembre", "diciembre"], next: [] },
+};
+const MESES_ANIO = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const PREV_MES: Record<Mes, Mes> = { abril: "abril", mayo: "abril", junio: "mayo", julio: "junio", agosto: "julio", septiembre: "agosto", octubre: "septiembre", noviembre: "octubre", diciembre: "noviembre" };
 const LABEL: Record<Mes, string> = { abril: "Abril", mayo: "Mayo", junio: "Junio", julio: "Julio", agosto: "Agosto", septiembre: "Septiembre", octubre: "Octubre", noviembre: "Noviembre", diciembre: "Diciembre" };
 const CORTO: Record<Mes, string> = { abril: "Abr", mayo: "May", junio: "Jun", julio: "Jul", agosto: "Ago", septiembre: "Sep", octubre: "Oct", noviembre: "Nov", diciembre: "Dic" };
 const NUM: Record<Mes, number> = { abril: 4, mayo: 5, junio: 6, julio: 7, agosto: 8, septiembre: 9, octubre: 10, noviembre: 11, diciembre: 12 };
@@ -87,7 +92,21 @@ function Td({ children, left, bold, color }: { children: React.ReactNode; left?:
 }
 
 // ═══════════════════════════════════════════════════════════════════
-export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
+export default function TrimestreResumen({ country, trimestre = "q3" }: { country: "ar" | "py"; trimestre?: Trim }) {
+  const T = TRIMS[trimestre];
+  const Q2 = T.prev, Q3 = T.cur, Q4 = T.next;          // anterior · actual · siguiente
+  const QN = T.nombre, QP = T.prevNombre, QS = T.nextNombre;
+  const mesHoy = MESES_ANIO[new Date().getMonth()] as Mes;
+  const enCurso = new Date().getFullYear() === 2026 && Q3.includes(mesHoy);
+  // Mes que se sigue en "avance": el mes en curso si el trimestre está abierto; si no, el 1° del siguiente
+  const MES_AVANCE: Mes = enCurso ? mesHoy : (Q4[0] ?? Q3[2]);
+  const M_INI = Q3[0];
+  const M_FIN: Mes = enCurso ? mesHoy : Q3[2];          // último mes con datos para tendencias
+  const idxFin = Q3.indexOf(M_FIN);
+  const l = (m: Mes) => LABEL[m].toLowerCase();
+  const ALL: Mes[] = [...Q2, ...Q3, ...(!enCurso && Q4[0] ? [Q4[0]] : [])];
+  const SNAP_MESES: Mes[] = [PREV_MES[Q3[0]], ...Q3, ...(!enCurso && Q4[0] ? [Q4[0]] : [])];
+  const MESES_PLAN: Mes[] = enCurso ? Q3 : Q4;
   const [dias, setDias] = useState<Partial<Record<Mes, Dia[]>>>({});
   const [transpData, setTranspData] = useState<Partial<Record<Mes, TranspRow[]>>>({});
   const [snaps, setSnaps] = useState<Partial<Record<Mes, Snap | null>>>({});
@@ -104,12 +123,12 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       await exportarSeccionesPdf({
         root: rootRef.current,
         pais: country,
-        titulo: "Resumen Q3 2026",
-        periodo: "Julio – Septiembre 2026 (con avance de Octubre)",
-        archivo: `Q3-2026-${country === "ar" ? "Argentina" : "Paraguay"}`,
+        titulo: `Resumen ${QN} 2026`,
+        periodo: `${LABEL[Q3[0]]} – ${LABEL[Q3[2]]} 2026${enCurso ? " (en curso)" : Q4[0] ? ` (con avance de ${LABEL[Q4[0]]})` : ""}`,
+        archivo: `${QN}-2026-${country === "ar" ? "Argentina" : "Paraguay"}`,
       });
     } catch (e) {
-      console.error("PDF Q3:", e);
+      console.error(`PDF ${QN}:`, e);
       alert("No se pudo generar el PDF. Probá de nuevo.");
     } finally {
       setExportando(false);
@@ -126,7 +145,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
         const [q, dash, ...ops] = await Promise.all([
           fetch(`/api/data/quarter?country=${country}&meses=${ALL.join(",")}&transp=${Q3.join(",")}`, { cache: "no-store" }).then((r) => r.json()),
           fetch(`/api/data/${country}?solo=meta_info`).then((r) => r.json()).catch(() => null),
-          // Solo las claves que usa el Q3 (el snapshot completo de PY pesa ~1,5 MB por mes)
+          // Solo las claves que usa el resumen (el snapshot completo de PY pesa ~1,5 MB por mes)
           ...SNAP_MESES.map((m) => fetch(`/api/data/operational?country=${country}&mes=${m}&campos=by_dropshipper,by_proveedor,by_producto`).then((r) => r.json()).catch(() => null)),
         ]);
         if (!alive) return;
@@ -155,12 +174,12 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       }
     })();
     return () => { alive = false; };
-  }, [country]);
+  }, [country, trimestre]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Métricas por mes ───
   const met = useMemo(() => {
     const out = {} as Record<Mes, Met>;
-    for (const m of [...ALL, "noviembre", "diciembre"] as Mes[]) {
+    for (const m of [...new Set([...ALL, ...Q3, ...Q4])]) {
       const ds = dias[m] ?? [];
       const s = (k: keyof Dia) => ds.reduce((a, x) => a + (x[k] || 0), 0);
       out[m] = {
@@ -172,9 +191,27 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       };
     }
     return out;
-  }, [dias, meta]);
-  const tQ2 = useMemo(() => sumMet(Q2.map((m) => met[m])), [met]);
-  const tQ3 = useMemo(() => sumMet(Q3.map((m) => met[m])), [met]);
+  }, [dias, meta]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Días del trimestre ya transcurridos (en curso: meses cerrados + días con datos del mes actual)
+  const diasTrans = useMemo(() => Q3.reduce((a, m) => {
+    if (!enCurso || NUM[m] < NUM[mesHoy]) return a + DIAS_MES(m);
+    if (m !== mesHoy) return a;
+    const ds = (dias[m] ?? []).filter((d) => d.ingresadas > 0).map((d) => d.dia);
+    return a + (ds.length ? Math.max(...ds) : 0);
+  }, 0), [dias]); // eslint-disable-line react-hooks/exhaustive-deps
+  const diasTotalesTrim = Q3.reduce((a, m) => a + DIAS_MES(m), 0);
+  // tQ2full = trimestre anterior completo (para mostrar) · tQ2 = base de comparación:
+  // si el trimestre está en curso, el anterior proporcional a los mismos días transcurridos.
+  const tQ2full = useMemo(() => sumMet(Q2.map((m) => met[m])), [met]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tQ2 = useMemo(() => {
+    if (!enCurso || !tQ2full.diasMes) return tQ2full;
+    const f = diasTrans / tQ2full.diasMes;
+    return { ...tQ2full, ing: tQ2full.ing * f, mov: tQ2full.mov * f, ent: tQ2full.ent * f, dev: tQ2full.dev * f, proc: tQ2full.proc * f, canc: tQ2full.canc * f, metaMov: tQ2full.metaMov * f, metaIng: tQ2full.metaIng * f, diasMes: diasTrans };
+  }, [tQ2full, diasTrans]); // eslint-disable-line react-hooks/exhaustive-deps
+  const tQ3 = useMemo(() => {
+    const t = sumMet(Q3.map((m) => met[m]));
+    return enCurso ? { ...t, diasMes: diasTrans } : t;
+  }, [met, diasTrans]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Tendencia diaria Q3 (+ media móvil 7 días) ───
   const diario = useMemo(() => {
@@ -186,9 +223,9 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       if (i >= 6) r.mm7 = Math.round(rows.slice(i - 6, i + 1).reduce((a, b) => a + b.ing, 0) / 7);
     });
     return rows;
-  }, [dias]);
+  }, [dias]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Patrón por día de semana (Q3) ───
+  // ─── Patrón por día de semana ───
   const porDiaSemana = useMemo(() => {
     const acc = Array.from({ length: 7 }, () => ({ ing: 0, n: 0 }));
     for (const m of Q3) for (const x of dias[m] ?? []) {
@@ -198,7 +235,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     }
     const orden = [1, 2, 3, 4, 5, 6, 0];
     return orden.map((i) => ({ dia: DIAS_SEMANA[i].slice(0, 3), nombre: DIAS_SEMANA[i], prom: acc[i].n ? Math.round(acc[i].ing / acc[i].n) : 0 }));
-  }, [dias]);
+  }, [dias]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Activación de dropshippers y proveedores (desde snapshots) ───
   const activacion = useMemo(() => {
@@ -208,8 +245,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       return map;
     };
     const filas = Q3.map((m) => {
-      const prev = m === "julio" ? "junio" : m === "agosto" ? "julio" : "agosto";
-      const cur = setDe(m, "by_dropshipper"), ant = setDe(prev as Mes, "by_dropshipper");
+      const cur = setDe(m, "by_dropshipper"), ant = setDe(PREV_MES[m], "by_dropshipper");
       const nuevos = [...cur.keys()].filter((k) => !ant.has(k)).length;
       const perdidos = [...ant.keys()].filter((k) => !cur.has(k)).length;
       const vals = [...cur.values()].sort((a, b) => b - a);
@@ -222,17 +258,17 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     });
     const unicos = new Set<string>();
     for (const m of Q3) for (const k of setDe(m, "by_dropshipper").keys()) unicos.add(k);
-    const los3 = [...setDe("julio", "by_dropshipper").keys()].filter((k) => setDe("agosto", "by_dropshipper").has(k) && setDe("septiembre", "by_dropshipper").has(k)).length;
+    const los3 = [...setDe(Q3[0], "by_dropshipper").keys()].filter((k) => setDe(Q3[1], "by_dropshipper").has(k) && setDe(Q3[2], "by_dropshipper").has(k)).length;
     return { filas, unicos: unicos.size, los3 };
-  }, [snaps]);
+  }, [snaps]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Rankings Q3 con tendencia mes a mes ───
   const ranking = (k: "by_dropshipper" | "by_proveedor") => {
-    const map = new Map<string, { nombre: string; jul: number; ago: number; sep: number; mov: number; ent: number; dev: number }>();
-    const key: Record<string, "jul" | "ago" | "sep"> = { julio: "jul", agosto: "ago", septiembre: "sep" };
+    const map = new Map<string, { nombre: string; m0: number; m1: number; m2: number; mov: number; ent: number; dev: number }>();
+    const key: Record<string, "m0" | "m1" | "m2"> = { [Q3[0]]: "m0", [Q3[1]]: "m1", [Q3[2]]: "m2" };
     for (const m of Q3) for (const r of snaps[m]?.[k] ?? []) {
       const id = normName(r.nombre);
-      const cur = map.get(id) ?? { nombre: cleanName(r.nombre), jul: 0, ago: 0, sep: 0, mov: 0, ent: 0, dev: 0 };
+      const cur = map.get(id) ?? { nombre: cleanName(r.nombre), m0: 0, m1: 0, m2: 0, mov: 0, ent: 0, dev: 0 };
       const e = r.estados || {};
       const mv = movOf(e);
       cur[key[m]] += mv; cur.mov += mv; cur.ent += e["ENTREGADO"] || 0; cur.dev += (e["DEVOLUCION"] || 0) + (e["EN PROCESO DE DEVOLUCION"] || 0);
@@ -243,16 +279,16 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
   const topDs = useMemo(() => ranking("by_dropshipper"), [snaps]); // eslint-disable-line react-hooks/exhaustive-deps
   const topProv = useMemo(() => ranking("by_proveedor"), [snaps]); // eslint-disable-line react-hooks/exhaustive-deps
   const topProd = useMemo(() => {
-    const map = new Map<string, { nombre: string; proveedor: string; ordenes: number; jul: number; sep: number }>();
+    const map = new Map<string, { nombre: string; proveedor: string; ordenes: number; m0: number; m2: number }>();
     for (const m of Q3) for (const r of snaps[m]?.by_producto ?? []) {
-      const cur = map.get(r.nombre) ?? { nombre: r.nombre, proveedor: r.proveedor || "", ordenes: 0, jul: 0, sep: 0 };
+      const cur = map.get(r.nombre) ?? { nombre: r.nombre, proveedor: r.proveedor || "", ordenes: 0, m0: 0, m2: 0 };
       cur.ordenes += r.ordenes || 0;
-      if (m === "julio") cur.jul += r.ordenes || 0;
-      if (m === "septiembre") cur.sep += r.ordenes || 0;
+      if (m === Q3[0]) cur.m0 += r.ordenes || 0;
+      if (m === Q3[2]) cur.m2 += r.ordenes || 0;
       map.set(r.nombre, cur);
     }
     return [...map.values()].sort((a, b) => b.ordenes - a.ordenes).slice(0, 10);
-  }, [snaps]);
+  }, [snaps]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Transportadoras por mes (misma regla que Operaciones → Por Logística) ───
   // Tasa de entrega = entregadas ÷ movilizadas · devolución = devueltas ÷ movilizadas
@@ -269,47 +305,63 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       const tot = Q3.reduce((a, m) => ({ mov: a.mov + (r[m]?.mov ?? 0), ent: a.ent + (r[m]?.ent ?? 0), dev: a.dev + (r[m]?.dev ?? 0), proc: a.proc + (r[m]?.proc ?? 0) }), { mov: 0, ent: 0, dev: 0, proc: 0 });
       return { nombre, r, tot };
     }).sort((a, b) => b.tot.mov - a.tot.mov);
-  }, [transpData]);
+  }, [transpData]); // eslint-disable-line react-hooks/exhaustive-deps
   const movTotalTransp = transp.reduce((a, t) => a + t.tot.mov, 0);
 
-  // ─── Preparación Q4 ───
+  // ─── Avance del mes en curso / preparación del siguiente trimestre ───
   const q4 = useMemo(() => {
-    const oct = met.octubre;
-    const diasOct = (dias.octubre ?? []).filter((d) => d.ingresadas > 0).map((d) => d.dia);
+    const oct = met[MES_AVANCE];
+    const diasOct = (dias[MES_AVANCE] ?? []).filter((d) => d.ingresadas > 0).map((d) => d.dia);
     const ultimoDia = diasOct.length ? Math.max(...diasOct) : 0;
-    const restantes = Math.max(DIAS_MES("octubre") - ultimoDia, 0);
+    const restantes = Math.max(DIAS_MES(MES_AVANCE) - ultimoDia, 0);
     const promOct = ultimoDia ? oct.ing / ultimoDia : 0;
-    const proyIng = Math.round(promOct * DIAS_MES("octubre"));
-    const tasaMovQ3 = ratio(tQ3.mov, tQ3.ing);
+    const proyIng = Math.round(promOct * DIAS_MES(MES_AVANCE));
+    // Tasa de movilización de referencia: la del último trimestre cerrado
+    const tasaMovQ3 = enCurso ? ratio(tQ2full.mov, tQ2full.ing) : ratio(tQ3.mov, tQ3.ing);
     const proyMov = Math.round(proyIng * tasaMovQ3);
     const necesarioDiaIng = restantes > 0 ? Math.max(oct.metaIng - oct.ing, 0) / restantes : 0;
-    const promQ3 = tQ3.diasMes ? tQ3.ing / tQ3.diasMes : 0;
+    const promQ3 = enCurso ? ratio(tQ2full.ing, tQ2full.diasMes) : ratio(tQ3.ing, tQ3.diasMes);
     const crecQ3vsQ2 = delta(tQ3.ing, tQ2.ing);
     const baseMensualQ4 = Math.round((tQ3.mov / 3) * (1 + crecQ3vsQ2 / 100 / 3));
-    return { oct, ultimoDia, restantes, promOct, proyIng, proyMov, necesarioDiaIng, promQ3, crecQ3vsQ2, baseMensualQ4, tasaMovQ3 };
-  }, [met, dias, tQ2, tQ3]);
+    // Proyección del trimestre en curso: meses cerrados reales + mes actual proyectado + resto al ritmo actual
+    const promMovDia = ultimoDia ? oct.mov / ultimoDia : 0;
+    let proyTrimMov = 0, proyTrimIng = 0, diasRestTrim = 0;
+    for (const m of Q3) {
+      if (!enCurso || NUM[m] < NUM[mesHoy]) { proyTrimMov += met[m].mov; proyTrimIng += met[m].ing; }
+      else if (m === mesHoy) { proyTrimMov += Math.max(proyMov, oct.mov); proyTrimIng += Math.max(proyIng, oct.ing); diasRestTrim += restantes; }
+      else { proyTrimMov += Math.round(Math.max(promMovDia, promOct * tasaMovQ3) * DIAS_MES(m)); proyTrimIng += Math.round(promOct * DIAS_MES(m)); diasRestTrim += DIAS_MES(m); }
+    }
+    const necesarioDiaMovTrim = diasRestTrim > 0 ? Math.max(tQ3.metaMov - tQ3.mov, 0) / diasRestTrim : 0;
+    return { oct, ultimoDia, restantes, promOct, proyIng, proyMov, necesarioDiaIng, promQ3, crecQ3vsQ2, baseMensualQ4, tasaMovQ3, proyTrimMov, proyTrimIng, diasRestTrim, necesarioDiaMovTrim, promMovDia };
+  }, [met, dias, tQ2, tQ3, tQ2full]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Conclusiones automáticas ───
   const insights = useMemo(() => {
     const out: { tone: "pos" | "neg" | "info"; txt: string }[] = [];
-    const mejor = [...Q3].sort((a, b) => met[b].mov - met[a].mov)[0];
-    out.push({ tone: "info", txt: `Mejor mes del Q3 en movilizadas: ${LABEL[mejor]} (${fmt(met[mejor].mov)}).` });
-    out.push({ tone: tQ3.mov >= tQ2.mov ? "pos" : "neg", txt: `Q3 movilizó ${fmt(tQ3.mov)} guías, ${deltaTxt(tQ3.mov, tQ2.mov)} contra Q2 (${fmt(tQ2.mov)}).` });
-    if (tQ3.metaMov > 0) out.push({ tone: tQ3.mov >= tQ3.metaMov ? "pos" : "neg", txt: `Cumplimiento de meta Q3: ${pct(tQ3.mov, tQ3.metaMov)} (${fmt(tQ3.mov)} de ${fmt(tQ3.metaMov)} movilizadas).` });
-    const teJul = ratio(met.julio.ent, met.julio.ent + met.julio.dev) * 100, teSep = ratio(met.septiembre.ent, met.septiembre.ent + met.septiembre.dev) * 100;
-    if (teJul && teSep) out.push({ tone: teSep >= teJul ? "pos" : "neg", txt: `Efectividad de entrega (entregadas ÷ entregadas+devueltas): julio ${teJul.toFixed(1).replace(".", ",")}% → septiembre ${teSep.toFixed(1).replace(".", ",")}% (${ppTxt(teSep, teJul)}).` });
+    if (enCurso) {
+      out.push({ tone: tQ3.mov >= tQ2.mov ? "pos" : "neg", txt: `${QN} en curso (${diasTrans} de ${diasTotalesTrim} días): ${fmt(tQ3.mov)} movilizadas, ${deltaTxt(tQ3.mov, tQ2.mov)} contra el ${QP} en los mismos días (${fmt(tQ2.mov)}).` });
+      if (tQ3.metaMov > 0) out.push({ tone: q4.proyTrimMov >= tQ3.metaMov ? "pos" : "neg", txt: `Meta ${QN}: ${pct(tQ3.mov, tQ3.metaMov)} cumplido con ${pct(diasTrans, diasTotalesTrim, 0)} del trimestre transcurrido. Proyección al cierre: ~${fmt(q4.proyTrimMov)} de ${fmt(tQ3.metaMov)} movilizadas.` });
+    } else {
+      const mejor = [...Q3].sort((a, b) => met[b].mov - met[a].mov)[0];
+      out.push({ tone: "info", txt: `Mejor mes del ${QN} en movilizadas: ${LABEL[mejor]} (${fmt(met[mejor].mov)}).` });
+      out.push({ tone: tQ3.mov >= tQ2.mov ? "pos" : "neg", txt: `${QN} movilizó ${fmt(tQ3.mov)} guías, ${deltaTxt(tQ3.mov, tQ2.mov)} contra ${QP} (${fmt(tQ2.mov)}).` });
+      if (tQ3.metaMov > 0) out.push({ tone: tQ3.mov >= tQ3.metaMov ? "pos" : "neg", txt: `Cumplimiento de meta ${QN}: ${pct(tQ3.mov, tQ3.metaMov)} (${fmt(tQ3.mov)} de ${fmt(tQ3.metaMov)} movilizadas).` });
+    }
+    const teJul = ratio(met[M_INI].ent, met[M_INI].ent + met[M_INI].dev) * 100, teSep = ratio(met[M_FIN].ent, met[M_FIN].ent + met[M_FIN].dev) * 100;
+    if (teJul && teSep && M_INI !== M_FIN) out.push({ tone: teSep >= teJul ? "pos" : "neg", txt: `Efectividad de entrega (entregadas ÷ entregadas+devueltas): ${l(M_INI)} ${teJul.toFixed(1).replace(".", ",")}% → ${l(M_FIN)} ${teSep.toFixed(1).replace(".", ",")}% (${ppTxt(teSep, teJul)}).` });
     const pico = [...porDiaSemana].sort((a, b) => b.prom - a.prom)[0], valle = [...porDiaSemana].sort((a, b) => a.prom - b.prom)[0];
     if (pico?.prom) out.push({ tone: "info", txt: `Día más fuerte: ${pico.nombre} (${fmt(pico.prom)} ingresadas promedio). Más flojo: ${valle.nombre} (${fmt(valle.prom)}). Planificar campañas y stock según este patrón.` });
     const a = activacion.filas;
-    if (a[0]?.hayDatos && a[2]?.hayDatos) out.push({ tone: a[2].activos >= a[0].activos ? "pos" : "neg", txt: `Dropshippers activos: julio ${fmt(a[0].activos)} → septiembre ${fmt(a[2].activos)}. En el trimestre se perdieron ${fmt(a.reduce((s, x) => s + x.perdidos, 0))} y entraron ${fmt(a.reduce((s, x) => s + x.nuevos, 0))} nuevos.` });
+    if (a[0]?.hayDatos && a[idxFin]?.hayDatos && idxFin > 0) out.push({ tone: a[idxFin].activos >= a[0].activos ? "pos" : "neg", txt: `Dropshippers activos: ${l(M_INI)} ${fmt(a[0].activos)} → ${l(M_FIN)} ${fmt(a[idxFin].activos)}. En el trimestre se perdieron ${fmt(a.reduce((s, x) => s + x.perdidos, 0))} y entraron ${fmt(a.reduce((s, x) => s + x.nuevos, 0))} nuevos.` });
+    else if (a[0]?.hayDatos && enCurso) out.push({ tone: a[0].nuevos >= a[0].perdidos ? "pos" : "neg", txt: `Dropshippers activos en ${l(M_INI)}: ${fmt(a[0].activos)} (${fmt(a[0].nuevos)} nuevos y ${fmt(a[0].perdidos)} que no volvieron desde ${l(PREV_MES[M_INI])}).` });
     const conVol = transp.filter((t) => t.tot.mov > 300);
     const peor = [...conVol].sort((x, y) => ratio(x.tot.ent, x.tot.mov) - ratio(y.tot.ent, y.tot.mov))[0];
     const mejorT = [...conVol].sort((x, y) => ratio(y.tot.ent, y.tot.mov) - ratio(x.tot.ent, x.tot.mov))[0];
     if (peor && mejorT && peor !== mejorT) out.push({ tone: "info", txt: `Transportadoras (tasa de entrega sobre movilizadas): mejor ${mejorT.nombre} (${pct(mejorT.tot.ent, mejorT.tot.mov)}), más baja ${peor.nombre} (${pct(peor.tot.ent, peor.tot.mov)}).` });
     return out;
-  }, [met, tQ2, tQ3, porDiaSemana, activacion, transp]);
+  }, [met, tQ2, tQ3, porDiaSemana, activacion, transp, q4, diasTrans]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─── Lectura del Q3: resumen ejecutivo redactado con los datos ───
+  // ─── Lectura del trimestre: resumen ejecutivo redactado con los datos ───
   const lectura = useMemo(() => {
     const pais = country === "ar" ? "Argentina" : "Paraguay";
     const p1 = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1).replace(".", ",")}%` : "—");
@@ -317,33 +369,63 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     const parrafos: string[] = [];
     const prioridades: string[] = [];
 
+    if (enCurso) {
+      const pais2 = pais;
+      const avanceCal = ratio(diasTrans, diasTotalesTrim);
+      const avanceMeta = ratio(tQ3.mov, tQ3.metaMov);
+      parrafos.push(
+        `El ${QN} 2026 está en curso: al día ${q4.ultimoDia} de ${l(mesHoy)} ${pais2} lleva ${fmt(tQ3.mov)} guías movilizadas sobre ${fmt(tQ3.ing)} órdenes ingresadas` +
+        (tQ3.metaMov ? `, el ${p1(tQ3.mov, tQ3.metaMov)} de la meta trimestral de ${fmt(tQ3.metaMov)} con el ${p1(diasTrans, diasTotalesTrim)} del calendario transcurrido (${avanceMeta >= avanceCal ? "adelantado" : "atrasado"} respecto del ritmo necesario).` : "."),
+      );
+      parrafos.push(
+        `El ritmo actual es de ${fmt(q4.promOct)} ingresadas por día (${q4.promOct >= q4.promQ3 ? "por encima" : "por debajo"} del promedio del ${QP} de ${fmt(q4.promQ3)}) y ${fmt(q4.promMovDia)} movilizadas por día. ` +
+        `Contra el ${QP} en los mismos ${diasTrans} días, las movilizadas van ${deltaTxt(tQ3.mov, tQ2.mov)} y las ingresadas ${deltaTxt(tQ3.ing, tQ2.ing)}. ` +
+        `Si se sostiene este ritmo, el trimestre cerraría en ~${fmt(q4.proyTrimMov)} movilizadas` +
+        (tQ3.metaMov ? ` (${p1(q4.proyTrimMov, tQ3.metaMov)} de la meta)` : "") +
+        (q4.diasRestTrim > 0 && tQ3.metaMov > tQ3.mov ? `; para cumplirla hacen falta ${fmt(q4.necesarioDiaMovTrim)} movilizadas por día en los ${q4.diasRestTrim} días que quedan.` : "."),
+      );
+      // Con guías en proceso, la tasa sobre movilizadas es baja por definición: se compara la
+      // efectividad sobre guías ya cerradas (entregadas ÷ entregadas + devueltas).
+      const efCur = ratio(tQ3.ent, tQ3.ent + tQ3.dev) * 100, efPrev = ratio(tQ2full.ent, tQ2full.ent + tQ2full.dev) * 100;
+      parrafos.push(
+        `La tasa de entrega en curso es ${p1(tQ3.ent, tQ3.mov)} sobre movilizadas, con ${fmt(tQ3.proc)} guías todavía en proceso que van a ir cerrando (por eso es más baja que el ${p1(tQ2full.ent, tQ2full.mov)} del ${QP} cerrado). ` +
+        `Sobre las guías ya cerradas la efectividad va en ${efCur.toFixed(1).replace(".", ",")}% (${QP} cerrado: ${efPrev.toFixed(1).replace(".", ",")}%), pero las devoluciones se registran más tarde que las entregas, así que esta cifra suele bajar a medida que el mes madura; la comparación justa es la del mes anterior al mismo día. ` +
+        `Para eso, y para comparar logísticas en igualdad de condiciones, usá Operaciones con el rango del mes.`,
+      );
+      if (tQ3.metaMov && q4.proyTrimMov < tQ3.metaMov) prioridades.push(`Ritmo: la proyección (${fmt(q4.proyTrimMov)}) queda ${fmt(tQ3.metaMov - q4.proyTrimMov)} movilizadas debajo de la meta del ${QN}. Hacen falta ${fmt(q4.necesarioDiaMovTrim)} movilizadas por día (hoy ${fmt(q4.promMovDia)}).`);
+      if (efCur < efPrev - 3) prioridades.push(`Entrega: la efectividad sobre guías cerradas (${efCur.toFixed(1).replace(".", ",")}%) está ${(efPrev - efCur).toFixed(1).replace(".", ",")} puntos debajo del ${QP} (${efPrev.toFixed(1).replace(".", ",")}%); revisar novedades, confirmación y devoluciones antes de las campañas de fin de año.`);
+    }
+
+    if (!enCurso) {
     // 1. Volumen y meta
     const mejor = [...Q3].sort((a, b) => met[b].mov - met[a].mov)[0];
     const cumpl = ratio(tQ3.mov, tQ3.metaMov);
-    const tendMes = delta(met.septiembre.mov, met.julio.mov);
+    const tendMes = delta(met[Q3[2]].mov, met[Q3[0]].mov);
     parrafos.push(
-      `En el Q3 2026 ${pais} movilizó ${fmt(tQ3.mov)} guías sobre ${fmt(tQ3.ing)} órdenes ingresadas, ${deltaTxt(tQ3.mov, tQ2.mov)} contra el Q2 (${fmt(tQ2.mov)} movilizadas)` +
+      `En el ${QN} 2026 ${pais} movilizó ${fmt(tQ3.mov)} guías sobre ${fmt(tQ3.ing)} órdenes ingresadas, ${deltaTxt(tQ3.mov, tQ2.mov)} contra el ${QP} (${fmt(tQ2.mov)} movilizadas)` +
       (tQ3.metaMov ? `, con un cumplimiento de meta del ${p1(tQ3.mov, tQ3.metaMov)} (${tQ3.mov >= tQ3.metaMov ? `${fmt(tQ3.mov - tQ3.metaMov)} guías por encima` : `faltaron ${fmt(tQ3.metaMov - tQ3.mov)} guías`} de las ${fmt(tQ3.metaMov)} planificadas)` : "") +
-      `. El trimestre fue ${tendMes >= 3 ? "de crecimiento sostenido" : tendMes <= -3 ? "de caída progresiva" : "estable"} mes a mes: julio ${fmt(met.julio.mov)}, agosto ${fmt(met.agosto.mov)} y septiembre ${fmt(met.septiembre.mov)} movilizadas (${deltaTxt(met.septiembre.mov, met.julio.mov)} de julio a septiembre); el mejor mes fue ${LABEL[mejor].toLowerCase()}. ` +
-      `El promedio diario de ingresadas fue ${fmt(ratio(tQ3.ing, tQ3.diasMes))}, contra ${fmt(ratio(tQ2.ing, tQ2.diasMes))} en el Q2.`,
+      `. El trimestre fue ${tendMes >= 3 ? "de crecimiento sostenido" : tendMes <= -3 ? "de caída progresiva" : "estable"} mes a mes: ${l(Q3[0])} ${fmt(met[Q3[0]].mov)}, ${l(Q3[1])} ${fmt(met[Q3[1]].mov)} y ${l(Q3[2])} ${fmt(met[Q3[2]].mov)} movilizadas (${deltaTxt(met[Q3[2]].mov, met[Q3[0]].mov)} de ${l(Q3[0])} a ${l(Q3[2])}); el mejor mes fue ${LABEL[mejor].toLowerCase()}. ` +
+      `El promedio diario de ingresadas fue ${fmt(ratio(tQ3.ing, tQ3.diasMes))}, contra ${fmt(ratio(tQ2.ing, tQ2.diasMes))} en el ${QP}.`,
     );
-    if (tQ3.metaMov && cumpl < 1) prioridades.push(`Recuperar el ritmo: el Q3 cerró en ${p1(tQ3.mov, tQ3.metaMov)} de la meta; el Q4 necesita sostener al menos ${fmt(ratio(tQ3.metaMov, 3))} movilizadas por mes para no repetir la brecha.`);
+    if (tQ3.metaMov && cumpl < 1) prioridades.push(`Recuperar el ritmo: el ${QN} cerró en ${p1(tQ3.mov, tQ3.metaMov)} de la meta; el ${QS} necesita sostener al menos ${fmt(ratio(tQ3.metaMov, 3))} movilizadas por mes para no repetir la brecha.`);
 
     // 2. Conversión y calidad de entrega
     const movQ3 = ratio(tQ3.mov, tQ3.ing) * 100, movQ2 = ratio(tQ2.mov, tQ2.ing) * 100;
     const teQ3 = ratio(tQ3.ent, tQ3.mov) * 100, teQ2 = ratio(tQ2.ent, tQ2.mov) * 100;
     const efQ3l = ratio(tQ3.ent, tQ3.ent + tQ3.dev) * 100, efQ2l = ratio(tQ2.ent, tQ2.ent + tQ2.dev) * 100;
-    const teJul = ratio(met.julio.ent, met.julio.mov) * 100, teSep = ratio(met.septiembre.ent, met.septiembre.mov) * 100;
+    const teJul = ratio(met[Q3[0]].ent, met[Q3[0]].mov) * 100, teSep = ratio(met[Q3[2]].ent, met[Q3[2]].mov) * 100;
     parrafos.push(
-      `La conversión de órdenes a guías movilizadas fue del ${p1(tQ3.mov, tQ3.ing)} (${ppTxt(movQ3, movQ2)} vs Q2). ` +
+      `La conversión de órdenes a guías movilizadas fue del ${p1(tQ3.mov, tQ3.ing)} (${ppTxt(movQ3, movQ2)} vs ${QP}). ` +
       `La tasa de entrega sobre movilizadas fue ${p1(tQ3.ent, tQ3.mov)} y la efectividad sobre guías cerradas ${efQ3l.toFixed(1).replace(".", ",")}%, ` +
-      `${Math.abs(efQ3l - efQ2l) < 1 ? "prácticamente igual que en el Q2" : `${efQ3l > efQ2l ? "una mejora" : "un retroceso"} de ${Math.abs(efQ3l - efQ2l).toFixed(1).replace(".", ",")} puntos frente al Q2`}; la devolución ${sube(ratio(tQ3.dev, tQ3.mov), ratio(tQ2.dev, tQ2.mov))} a ${p1(tQ3.dev, tQ3.mov)} (Q2: ${p1(tQ2.dev, tQ2.mov)}). ` +
+      `${Math.abs(efQ3l - efQ2l) < 1 ? `prácticamente igual que en el ${QP}` : `${efQ3l > efQ2l ? "una mejora" : "un retroceso"} de ${Math.abs(efQ3l - efQ2l).toFixed(1).replace(".", ",")} puntos frente al ${QP}`}; la devolución ${sube(ratio(tQ3.dev, tQ3.mov), ratio(tQ2.dev, tQ2.mov))} a ${p1(tQ3.dev, tQ3.mov)} (${QP}: ${p1(tQ2.dev, tQ2.mov)}). ` +
       (Math.abs(teSep - teJul) < 1
-        ? `Dentro del trimestre la entrega se mantuvo estable (${teJul.toFixed(1).replace(".", ",")}% en julio, ${teSep.toFixed(1).replace(".", ",")}% en septiembre)`
-        : `Dentro del trimestre la entrega ${teSep > teJul ? "mejoró" : "se deterioró"} de ${teJul.toFixed(1).replace(".", ",")}% en julio a ${teSep.toFixed(1).replace(".", ",")}% en septiembre`) +
-      (met.septiembre.proc > 0 ? ` (septiembre todavía tiene ${fmt(met.septiembre.proc)} guías en proceso, por lo que su tasa final puede subir).` : "."),
+        ? `Dentro del trimestre la entrega se mantuvo estable (${teJul.toFixed(1).replace(".", ",")}% en ${l(Q3[0])}, ${teSep.toFixed(1).replace(".", ",")}% en ${l(Q3[2])})`
+        : `Dentro del trimestre la entrega ${teSep > teJul ? "mejoró" : "se deterioró"} de ${teJul.toFixed(1).replace(".", ",")}% en ${l(Q3[0])} a ${teSep.toFixed(1).replace(".", ",")}% en ${l(Q3[2])}`) +
+      (met[Q3[2]].proc > 0 ? ` (${l(Q3[2])} todavía tiene ${fmt(met[Q3[2]].proc)} guías en proceso, por lo que su tasa final puede subir).` : "."),
     );
-    if (teQ3 < teQ2 || teSep < teJul - 2) prioridades.push(`Calidad de entrega: la tasa cayó ${teSep < teJul ? `${(teJul - teSep).toFixed(1).replace(".", ",")} puntos entre julio y septiembre` : `frente al Q2`}. Revisar novedades, confirmación de pedidos y devoluciones por zona antes de escalar volumen.`);
+    if (teQ3 < teQ2 || teSep < teJul - 2) prioridades.push(`Calidad de entrega: la tasa cayó ${teSep < teJul ? `${(teJul - teSep).toFixed(1).replace(".", ",")} puntos entre ${l(Q3[0])} y ${l(Q3[2])}` : `frente al ${QP}`}. Revisar novedades, confirmación de pedidos y devoluciones por zona antes de escalar volumen.`);
+
+    }
 
     // 3. Transportadoras
     const movT = transp.reduce((a, t) => a + t.tot.mov, 0);
@@ -361,15 +443,15 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
 
     // 4. Base de dropshippers y concentración
     const a = activacion.filas;
-    if (a[0]?.hayDatos && a[2]?.hayDatos) {
+    if (!enCurso && a[0]?.hayDatos && a[2]?.hayDatos) {
       const nuevos = a.reduce((s, x) => s + x.nuevos, 0), perdidos = a.reduce((s, x) => s + x.perdidos, 0);
       let dsTot = 0;
       for (const m of Q3) for (const r of snaps[m]?.by_dropshipper ?? []) dsTot += movOf(r.estados || {});
       const top10 = topDs.reduce((s, r) => s + r.mov, 0);
       parrafos.push(
-        `La base activa pasó de ${fmt(a[0].activos)} dropshippers con órdenes en julio a ${fmt(a[2].activos)} en septiembre (${fmt(activacion.unicos)} distintos en el trimestre, ${fmt(activacion.los3)} activos los tres meses). ` +
+        `La base activa pasó de ${fmt(a[0].activos)} dropshippers con órdenes en ${l(Q3[0])} a ${fmt(a[2].activos)} en ${l(Q3[2])} (${fmt(activacion.unicos)} distintos en el trimestre, ${fmt(activacion.los3)} activos los tres meses). ` +
         `Entraron ${fmt(nuevos)} nuevos y se perdieron ${fmt(perdidos)}, un saldo ${nuevos >= perdidos ? "positivo" : "negativo"} de ${fmt(Math.abs(nuevos - perdidos))}. ` +
-        `El negocio está concentrado: en septiembre ${fmt(a[2].pareto)} dropshippers generaron el 80% de las órdenes` +
+        `El negocio está concentrado: en ${l(Q3[2])} ${fmt(a[2].pareto)} dropshippers generaron el 80% de las órdenes` +
         (dsTot ? ` y el top 10 explica el ${p1(top10, dsTot)} de las movilizadas del trimestre` : "") +
         (topDs[0] ? `, liderado por ${topDs[0].nombre} (${fmt(topDs[0].mov)}).` : "."),
       );
@@ -378,36 +460,39 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     }
 
     // 5. Proveedores y productos
-    if (topProv[0] || topProd[0]) {
-      const caen = topProv.filter((r) => r.jul > 0 && r.sep < r.jul * 0.8).map((r) => r.nombre);
+    if (!enCurso && (topProv[0] || topProd[0])) {
+      const caen = topProv.filter((r) => r.m0 > 0 && r.m2 < r.m0 * 0.8).map((r) => r.nombre);
       parrafos.push(
         (topProv[0] ? `Entre los proveedores lideró ${topProv[0].nombre} (${fmt(topProv[0].mov)} movilizadas)${topProv[1] ? `, seguido por ${topProv[1].nombre} y ${topProv[2]?.nombre ?? "—"}` : ""}. ` : "") +
-        (caen.length ? `Dentro del top 10, ${caen.slice(0, 3).join(", ")} ${caen.length === 1 ? "cayó" : "cayeron"} más de 20% de julio a septiembre. ` : "") +
+        (caen.length ? `Dentro del top 10, ${caen.slice(0, 3).join(", ")} ${caen.length === 1 ? "cayó" : "cayeron"} más de 20% de ${l(Q3[0])} a ${l(Q3[2])}. ` : "") +
         (topProd[0] ? `El producto más pedido fue "${topProd[0].nombre}" con ${fmt(topProd[0].ordenes)} órdenes en el trimestre.` : ""),
       );
       if (caen.length) prioridades.push(`Proveedores en baja: revisar stock, precio y calidad con ${caen.slice(0, 3).join(", ")} antes de las campañas de fin de año.`);
     }
 
-    // 6. Arranque del Q4
+    // 6. Arranque del trimestre siguiente
+    if (!enCurso) {
     const pico = [...porDiaSemana].sort((x, y) => y.prom - x.prom)[0];
     parrafos.push(
-      `Para el Q4: octubre lleva ${fmt(q4.oct.ing)} ingresadas al día ${q4.ultimoDia} (${fmt(q4.promOct)} por día, ${q4.promOct >= q4.promQ3 ? "por encima" : "por debajo"} del promedio del Q3 de ${fmt(q4.promQ3)}). ` +
+      `Para el ${QS}: ${l(MES_AVANCE)} lleva ${fmt(q4.oct.ing)} ingresadas al día ${q4.ultimoDia} (${fmt(q4.promOct)} por día, ${q4.promOct >= q4.promQ3 ? "por encima" : "por debajo"} del promedio del ${QN} de ${fmt(q4.promQ3)}). ` +
       `Al ritmo actual cerraría en ~${fmt(q4.proyIng)} ingresadas y ~${fmt(q4.proyMov)} movilizadas` +
       (q4.oct.metaMov ? `, ${q4.proyMov >= q4.oct.metaMov ? "superando" : "por debajo de"} la meta de ${fmt(q4.oct.metaMov)} movilizadas` : "") +
       (q4.restantes > 0 && q4.oct.metaIng ? `; para llegar a la meta de ingresadas hacen falta ${fmt(q4.necesarioDiaIng)} por día en los ${q4.restantes} días que quedan.` : ".") +
       (pico?.prom ? ` ${pico.nombre} es el día de mayor demanda: conviene concentrar ahí campañas y reposición.` : ""),
     );
-    if (q4.oct.metaMov && q4.proyMov < q4.oct.metaMov) prioridades.push(`Octubre: la proyección (${fmt(q4.proyMov)}) no alcanza la meta (${fmt(q4.oct.metaMov)}). Activar acciones comerciales con el top de dropshippers y proveedores en esta quincena.`);
-    if (!met.noviembre.metaMov) prioridades.push(`Definir metas de noviembre y diciembre: la base sugerida por la tendencia del Q3 es ~${fmt(q4.baseMensualQ4)} movilizadas por mes.`);
+    if (q4.oct.metaMov && q4.proyMov < q4.oct.metaMov) prioridades.push(`${LABEL[MES_AVANCE]}: la proyección (${fmt(q4.proyMov)}) no alcanza la meta (${fmt(q4.oct.metaMov)}). Activar acciones comerciales con el top de dropshippers y proveedores en esta quincena.`);
+    if (Q4.length > 2 && Q4.slice(1).some((m) => !met[m]?.metaMov)) prioridades.push(`Definir metas de ${l(Q4[1])} y ${l(Q4[2])}: la base sugerida por la tendencia del ${QN} es ~${fmt(q4.baseMensualQ4)} movilizadas por mes.`);
+
+    }
 
     return { parrafos, prioridades };
-  }, [country, met, tQ2, tQ3, transp, activacion, snaps, topDs, topProv, topProd, porDiaSemana, q4]);
+  }, [country, met, tQ2, tQ3, tQ2full, transp, activacion, snaps, topDs, topProv, topProd, porDiaSemana, q4, diasTrans]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando resumen Q3… (calcula julio a octubre con los datos de Operaciones)</div>;
-  if (err) return <div className="glass-card p-6 text-sm text-red-400">No se pudo cargar el resumen Q3: {err}</div>;
+  if (loading) return <div className="glass-card p-6 t-muted text-sm">Cargando resumen {QN}… (calcula el trimestre con los datos de Operaciones)</div>;
+  if (err) return <div className="glass-card p-6 text-sm text-red-400">No se pudo cargar el resumen {QN}: {err}</div>;
 
   const evolucion = ALL.map((m) => ({
-    mes: m === "octubre" ? `${CORTO[m]}*` : CORTO[m], ingresadas: met[m].ing, movilizadas: met[m].mov, entregadas: met[m].ent, devueltas: met[m].dev, metaMov: met[m].metaMov || null,
+    mes: m === mesHoy ? `${CORTO[m]}*` : CORTO[m], ingresadas: met[m].ing, movilizadas: met[m].mov, entregadas: met[m].ent, devueltas: met[m].dev, metaMov: met[m].metaMov || null,
     tasaEnt: +(ratio(met[m].ent, met[m].mov) * 100).toFixed(1), tasaDev: +(ratio(met[m].dev, met[m].mov) * 100).toFixed(1),
     efectividad: +(ratio(met[m].ent, met[m].ent + met[m].dev) * 100).toFixed(1), tasaMov: +(ratio(met[m].mov, met[m].ing) * 100).toFixed(1),
   }));
@@ -440,8 +525,8 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
     ] },
   ];
   const colsQ: { titulo: string; meses: Mes[]; total: Met; color: string }[] = [
-    { titulo: "Q2 · Abr – Jun", meses: Q2, total: tQ2, color: "#64748b" },
-    { titulo: "Q3 · Jul – Sep", meses: Q3, total: tQ3, color: "#f97316" },
+    { titulo: `${QP} · ${CORTO[Q2[0]]} – ${CORTO[Q2[2]]}`, meses: Q2, total: tQ2full, color: "#64748b" },
+    { titulo: `${QN} · ${CORTO[Q3[0]]} – ${CORTO[Q3[2]]}${enCurso ? " (en curso)" : ""}`, meses: Q3, total: tQ3, color: "#f97316" },
   ];
 
   const efQ3 = ratio(tQ3.ent, tQ3.ent + tQ3.dev) * 100, efQ2 = ratio(tQ2.ent, tQ2.ent + tQ2.dev) * 100;
@@ -451,7 +536,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       {/* Encabezado */}
       <div className="rounded-xl p-5 border-2 border-orange-500/40" style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.08), rgba(6,182,212,0.05))" }}>
         <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
-          <h2 className="text-lg font-bold t-primary">📊 Resumen Q3 2026 — {country === "ar" ? "Argentina" : "Paraguay"}</h2>
+          <h2 className="text-lg font-bold t-primary">📊 Resumen {QN} 2026{enCurso ? " (en curso)" : ""} — {country === "ar" ? "Argentina" : "Paraguay"}</h2>
           {canDownload && (
             <button
               onClick={descargarPdf}
@@ -463,7 +548,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
           )}
         </div>
         <p className="text-xs t-muted">
-          Julio + Agosto + Septiembre, comparado con Q2 y con el arranque de Q4. Mismas reglas que Operaciones: ingresadas del Seguimiento Diario, movilizadas/entregadas/devueltas del último archivo de cada mes (solo guías con fecha de orden del mes).
+          {LABEL[Q3[0]]} + {LABEL[Q3[1]]} + {LABEL[Q3[2]]}, comparado con {QP}{enCurso ? ` (proporcional a los ${diasTrans} días transcurridos)` : Q4[0] ? ` y con el arranque de ${QS}` : ""}. Mismas reglas que Operaciones: ingresadas del Seguimiento Diario, movilizadas/entregadas/devueltas del último archivo de cada mes (solo guías con fecha de orden del mes).
         </p>
       </div>
 
@@ -480,8 +565,8 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
         </div>
       )}
 
-      {/* Lectura del Q3 */}
-      <Card title={`📝 Lectura del Q3 — ${country === "ar" ? "Argentina" : "Paraguay"}`} sub="Resumen ejecutivo redactado con los datos del trimestre (se actualiza solo con cada carga)">
+      {/* Lectura del trimestre */}
+      <Card title={`📝 Lectura del ${QN}${enCurso ? " (en curso)" : ""} — ${country === "ar" ? "Argentina" : "Paraguay"}`} sub="Resumen ejecutivo redactado con los datos del trimestre (se actualiza solo con cada carga)">
         <div className="space-y-2.5">
           {lectura.parrafos.map((t, i) => (
             <p key={i} className="text-[13px] leading-relaxed t-secondary">{t}</p>
@@ -489,7 +574,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
         </div>
         {lectura.prioridades.length > 0 && (
           <div className="mt-4 rounded-xl p-4" style={{ background: "rgba(249,115,22,0.07)", borderLeft: "4px solid #f97316" }}>
-            <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "#f97316" }}>Prioridades para el Q4</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider mb-2" style={{ color: "#f97316" }}>{enCurso ? `Prioridades para lo que queda del ${QN}` : `Prioridades para el ${QS}`}</p>
             <ol className="space-y-1.5 list-decimal pl-5">
               {lectura.prioridades.map((t, i) => <li key={i} className="text-[12.5px] leading-relaxed t-secondary">{t}</li>)}
             </ol>
@@ -497,9 +582,9 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
         )}
       </Card>
 
-      {/* Meta Q3 */}
+      {/* Meta del trimestre */}
       <div data-pdf-section className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(167,139,250,0.10), rgba(249,115,22,0.08))", borderColor: "rgba(167,139,250,0.4)" }}>
-        <h3 className="text-base font-bold t-primary mb-3">🎯 Meta Q3 — cumplimiento trimestral</h3>
+        <h3 className="text-base font-bold t-primary mb-3">🎯 Meta {QN} — {enCurso ? `avance (${diasTrans} de ${diasTotalesTrim} días · esperado ${pct(diasTrans, diasTotalesTrim, 0)})` : "cumplimiento trimestral"}</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[{ l: "Movilizadas", real: tQ3.mov, meta: tQ3.metaMov, color: C.mov }, { l: "Ingresadas", real: tQ3.ing, meta: tQ3.metaIng, color: C.ing }].map((x) => (
             <div key={x.l}>
@@ -510,7 +595,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
               <div className="h-3 rounded-full mt-1 overflow-hidden" style={{ background: "rgba(148,163,184,0.2)" }}>
                 <div className="h-full rounded-full" style={{ width: `${Math.min(ratio(x.real, x.meta) * 100, 100)}%`, background: x.real >= x.meta ? "#10b981" : x.color }} />
               </div>
-              <p className="text-[11px] mt-1" style={{ color: x.real >= x.meta ? "#10b981" : "#f59e0b" }}>{pct(x.real, x.meta)} de la meta{x.meta ? ` · ${x.real >= x.meta ? "superada por" : "faltaron"} ${fmt(Math.abs(x.real - x.meta))}` : ""}</p>
+              <p className="text-[11px] mt-1" style={{ color: x.real >= x.meta ? "#10b981" : "#f59e0b" }}>{pct(x.real, x.meta)} de la meta{x.meta ? ` · ${x.real >= x.meta ? "superada por" : enCurso ? "faltan" : "faltaron"} ${fmt(Math.abs(x.real - x.meta))}` : ""}</p>
             </div>
           ))}
         </div>
@@ -518,27 +603,36 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
           {Q3.map((m) => (
             <div key={m} className="rounded-lg p-2 text-center" style={{ background: "rgba(148,163,184,0.08)" }}>
               <div className="text-[11px] t-muted">{LABEL[m]}</div>
-              <div className="font-mono text-sm font-bold t-primary">{fmt(met[m].mov)}</div>
-              <div className="text-[10px]" style={{ color: met[m].mov >= met[m].metaMov ? "#10b981" : "#f59e0b" }}>{pct(met[m].mov, met[m].metaMov, 0)} de {fmt(met[m].metaMov)}</div>
+              {enCurso && NUM[m] > NUM[mesHoy] ? (
+                <>
+                  <div className="font-mono text-sm font-bold t-muted">por empezar</div>
+                  <div className="text-[10px] t-muted">meta {fmt(met[m].metaMov)}</div>
+                </>
+              ) : (
+                <>
+                  <div className="font-mono text-sm font-bold t-primary">{fmt(met[m].mov)}</div>
+                  <div className="text-[10px]" style={{ color: met[m].mov >= met[m].metaMov ? "#10b981" : "#f59e0b" }}>{pct(met[m].mov, met[m].metaMov, 0)} de {fmt(met[m].metaMov)}{m === mesHoy ? " (en curso)" : ""}</div>
+                </>
+              )}
             </div>
           ))}
         </div>
       </div>
 
-      {/* KPIs Q3 vs Q2 */}
+      {/* KPIs del trimestre vs el anterior */}
       <div data-pdf-section className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2">
-        <Kpi label="Ingresadas Q3" value={fmt(tQ3.ing)} sub={`${deltaTxt(tQ3.ing, tQ2.ing)} vs Q2`} good={tQ3.ing >= tQ2.ing} color={C.ing} />
-        <Kpi label="Movilizadas Q3" value={fmt(tQ3.mov)} sub={`${deltaTxt(tQ3.mov, tQ2.mov)} vs Q2`} good={tQ3.mov >= tQ2.mov} color={C.mov} />
-        <Kpi label="% movilización" value={pct(tQ3.mov, tQ3.ing)} sub={`Q2: ${pct(tQ2.mov, tQ2.ing)}`} good={ratio(tQ3.mov, tQ3.ing) >= ratio(tQ2.mov, tQ2.ing)} color={C.mov} />
-        <Kpi label="Entregadas Q3" value={fmt(tQ3.ent)} sub={`${deltaTxt(tQ3.ent, tQ2.ent)} vs Q2`} good={tQ3.ent >= tQ2.ent} color={C.ent} />
-        <Kpi label="Tasa de entrega" value={pct(tQ3.ent, tQ3.mov)} sub={`Q2: ${pct(tQ2.ent, tQ2.mov)}`} good={ratio(tQ3.ent, tQ3.mov) >= ratio(tQ2.ent, tQ2.mov)} color={C.ent} />
-        <Kpi label="Efectividad cerrada" value={`${efQ3.toFixed(1).replace(".", ",")}%`} sub={`Q2: ${efQ2.toFixed(1).replace(".", ",")}% (${ppTxt(efQ3, efQ2)})`} good={efQ3 >= efQ2} color={C.ent} />
-        <Kpi label="Tasa devolución" value={pct(tQ3.dev, tQ3.mov)} sub={`Q2: ${pct(tQ2.dev, tQ2.mov)}`} good={ratio(tQ3.dev, tQ3.mov) <= ratio(tQ2.dev, tQ2.mov)} color={C.dev} />
-        <Kpi label="Promedio diario" value={fmt(ratio(tQ3.ing, tQ3.diasMes))} sub={`ingresadas · Q2 ${fmt(ratio(tQ2.ing, tQ2.diasMes))}`} good={ratio(tQ3.ing, tQ3.diasMes) >= ratio(tQ2.ing, tQ2.diasMes)} color={C.ing} />
+        <Kpi label={`Ingresadas ${QN}`} value={fmt(tQ3.ing)} sub={`${deltaTxt(tQ3.ing, tQ2.ing)} vs ${QP}${enCurso ? " (mismos días)" : ""}`} good={tQ3.ing >= tQ2.ing} color={C.ing} />
+        <Kpi label={`Movilizadas ${QN}`} value={fmt(tQ3.mov)} sub={`${deltaTxt(tQ3.mov, tQ2.mov)} vs ${QP}${enCurso ? " (mismos días)" : ""}`} good={tQ3.mov >= tQ2.mov} color={C.mov} />
+        <Kpi label="% movilización" value={pct(tQ3.mov, tQ3.ing)} sub={`${QP}: ${pct(tQ2.mov, tQ2.ing)}`} good={ratio(tQ3.mov, tQ3.ing) >= ratio(tQ2.mov, tQ2.ing)} color={C.mov} />
+        <Kpi label={`Entregadas ${QN}`} value={fmt(tQ3.ent)} sub={`${deltaTxt(tQ3.ent, tQ2.ent)} vs ${QP}${enCurso ? " (mismos días)" : ""}`} good={tQ3.ent >= tQ2.ent} color={C.ent} />
+        <Kpi label="Tasa de entrega" value={pct(tQ3.ent, tQ3.mov)} sub={`${QP}: ${pct(tQ2.ent, tQ2.mov)}`} good={ratio(tQ3.ent, tQ3.mov) >= ratio(tQ2.ent, tQ2.mov)} color={C.ent} />
+        <Kpi label="Efectividad cerrada" value={`${efQ3.toFixed(1).replace(".", ",")}%`} sub={`${QP}: ${efQ2.toFixed(1).replace(".", ",")}% (${ppTxt(efQ3, efQ2)})`} good={efQ3 >= efQ2} color={C.ent} />
+        <Kpi label="Tasa devolución" value={pct(tQ3.dev, tQ3.mov)} sub={`${QP}: ${pct(tQ2.dev, tQ2.mov)}`} good={ratio(tQ3.dev, tQ3.mov) <= ratio(tQ2.dev, tQ2.mov)} color={C.dev} />
+        <Kpi label="Promedio diario" value={fmt(ratio(tQ3.ing, tQ3.diasMes))} sub={`ingresadas · ${QP} ${fmt(ratio(tQ2.ing, tQ2.diasMes))}`} good={ratio(tQ3.ing, tQ3.diasMes) >= ratio(tQ2.ing, tQ2.diasMes)} color={C.ing} />
       </div>
 
       {/* Conclusiones */}
-      <Card title="🧠 Lo más importante del Q3" sub="Conclusiones calculadas con los datos del trimestre">
+      <Card title={`🧠 Lo más importante del ${QN}`} sub="Conclusiones calculadas con los datos del trimestre">
         <ul className="space-y-1.5">
           {insights.map((i, k) => (
             <li key={k} className="text-xs t-secondary flex gap-2">
@@ -550,7 +644,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       </Card>
 
       {/* Cuadro comparativo */}
-      <Card title="📋 Cuadro comparativo — Q2 vs Q3 mes a mes" sub="Totales de cada trimestre resaltados. Δ compara el total del Q3 contra el del Q2 (en tasas, diferencia en puntos porcentuales).">
+      <Card title={`📋 Cuadro comparativo — ${QP} vs ${QN} mes a mes`} sub={enCurso ? `Totales de cada trimestre resaltados. Con el ${QN} en curso, Δ compara contra el ${QP} proporcional a los mismos ${diasTrans} días (en tasas, diferencia en puntos porcentuales).` : `Totales de cada trimestre resaltados. Δ compara el total del ${QN} contra el del ${QP} (en tasas, diferencia en puntos porcentuales).`}>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[860px] text-[12px]" style={{ fontVariantNumeric: "tabular-nums", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
@@ -559,7 +653,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
                 {colsQ.map((q) => (
                   <th key={q.titulo} colSpan={4} className="py-1.5 px-3 text-center text-[11px] font-bold uppercase tracking-wider text-white rounded-t-lg" style={{ background: q.color, borderLeft: "3px solid transparent", backgroundClip: "padding-box" }}>{q.titulo}</th>
                 ))}
-                <th rowSpan={2} className="align-bottom py-2 px-3 text-center text-[11px] uppercase tracking-wider t-muted border-b-2 border-gray-600">Δ Q3 vs Q2</th>
+                <th rowSpan={2} className="align-bottom py-2 px-3 text-center text-[11px] uppercase tracking-wider t-muted border-b-2 border-gray-600">Δ {QN} vs {QP}</th>
               </tr>
               <tr>
                 {colsQ.flatMap((q, qi) => [
@@ -608,7 +702,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
 
       {/* Evolución mensual */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="📈 Evolución mensual — Abril a Octubre" sub="* Octubre en curso (parcial)">
+        <Card title={`📈 Evolución mensual — ${LABEL[ALL[0]]} a ${LABEL[ALL[ALL.length - 1]]}`} sub={ALL.includes(mesHoy) ? `* ${LABEL[mesHoy]} en curso (parcial)` : undefined}>
           <ResponsiveContainer width="100%" height={280}>
             <ComposedChart data={evolucion}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
@@ -641,7 +735,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       </div>
 
       {/* Tendencia diaria */}
-      <Card title="📅 Tendencia diaria del Q3 — ingresadas y media móvil de 7 días" sub="Movilizadas y entregadas por día de orden (las últimas semanas de septiembre todavía tienen guías en proceso)">
+      <Card title={`📅 Tendencia diaria del ${QN} — ingresadas y media móvil de 7 días`} sub={`Movilizadas y entregadas por día de orden (las últimas semanas de ${l(M_FIN)} todavía tienen guías en proceso)`}>
         <ResponsiveContainer width="100%" height={300}>
           <ComposedChart data={diario}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
@@ -658,7 +752,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="🗓️ Patrón por día de la semana (Q3)" sub="Promedio de órdenes ingresadas según el día">
+        <Card title={`🗓️ Patrón por día de la semana (${QN})`} sub="Promedio de órdenes ingresadas según el día">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={porDiaSemana}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
@@ -700,32 +794,32 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
             </table>
           </div>
           <p className="text-[11px] t-muted mt-3">
-            {fmt(activacion.unicos)} dropshippers distintos operaron en el Q3; {fmt(activacion.los3)} estuvieron activos los 3 meses.
+            {fmt(activacion.unicos)} dropshippers distintos operaron en el {QN}{enCurso ? " (hasta hoy)" : ""}; {fmt(activacion.los3)} estuvieron activos los 3 meses.
             {" "}Nuevos = no tenían órdenes el mes anterior · Perdidos = tenían órdenes el mes anterior y este no.
           </p>
           <p className="text-[11px] mt-2" style={{ color: C.amber }}>
-            ⚠ La activación de <b>usuarios registrados</b> (registro → primera orden) necesita el export de usuarios de julio a septiembre: subilo en Estrategia → Registrados para completarla.
+            ⚠ La activación de <b>usuarios registrados</b> (registro → primera orden) necesita el export de usuarios de {l(Q3[0])} a {l(Q3[2])}: subilo en Estrategia → Registrados para completarla.
           </p>
         </Card>
       </div>
 
       {/* Rankings */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {[{ t: "🏆 Top 10 dropshippers Q3 (movilizadas)", rows: topDs }, { t: "📦 Top 10 proveedores Q3 (movilizadas)", rows: topProv }].map((blk) => (
-          <Card key={blk.t} title={blk.t} sub="Tendencia = septiembre contra julio">
+        {[{ t: `🏆 Top 10 dropshippers ${QN} (movilizadas)`, rows: topDs }, { t: `📦 Top 10 proveedores ${QN} (movilizadas)`, rows: topProv }].map((blk) => (
+          <Card key={blk.t} title={blk.t} sub={enCurso ? "Tendencia disponible al cerrar el trimestre" : `Tendencia = ${l(Q3[2])} contra ${l(Q3[0])}`}>
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-700"><Th left>#</Th><Th left>Nombre</Th><Th>Jul</Th><Th>Ago</Th><Th>Sep</Th><Th>Q3</Th><Th>Entrega</Th><Th>Tendencia</Th></tr>
+                  <tr className="border-b border-gray-700"><Th left>#</Th><Th left>Nombre</Th><Th>{CORTO[Q3[0]]}</Th><Th>{CORTO[Q3[1]]}</Th><Th>{CORTO[Q3[2]]}</Th><Th>{QN}</Th><Th>Entrega</Th><Th>Tendencia</Th></tr>
                 </thead>
                 <tbody>
                   {blk.rows.map((r, i) => (
                     <tr key={r.nombre} className="border-b border-gray-800/50">
                       <Td left>{i + 1}</Td>
                       <td className="py-1.5 px-2 text-xs t-primary max-w-[180px] truncate" title={r.nombre}>{r.nombre}</td>
-                      <Td>{fmt(r.jul)}</Td><Td>{fmt(r.ago)}</Td><Td>{fmt(r.sep)}</Td><Td bold>{fmt(r.mov)}</Td>
+                      <Td>{fmt(r.m0)}</Td><Td>{fmt(r.m1)}</Td><Td>{fmt(r.m2)}</Td><Td bold>{fmt(r.mov)}</Td>
                       <Td>{pct(r.ent, r.mov, 0)}</Td>
-                      <Td bold color={r.sep >= r.jul ? "#10b981" : "#ef4444"}>{r.jul ? deltaTxt(r.sep, r.jul) : "nuevo"}</Td>
+                      <Td bold color={enCurso ? undefined : r.m2 >= r.m0 ? "#10b981" : "#ef4444"}>{enCurso ? "—" : r.m0 ? deltaTxt(r.m2, r.m0) : "nuevo"}</Td>
                     </tr>
                   ))}
                 </tbody>
@@ -736,17 +830,17 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <Card title="🎯 Top 10 productos Q3 (órdenes)">
+        <Card title={`🎯 Top 10 productos ${QN} (órdenes)`}>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b border-gray-700"><Th left>#</Th><Th left>Producto</Th><Th left>Proveedor</Th><Th>Jul</Th><Th>Sep</Th><Th>Q3</Th></tr></thead>
+              <thead><tr className="border-b border-gray-700"><Th left>#</Th><Th left>Producto</Th><Th left>Proveedor</Th><Th>{CORTO[Q3[0]]}</Th><Th>{CORTO[Q3[2]]}</Th><Th>{QN}</Th></tr></thead>
               <tbody>
                 {topProd.map((p, i) => (
                   <tr key={p.nombre} className="border-b border-gray-800/50">
                     <Td left>{i + 1}</Td>
                     <td className="py-1.5 px-2 text-xs t-primary max-w-[220px] truncate" title={p.nombre}>{p.nombre}</td>
                     <td className="py-1.5 px-2 text-xs t-muted max-w-[120px] truncate" title={p.proveedor}>{cleanName(p.proveedor)}</td>
-                    <Td>{fmt(p.jul)}</Td><Td color={p.sep >= p.jul ? "#10b981" : "#ef4444"}>{fmt(p.sep)}</Td><Td bold>{fmt(p.ordenes)}</Td>
+                    <Td>{fmt(p.m0)}</Td><Td color={enCurso ? undefined : p.m2 >= p.m0 ? "#10b981" : "#ef4444"}>{fmt(p.m2)}</Td><Td bold>{fmt(p.ordenes)}</Td>
                   </tr>
                 ))}
               </tbody>
@@ -757,7 +851,7 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
         <Card title="🚚 Transportadoras — tasa de entrega por mes" sub="Misma regla que Operaciones → Por Logística: entregadas ÷ movilizadas (solo guías con fecha de orden del mes)">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead><tr className="border-b border-gray-700"><Th left>Transportadora</Th>{Q3.map((m) => <Th key={m}>{CORTO[m]}</Th>)}<Th>Movilizadas Q3</Th><Th>Particip.</Th><Th>Entrega Q3</Th><Th>Devol. Q3</Th><Th>En proceso</Th></tr></thead>
+              <thead><tr className="border-b border-gray-700"><Th left>Transportadora</Th>{Q3.map((m) => <Th key={m}>{CORTO[m]}</Th>)}<Th>Movilizadas {QN}</Th><Th>Particip.</Th><Th>Entrega {QN}</Th><Th>Devol. {QN}</Th><Th>En proceso</Th></tr></thead>
               <tbody>
                 {transp.map((t) => (
                   <tr key={t.nombre} className="border-b border-gray-800/50">
@@ -787,43 +881,51 @@ export default function Q3Resumen({ country }: { country: "ar" | "py" }) {
               </tbody>
             </table>
           </div>
-          {transp.length === 0 && <p className="text-xs t-muted">Sin datos de Operaciones para Q3.</p>}
+          {transp.length === 0 && <p className="text-xs t-muted">Sin datos de Operaciones para el {QN}.</p>}
         </Card>
       </div>
 
-      {/* Preparación Q4 */}
+      {/* Avance del mes en curso / preparación del siguiente trimestre */}
       <div data-pdf-section className="rounded-2xl p-5 border-2" style={{ background: "linear-gradient(135deg, rgba(16,185,129,0.10), rgba(59,130,246,0.08))", borderColor: "rgba(16,185,129,0.4)" }}>
-        <h3 className="text-base font-bold t-primary mb-1">🚀 Preparando el Q4 — base para planificar</h3>
-        <p className="text-[11px] t-muted mb-4">Octubre en curso contra su meta, y la base que deja el Q3 para fijar noviembre y diciembre.</p>
+        <h3 className="text-base font-bold t-primary mb-1">{enCurso ? `🚀 Avance de ${LABEL[MES_AVANCE]} y del ${QN}` : `🚀 Preparando el ${QS} — base para planificar`}</h3>
+        <p className="text-[11px] t-muted mb-4">{enCurso ? `${LABEL[MES_AVANCE]} en curso contra su meta, proyección del trimestre y metas de cada mes.` : `${LABEL[MES_AVANCE]} en curso contra su meta, y la base que deja el ${QN} para fijar los meses siguientes.`}</p>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
-          <Kpi label={`Octubre al día ${q4.ultimoDia}`} value={fmt(q4.oct.ing)} sub={`ingresadas · ${fmt(q4.promOct)}/día (Q3: ${fmt(q4.promQ3)}/día)`} good={q4.promOct >= q4.promQ3} color={C.ing} />
-          <Kpi label="Proyección octubre" value={fmt(q4.proyIng)} sub={q4.oct.metaIng ? `ingresadas · ${pct(q4.proyIng, q4.oct.metaIng, 0)} de la meta ${fmt(q4.oct.metaIng)}` : "ingresadas al ritmo actual"} good={q4.oct.metaIng ? q4.proyIng >= q4.oct.metaIng : null} color={C.ing} />
-          <Kpi label="Movilizadas proyectadas" value={fmt(q4.proyMov)} sub={q4.oct.metaMov ? `meta ${fmt(q4.oct.metaMov)} · con la tasa de mov. del Q3 (${(q4.tasaMovQ3 * 100).toFixed(1).replace(".", ",")}%)` : ""} good={q4.oct.metaMov ? q4.proyMov >= q4.oct.metaMov : null} color={C.mov} />
+          <Kpi label={`${LABEL[MES_AVANCE]} al día ${q4.ultimoDia}`} value={fmt(q4.oct.ing)} sub={`ingresadas · ${fmt(q4.promOct)}/día (${enCurso ? QP : QN}: ${fmt(q4.promQ3)}/día)`} good={q4.promOct >= q4.promQ3} color={C.ing} />
+          <Kpi label={`Proyección ${l(MES_AVANCE)}`} value={fmt(q4.proyIng)} sub={q4.oct.metaIng ? `ingresadas · ${pct(q4.proyIng, q4.oct.metaIng, 0)} de la meta ${fmt(q4.oct.metaIng)}` : "ingresadas al ritmo actual"} good={q4.oct.metaIng ? q4.proyIng >= q4.oct.metaIng : null} color={C.ing} />
+          <Kpi label="Movilizadas proyectadas" value={fmt(q4.proyMov)} sub={q4.oct.metaMov ? `meta ${fmt(q4.oct.metaMov)} · con la tasa de mov. del ${enCurso ? QP : QN} (${(q4.tasaMovQ3 * 100).toFixed(1).replace(".", ",")}%)` : ""} good={q4.oct.metaMov ? q4.proyMov >= q4.oct.metaMov : null} color={C.mov} />
           <Kpi label="Necesario por día" value={fmt(q4.necesarioDiaIng)} sub={`ingresadas en los ${q4.restantes} días que quedan para llegar a la meta`} good={q4.necesarioDiaIng <= q4.promOct} color={C.meta} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead><tr className="border-b border-gray-700"><Th left>Mes Q4</Th><Th>Meta movilizadas</Th><Th>Meta ingresadas</Th><Th>vs promedio Q3</Th><Th left>Estado</Th></tr></thead>
+            <thead><tr className="border-b border-gray-700"><Th left>Mes {enCurso ? QN : QS}</Th><Th>Meta movilizadas</Th><Th>Meta ingresadas</Th><Th>vs promedio {enCurso ? QP : QN}</Th><Th left>Estado</Th></tr></thead>
             <tbody>
-              {Q4.map((m) => {
+              {MESES_PLAN.map((m) => {
                 const mm = met[m];
-                const promQ3Mov = tQ3.mov / 3;
+                const promQ3Mov = (enCurso ? tQ2full.mov : tQ3.mov) / 3;
                 return (
                   <tr key={m} className="border-b border-gray-800/50">
                     <Td left bold>{LABEL[m]}</Td>
                     <Td>{mm.metaMov ? fmt(mm.metaMov) : "—"}</Td>
                     <Td>{mm.metaIng ? fmt(mm.metaIng) : "—"}</Td>
                     <Td>{mm.metaMov ? deltaTxt(mm.metaMov, promQ3Mov) : "—"}</Td>
-                    <td className="py-1.5 px-2 text-xs t-muted">{m === "octubre" ? `En curso: ${fmt(mm.mov)} movilizadas al día ${q4.ultimoDia}` : mm.metaMov ? "Meta cargada" : `Sin meta · base sugerida ${fmt(q4.baseMensualQ4)} movilizadas`}</td>
+                    <td className="py-1.5 px-2 text-xs t-muted">{m === MES_AVANCE ? `En curso: ${fmt(mm.mov)} movilizadas al día ${q4.ultimoDia} (${pct(mm.mov, mm.metaMov, 0)} de la meta)` : enCurso && NUM[m] < NUM[mesHoy] ? `Cerrado: ${fmt(mm.mov)} movilizadas (${pct(mm.mov, mm.metaMov, 0)} de la meta)` : mm.metaMov ? "Meta cargada" : `Sin meta · base sugerida ${fmt(q4.baseMensualQ4)} movilizadas`}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-        <p className="text-[11px] t-muted mt-3">
-          Base sugerida = promedio mensual de movilizadas del Q3 ({fmt(tQ3.mov / 3)}) ajustado por el crecimiento Q3 vs Q2 ({q4.crecQ3vsQ2 >= 0 ? "+" : ""}{q4.crecQ3vsQ2.toFixed(1).replace(".", ",")}% trimestral). Es un punto de partida para definir las metas de noviembre y diciembre.
-        </p>
+        {!enCurso ? (
+          <p className="text-[11px] t-muted mt-3">
+            Base sugerida = promedio mensual de movilizadas del {QN} ({fmt(tQ3.mov / 3)}) ajustado por el crecimiento {QN} vs {QP} ({q4.crecQ3vsQ2 >= 0 ? "+" : ""}{q4.crecQ3vsQ2.toFixed(1).replace(".", ",")}% trimestral). Es un punto de partida para definir las metas de los meses siguientes.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-4">
+            <Kpi label={`Proyección de cierre del ${QN}`} value={fmt(q4.proyTrimMov)} sub={tQ3.metaMov ? `movilizadas · ${pct(q4.proyTrimMov, tQ3.metaMov, 0)} de la meta ${fmt(tQ3.metaMov)}` : "movilizadas al ritmo actual"} good={tQ3.metaMov ? q4.proyTrimMov >= tQ3.metaMov : null} color={C.mov} />
+            <Kpi label={`Necesario por día (resto del ${QN})`} value={fmt(q4.necesarioDiaMovTrim)} sub={`movilizadas en los ${q4.diasRestTrim} días que quedan · hoy ${fmt(q4.promMovDia)}/día`} good={q4.necesarioDiaMovTrim <= q4.promMovDia} color={C.meta} />
+            <Kpi label={`Avance del ${QN}`} value={pct(tQ3.mov, tQ3.metaMov, 0)} sub={`de la meta · calendario ${pct(diasTrans, diasTotalesTrim, 0)} transcurrido`} good={ratio(tQ3.mov, tQ3.metaMov) >= ratio(diasTrans, diasTotalesTrim)} color={C.ent} />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -76,13 +76,19 @@ export default function StrategicSimulator({
   const isAgosto = mesFilter === "agosto";
   const isSeptiembre = mesFilter === "septiembre";
   const isOctubre = mesFilter === "octubre";
+  const isNoviembre = mesFilter === "noviembre";
+  const isDiciembre = mesFilter === "diciembre";
   const mi = metaInfo as Record<string, unknown> | undefined;
 
   // Etiquetas dinámicas según el mes target
-  const TARGET_LABEL = isOctubre ? "Octubre" : isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
-  const COMP_LABEL = isOctubre ? "Septiembre" : isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
+  const TARGET_LABEL = isDiciembre ? "Diciembre" : isNoviembre ? "Noviembre" : isOctubre ? "Octubre" : isSeptiembre ? "Septiembre" : isAgosto ? "Agosto" : isJulio ? "Julio" : isJunio ? "Junio" : isMayo ? "Mayo" : "Abril";
+  const COMP_LABEL = isDiciembre ? "Noviembre" : isNoviembre ? "Octubre" : isOctubre ? "Septiembre" : isSeptiembre ? "Agosto" : isAgosto ? "Julio" : isJulio ? "Junio" : isJunio ? "Mayo" : isMayo ? "Abril" : "Marzo";
 
-  const GOAL_MOVILIZADAS = isOctubre
+  const GOAL_MOVILIZADAS = isDiciembre
+    ? ((mi?.meta_movilizadas_diciembre as number) ?? (mi?.meta_movilizadas_noviembre as number) ?? 40000)
+    : isNoviembre
+    ? ((mi?.meta_movilizadas_noviembre as number) ?? (mi?.meta_movilizadas_octubre as number) ?? 40000)
+    : isOctubre
     ? ((mi?.meta_movilizadas_octubre as number) ?? (mi?.meta_movilizadas_septiembre as number) ?? 40000)
     : isSeptiembre
     ? ((mi?.meta_movilizadas_septiembre as number) ?? (mi?.meta_movilizadas_agosto as number) ?? 40000)
@@ -96,7 +102,11 @@ export default function StrategicSimulator({
     ? (metaInfo?.meta_movilizadas_mayo ?? metaInfo?.meta_movilizadas_abril ?? 40000)
     : (metaInfo?.meta_movilizadas_abril ?? 40000);
   const TASA_MOVILIZACION = metaInfo?.tasa_movilizacion ?? 0.78;
-  const GOAL_INGRESADAS = isOctubre
+  const GOAL_INGRESADAS = isDiciembre
+    ? ((mi?.meta_ingresadas_diciembre as number) ?? (mi?.meta_ingresadas_noviembre as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
+    : isNoviembre
+    ? ((mi?.meta_ingresadas_noviembre as number) ?? (mi?.meta_ingresadas_octubre as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
+    : isOctubre
     ? ((mi?.meta_ingresadas_octubre as number) ?? (mi?.meta_ingresadas_septiembre as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))
     : isSeptiembre
     ? ((mi?.meta_ingresadas_septiembre as number) ?? (mi?.meta_ingresadas_agosto as number) ?? Math.ceil(GOAL_MOVILIZADAS / TASA_MOVILIZACION))

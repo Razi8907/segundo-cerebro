@@ -139,6 +139,7 @@ export const MES_FILTER_TO_KEYS: Record<string, MesKey[]> = {
   q1: ["ene", "feb", "mar"],
   q2: ["abr", "may", "jun"],
   q3: ["jul", "ago", "sep"],
+  q4: ["oct", "nov", "dic"],
   enero: ["ene"], febrero: ["feb"], marzo: ["mar"], abril: ["abr"],
   mayo: ["may"], junio: ["jun"], julio: ["jul"], agosto: ["ago"],
   septiembre: ["sep"], octubre: ["oct"], noviembre: ["nov"], diciembre: ["dic"],
