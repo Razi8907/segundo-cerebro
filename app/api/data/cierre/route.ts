@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
   const [meses, asig, enc, cfg, cargaRes, alertas, checks] = await Promise.all([
     Promise.all(Q4.map((m) => sb.rpc("get_ops_mes_cached", { p_country: country, p_mes: m, p_kind: "ds" }))),
     sb.from("cierre_asignaciones").select("ds_id, ds_nombre, comercial, updated_by, updated_at").eq("country", country),
-    sb.from("cierre_encargados").select("nombre, telefono, activo").eq("country", country).order("nombre"),
+    sb.from("cierre_encargados").select("nombre, telefono, activo, rol").eq("country", country).order("nombre"),
     sb.from("cierre_config").select("*").eq("country", country).maybeSingle(),
     sb.from("wallet_cargas").select("id, archivo, filas, cargado_por, cargado_el, mapeo").eq("country", country).order("cargado_el", { ascending: false }).limit(1),
     sb.from("cierre_alertas").select("ds_id, tipo, detalle, encargado, enviado_por, enviado_el").eq("country", country).order("enviado_el", { ascending: false }).limit(500),
@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/data/cierre — acciones del sector (todas requieren sesión)
 //   { accion: "asignar", country, ds_id, ds_nombre, comercial }
-//   { accion: "encargado", country, nombre, telefono, activo? }
+//   { accion: "encargado", country, nombre, telefono, activo?, rol?: "comercial" | "head" }
 //   { accion: "config", country, costo_devolucion?, debitos_max_dia?, umbral_pdev?, umbral_novedad? }
 //   { accion: "alerta", country, ds_id, tipo, detalle, encargado }
 //   { accion: "wallet-extracto", country, ds_id, ds_nombre, ds_email, archivo, informe_fecha, saldo, movimientos[] }
@@ -187,6 +187,7 @@ export async function POST(req: NextRequest) {
       const r = await sb.from("cierre_encargados").upsert({
         country, nombre, telefono: body.telefono ? String(body.telefono).replace(/[^\d+]/g, "") : null,
         activo: body.activo === undefined ? true : Boolean(body.activo), updated_at: new Date().toISOString(),
+        ...(body.rol === "head" || body.rol === "comercial" ? { rol: body.rol } : {}),
       }, { onConflict: "country,nombre" });
       return r.error ? NextResponse.json({ error: r.error.message }, { status: 500 }) : NextResponse.json({ ok: true });
     }

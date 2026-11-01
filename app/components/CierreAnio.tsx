@@ -30,7 +30,7 @@ interface Wallet {
   informe_fecha: string | null; cargado_el: string | null; n_mov: string | null; saldo_anterior: number | null; informe_anterior: string | null; retiros: Retiro[] | null;
 }
 interface Config { costo_devolucion: number | null; debitos_max_dia: number; umbral_pdev: number; umbral_novedad: number }
-interface Encargado { nombre: string; telefono: string | null; activo: boolean }
+interface Encargado { nombre: string; telefono: string | null; activo: boolean; rol: "comercial" | "head" }
 interface Alerta { ds_id: string; tipo: string; detalle: string; encargado: string | null; enviado_por: string; enviado_el: string }
 interface Data {
   mesesConDatos: string[]; totalUsuarios: number; totales: Record<string, number>; pareto: Ds[];
@@ -113,8 +113,10 @@ export default function CierreAnio({ country }: { country: Pais }) {
     for (const w of data?.wallet ?? []) { if (w.ds_id) porId.set(String(w.ds_id), w); if (w.ds_email) porEmail.set(w.ds_email.toLowerCase(), w); }
     return (d: Ds) => porId.get(d.ds_id) ?? porEmail.get((d.ds_email || "").toLowerCase()) ?? null;
   }, [data]);
-  const encargados = data?.encargados.filter((e) => e.activo) ?? [];
-  const telDe = (nombre: string) => encargados.find((e) => e.nombre === nombre)?.telefono || null;
+  const activos = data?.encargados.filter((e) => e.activo) ?? [];
+  const encargados = activos.filter((e) => e.rol !== "head"); // comerciales: se asignan a los usuarios
+  const head = activos.find((e) => e.rol === "head") ?? null; // recibe los escalamientos
+  const telDe = (nombre: string) => activos.find((e) => e.nombre === nombre)?.telefono || null;
   const cfg = data?.config ?? { costo_devolucion: null, debitos_max_dia: 10, umbral_pdev: 10, umbral_novedad: 20 };
   const comDe = (d: Ds) => asig.get(d.ds_id) || SIN;
 
@@ -200,6 +202,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
     const w = u?.w;
     return [
       `Hola ${encargado}, alerta Cierre 2026 · ${pais}`,
+      head && encargado === head.nombre ? `Comercial a cargo: ${asig.get(a.ds.ds_id) || SIN}` : "",
       `Usuario: ${a.ds.ds_nombre} (ID ${a.ds.ds_id})`,
       `• ${a.titulo}`,
       `• En proceso de devolución: ${a.ds.en_proc_dev} guías · débito estimado ${money(u?.debito)} (flete de cada guía)`,
@@ -214,8 +217,9 @@ export default function CierreAnio({ country }: { country: Pais }) {
     try { await post({ accion: "retiro", ds_id: dsId, clave, estado: ok ? "ok" : "pendiente" }); await cargar(); }
     catch (er) { alert(er instanceof Error ? er.message : "No se pudo guardar"); }
   };
-  const enviar = async (a: AlertaCalc) => {
-    const encargado = asig.get(a.ds.ds_id) || SIN;
+  const enviar = async (a: AlertaCalc, aHead = false) => {
+    const comercial = asig.get(a.ds.ds_id) || SIN;
+    const encargado = (aHead || comercial === SIN) && head ? head.nombre : comercial; // sin comercial asignado → al Head
     const tel = telDe(encargado);
     if (!tel) { alert(`Falta el teléfono de ${encargado === SIN ? "un encargado (el usuario no tiene comercial asignado)" : encargado}. Cargalo en Configuración.`); return; }
     window.open(`https://wa.me/${tel.replace(/[^\d]/g, "")}?text=${encodeURIComponent(mensaje(a, encargado))}`, "_blank", "noopener");
@@ -442,7 +446,8 @@ export default function CierreAnio({ country }: { country: Pais }) {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] t-muted">{enc}</span>
-                    <button onClick={() => enviar(a)} className="text-xs px-3 py-1.5 rounded-full text-white" style={{ background: telDe(enc) ? "#16a34a" : "#6b7280" }} title={telDe(enc) ? "Abrir WhatsApp con el mensaje" : "Falta el teléfono del encargado"}>WhatsApp a {enc === SIN ? "…" : enc}</button>
+                    {enc !== SIN && <button onClick={() => enviar(a)} className="text-xs px-3 py-1.5 rounded-full text-white" style={{ background: telDe(enc) ? "#16a34a" : "#6b7280" }} title={telDe(enc) ? "Abrir WhatsApp con el mensaje" : "Falta el teléfono del comercial"}>WhatsApp a {enc}</button>}
+                    {head && <button onClick={() => enviar(a, true)} className="text-xs px-3 py-1.5 rounded-full border" style={{ borderColor: "#16a34a", color: telDe(head.nombre) ? "#22c55e" : "#6b7280" }} title={a.sev === "critica" || enc === SIN ? "Escalar al Head" : "Copia al Head"}>{enc === SIN ? "WhatsApp" : "Escalar"} a {head.nombre} (Head)</button>}
                   </div>
                 </div>
               );
@@ -669,7 +674,7 @@ function Configuracion({ country, data, post, recargar, money, usuarios, irA }: 
   const [msg, setMsg] = useState("");
   const [walletDs, setWalletDs] = useState<string>("");
 
-  const guardarEnc = async (e: { nombre: string; telefono: string; activo: boolean }) => {
+  const guardarEnc = async (e: { nombre: string; telefono: string; activo: boolean; rol?: string }) => {
     try { await post({ accion: "encargado", ...e }); setMsg(`✓ ${e.nombre} guardado`); await recargar(); } catch (er) { setMsg(`✗ ${er instanceof Error ? er.message : "error"}`); }
   };
   const guardarCfg = async () => {
@@ -683,11 +688,14 @@ function Configuracion({ country, data, post, recargar, money, usuarios, irA }: 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className="glass-card p-5">
           <h3 className="text-sm font-bold t-primary">👤 Encargados de {country === "ar" ? "Argentina" : "Paraguay"}</h3>
-          <p className="text-[11px] t-muted mb-3">Son los comerciales que se asignan a los usuarios y reciben las alertas por WhatsApp. Teléfono con código de país (ej. {country === "ar" ? "5491123456789" : "595981123456"}).</p>
+          <p className="text-[11px] t-muted mb-3">Los comerciales se asignan a los usuarios y reciben las alertas por WhatsApp; el Head recibe los escalamientos y las alertas de usuarios sin comercial. Teléfono con código de país (ej. {country === "ar" ? "5491123456789" : "595981123456"}).</p>
           <div className="space-y-2">
             {encs.map((e, i) => (
               <div key={e.nombre} className="flex flex-wrap items-center gap-2">
                 <span className="text-xs t-primary w-28 font-medium">{e.nombre}</span>
+                <select value={e.rol} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, rol: ev.target.value as "comercial" | "head" } : x)))} className="text-[11px] px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
+                  <option value="comercial">Comercial</option><option value="head">Head</option>
+                </select>
                 <input value={e.telefono} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, telefono: ev.target.value } : x)))} placeholder="Teléfono WhatsApp" className="text-xs px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary w-44" />
                 <label className="text-[11px] t-muted flex items-center gap-1"><input type="checkbox" checked={e.activo} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, activo: ev.target.checked } : x)))} /> activo</label>
                 <button onClick={() => guardarEnc(e)} className="text-[11px] px-3 py-1 rounded-full bg-orange-500 text-white">Guardar</button>
@@ -696,7 +704,7 @@ function Configuracion({ country, data, post, recargar, money, usuarios, irA }: 
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-800/50">
               <input value={nuevo.nombre} onChange={(ev) => setNuevo({ ...nuevo, nombre: ev.target.value })} placeholder="Nuevo encargado" className="text-xs px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary w-28" />
               <input value={nuevo.telefono} onChange={(ev) => setNuevo({ ...nuevo, telefono: ev.target.value })} placeholder="Teléfono WhatsApp" className="text-xs px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary w-44" />
-              <button disabled={!nuevo.nombre.trim()} onClick={async () => { await guardarEnc({ ...nuevo, activo: true }); setEncs([...encs, { ...nuevo, activo: true }]); setNuevo({ nombre: "", telefono: "" }); }} className="text-[11px] px-3 py-1 rounded-full border border-orange-500 text-orange-400 disabled:opacity-40">+ Agregar</button>
+              <button disabled={!nuevo.nombre.trim()} onClick={async () => { await guardarEnc({ ...nuevo, activo: true, rol: "comercial" }); setEncs([...encs, { ...nuevo, activo: true, rol: "comercial" }]); setNuevo({ nombre: "", telefono: "" }); }} className="text-[11px] px-3 py-1 rounded-full border border-orange-500 text-orange-400 disabled:opacity-40">+ Agregar</button>
             </div>
           </div>
         </div>
