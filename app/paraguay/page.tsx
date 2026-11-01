@@ -11,6 +11,7 @@ import MinimoMensual from "../components/MinimoMensual";
 import UsuariosRegistrados from "../components/UsuariosRegistrados";
 import Q2Resumen from "../components/Q2Resumen";
 import TrimestreResumen from "../components/TrimestreResumen";
+import CierreAnio from "../components/CierreAnio";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -189,7 +190,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
   return norm(r[mes]);
 }
 
-type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr";
+type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr" | "cierre";
 type ComercialSub = "general" | "acciones_urgentes" | "analisis" | "minimo" | "minimo_sem" | "minimo_mes" | "dropshippers" | "proveedores" | "crm";
 type EstrategiaSub = "segmentos" | "registrados";
 
@@ -295,6 +296,7 @@ export default function ParaguayDashboard() {
             { key: "finanzas" as Sector, label: "💰 Finanzas", allowed: canFinanzas },
             { key: "seguimiento" as Sector, label: "📋 Seg. Comercial", allowed: canComercial },
             { key: "kpis_okr" as Sector, label: "🎯 KPIs & OKRs", allowed: canComercial },
+            { key: "cierre" as Sector, label: "🏁 Cierre 2026", allowed: canComercial },
           ]).filter((s) => s.allowed).map((s) => (
             <button
               key={s.key}
@@ -312,7 +314,9 @@ export default function ParaguayDashboard() {
       </div>
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
-        {isQ2 && sector !== "estrategia" && (
+        {sector === "cierre" && <CierreAnio country="py" />}
+
+        {isQ2 && sector !== "estrategia" && sector !== "cierre" && (
           <Q2Resumen country="py" proveedores={proveedores} />
         )}
 

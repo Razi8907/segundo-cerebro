@@ -1,0 +1,709 @@
+"use client";
+
+// ═══════════════════════════════════════════════════════════════════
+// CIERRE DEL AÑO 2026 — seguimiento comercial + operativo del Pareto del Q4.
+// Datos: /api/data/cierre (Operaciones por usuario, oct–dic, misma regla que
+// Operaciones) + asignación de comerciales, encargados, wallet y alertas.
+// ═══════════════════════════════════════════════════════════════════
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+} from "recharts";
+import { useUser } from "../lib/useUser";
+
+type Pais = "ar" | "py";
+interface Transp { mov: number; ent: number; dev: number; pdev: number }
+interface Ds {
+  ds_id: string; ds_nombre: string; ds_email: string; ds_cel: string;
+  guias: number; movilizadas: number; entregadas: number; devueltas: number; en_proc_dev: number; novedad: number; novedad_sol: number;
+  canceladas: number; pendientes: number; valor_total: number; valor_en_proc_dev: number; valor_novedad: number;
+  por_estado: Record<string, number>; por_novedad: Record<string, number>; por_dia: Record<string, number>;
+  por_mes: Record<string, { guias: number; movilizadas: number; entregadas: number; en_proc_dev: number }>;
+  por_transp: Record<string, Transp>;
+}
+interface Wallet { ds_id: string | null; ds_email: string | null; ds_nombre: string | null; saldo_disponible: number | null; saldo_retenido: number | null; fecha_retiro: string | null; monto_retiro: number | null; raw: Record<string, unknown> }
+interface Config { costo_devolucion: number | null; debitos_max_dia: number; umbral_pdev: number; umbral_novedad: number }
+interface Encargado { nombre: string; telefono: string | null; activo: boolean }
+interface Alerta { ds_id: string; tipo: string; detalle: string; encargado: string | null; enviado_por: string; enviado_el: string }
+interface Data {
+  mesesConDatos: string[]; totalUsuarios: number; totales: Record<string, number>; pareto: Ds[];
+  asignaciones: { ds_id: string; comercial: string | null; updated_by: string; updated_at: string }[];
+  encargados: Encargado[]; config: Config; walletCarga: { id: number; archivo: string; filas: number; cargado_por: string; cargado_el: string } | null;
+  wallet: Wallet[]; alertas: Alerta[];
+}
+interface Guia { mes: string; guia: string; fecha_orden: string; estatus: string; transportadora: string; novedad: string | null; concepto: string | null; dias_sin_cambio: number; fecha_ultimo_mov: string; valor: number; cliente: string; telefono: string; ciudad: string; producto: string }
+
+const SIN = "Sin asignar";
+const MESES = ["octubre", "noviembre", "diciembre"];
+const NUM_MES: Record<string, number> = { octubre: 10, noviembre: 11, diciembre: 12 };
+const PDEV = new Set(["EN PROCESO DE DEVOLUCION", "DEVOLUCION EN PROCESO"]);
+const PEND = new Set(["PENDIENTE", "PENDIENTE CONFIRMACION", "GUIA_GENERADA", "PREPARADO PARA TRANSPORTADORA", "GENERANDO GUIA", "ERROR_GENERANDO_GUIA"]);
+const COLORES = ["#f97316", "#3b82f6", "#10b981", "#a855f7", "#eab308", "#ef4444", "#06b6d4", "#9ca3af"];
+
+const fmt = (n: number | null | undefined) => (n === null || n === undefined || !Number.isFinite(n) ? "—" : Math.round(n).toLocaleString("es-AR"));
+const pct = (a: number, b: number) => (b > 0 ? `${((a / b) * 100).toFixed(1).replace(".", ",")}%` : "—");
+const ratio = (a: number, b: number) => (b > 0 ? a / b : 0);
+const tip = { contentStyle: { background: "#1a1a1a", border: "1px solid #f97316", fontSize: 12 }, itemStyle: { color: "#fff" }, labelStyle: { color: "#fff" } };
+
+type Sev = "critica" | "alta" | "media";
+interface AlertaCalc { ds: Ds; tipo: "devoluciones" | "saldo" | "novedades"; sev: Sev; titulo: string; texto: string }
+
+// ─── UI chicos ───
+function Kpi({ label, value, sub, color = "#f97316" }: { label: string; value: string; sub?: string; color?: string }) {
+  return (
+    <div className="rounded-xl p-3 border" style={{ background: "var(--bg-card)", borderColor: `${color}40`, borderTop: `3px solid ${color}` }}>
+      <p className="text-[10px] t-muted uppercase tracking-wider">{label}</p>
+      <p className="text-xl font-bold font-mono mt-1" style={{ color }}>{value}</p>
+      {sub && <p className="text-[10px] mt-1 t-muted">{sub}</p>}
+    </div>
+  );
+}
+function Th({ children, left }: { children: React.ReactNode; left?: boolean }) {
+  return <th className={`py-2 px-2 text-[10px] uppercase tracking-wider t-muted whitespace-nowrap ${left ? "text-left" : "text-right"}`}>{children}</th>;
+}
+function Td({ children, left, bold, color }: { children: React.ReactNode; left?: boolean; bold?: boolean; color?: string }) {
+  return <td className={`py-1.5 px-2 text-xs whitespace-nowrap ${left ? "text-left" : "text-right font-mono"} ${bold ? "font-bold" : ""}`} style={{ color }}>{children}</td>;
+}
+const SEV_COLOR: Record<Sev, string> = { critica: "#ef4444", alta: "#f97316", media: "#eab308" };
+
+export default function CierreAnio({ country }: { country: Pais }) {
+  const { canDownload } = useUser();
+  const [data, setData] = useState<Data | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [tab, setTab] = useState<"resumen" | "usuarios" | "detalle" | "alertas" | "config">("resumen");
+  const [sel, setSel] = useState<string | null>(null);
+  const [filtroCom, setFiltroCom] = useState<string>("todos");
+  const moneda = country === "ar" ? "$" : "Gs";
+  const money = (n: number | null | undefined) => (n === null || n === undefined ? "—" : `${moneda} ${fmt(n)}`);
+  const pais = country === "ar" ? "Argentina" : "Paraguay";
+
+  const cargar = useCallback(async () => {
+    setLoading(true); setErr(null);
+    try {
+      const r = await fetch(`/api/data/cierre?country=${country}`, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+      setData(j);
+    } catch (e) { setErr(e instanceof Error ? e.message : "Error al cargar"); }
+    finally { setLoading(false); }
+  }, [country]);
+  useEffect(() => { cargar(); }, [cargar]);
+
+  const post = async (body: Record<string, unknown>) => {
+    const r = await fetch("/api/data/cierre", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ country, ...body }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
+    return j;
+  };
+
+  // ─── Derivados ───
+  const asig = useMemo(() => new Map((data?.asignaciones ?? []).map((a) => [a.ds_id, a.comercial || SIN])), [data]);
+  const walletDe = useMemo(() => {
+    const porId = new Map<string, Wallet>(), porEmail = new Map<string, Wallet>();
+    for (const w of data?.wallet ?? []) { if (w.ds_id) porId.set(String(w.ds_id), w); if (w.ds_email) porEmail.set(w.ds_email.toLowerCase(), w); }
+    return (d: Ds) => porId.get(d.ds_id) ?? porEmail.get((d.ds_email || "").toLowerCase()) ?? null;
+  }, [data]);
+  const encargados = data?.encargados.filter((e) => e.activo) ?? [];
+  const telDe = (nombre: string) => encargados.find((e) => e.nombre === nombre)?.telefono || null;
+  const cfg = data?.config ?? { costo_devolucion: null, debitos_max_dia: 10, umbral_pdev: 10, umbral_novedad: 20 };
+  const comDe = (d: Ds) => asig.get(d.ds_id) || SIN;
+
+  const usuarios = useMemo(() => (data?.pareto ?? []).map((d) => {
+    const w = walletDe(d);
+    const debito = cfg.costo_devolucion ? d.en_proc_dev * cfg.costo_devolucion : null;
+    return { d, com: comDe(d), w, debito, dias: Math.ceil(d.en_proc_dev / Math.max(cfg.debitos_max_dia, 1)) };
+  }), [data, walletDe, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const alertasCalc: AlertaCalc[] = useMemo(() => {
+    const out: AlertaCalc[] = [];
+    for (const u of usuarios) {
+      const { d, w, debito, dias } = u;
+      if (debito !== null && w?.saldo_disponible !== null && w?.saldo_disponible !== undefined && w.saldo_disponible < debito) {
+        out.push({ ds: d, tipo: "saldo", sev: "critica", titulo: "Saldo de wallet menor a los débitos que vienen",
+          texto: `${d.en_proc_dev} guías en proceso de devolución ≈ ${money(debito)} de débitos; saldo disponible ${money(w.saldo_disponible)}.` });
+      }
+      if (d.en_proc_dev >= cfg.umbral_pdev) {
+        out.push({ ds: d, tipo: "devoluciones", sev: d.en_proc_dev >= cfg.umbral_pdev * 5 ? "alta" : "media", titulo: `${d.en_proc_dev} guías en proceso de devolución`,
+          texto: `Valor ${money(d.valor_en_proc_dev)}. Limitar débitos a ${cfg.debitos_max_dia} por día con Vicky: ${dias} días de débitos.` });
+      }
+      if (d.novedad >= cfg.umbral_novedad) {
+        out.push({ ds: d, tipo: "novedades", sev: d.novedad >= cfg.umbral_novedad * 5 ? "alta" : "media", titulo: `${d.novedad} novedades sin solucionar`,
+          texto: `Solucionadas ${d.novedad_sol} (${pct(d.novedad_sol, d.novedad + d.novedad_sol)}). Valor en novedad ${money(d.valor_novedad)}.` });
+      }
+    }
+    const peso: Record<Sev, number> = { critica: 0, alta: 1, media: 2 };
+    return out.sort((a, b) => peso[a.sev] - peso[b.sev] || b.ds.en_proc_dev - a.ds.en_proc_dev);
+  }, [usuarios, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const ultimaAlerta = useMemo(() => {
+    const m = new Map<string, Alerta>();
+    for (const a of data?.alertas ?? []) { const k = `${a.ds_id}|${a.tipo}`; if (!m.has(k)) m.set(k, a); }
+    return m;
+  }, [data]);
+
+  const comerciales = useMemo(() => {
+    const nombres = [...new Set([...encargados.map((e) => e.nombre), ...usuarios.map((u) => u.com)])];
+    return nombres.map((nombre) => {
+      const us = usuarios.filter((u) => u.com === nombre);
+      const s = (k: keyof Ds) => us.reduce((a, u) => a + Number(u.d[k] || 0), 0);
+      return { nombre, n: us.length, guias: s("guias"), mov: s("movilizadas"), ent: s("entregadas"), dev: s("devueltas"), pdev: s("en_proc_dev"), vpdev: s("valor_en_proc_dev"), nov: s("novedad"),
+        alertas: alertasCalc.filter((a) => (asig.get(a.ds.ds_id) || SIN) === nombre).length };
+    }).filter((c) => c.n > 0 || c.nombre !== SIN).sort((a, b) => b.guias - a.guias);
+  }, [usuarios, encargados, alertasCalc, asig]);
+
+  // Guías por día de cada comercial (Q4)
+  const serieDiaria = useMemo(() => {
+    const dias: { key: string; label: string }[] = [];
+    for (const m of data?.mesesConDatos ?? []) for (let d = 1; d <= new Date(2026, NUM_MES[m], 0).getDate(); d++) dias.push({ key: `${m}-${d}`, label: `${d}/${NUM_MES[m]}` });
+    const rows = dias.map(({ key, label }) => {
+      const row: Record<string, number | string> = { dia: label };
+      let total = 0;
+      for (const c of comerciales) {
+        const v = usuarios.filter((u) => u.com === c.nombre).reduce((a, u) => a + (u.d.por_dia[key] ?? 0), 0);
+        row[c.nombre] = v; total += v;
+      }
+      return { row, total };
+    });
+    let ultimo = rows.length - 1;
+    while (ultimo >= 0 && rows[ultimo].total === 0) ultimo--;
+    return rows.slice(0, ultimo + 1).map((r) => r.row);
+  }, [data, comerciales, usuarios]);
+
+  // ─── WhatsApp al encargado ───
+  const mensaje = (a: AlertaCalc, encargado: string) => {
+    const u = usuarios.find((x) => x.d.ds_id === a.ds.ds_id);
+    const w = u?.w;
+    return [
+      `Hola ${encargado}, alerta Cierre 2026 · ${pais}`,
+      `Usuario: ${a.ds.ds_nombre} (ID ${a.ds.ds_id})`,
+      `• ${a.titulo}`,
+      `• En proceso de devolución: ${a.ds.en_proc_dev} guías (${money(a.ds.valor_en_proc_dev)})`,
+      `• Novedades sin solucionar: ${a.ds.novedad}`,
+      w ? `• Wallet: disponible ${money(w.saldo_disponible)}${w.fecha_retiro ? ` · retiro ${w.fecha_retiro}` : ""}` : "",
+      a.ds.en_proc_dev > 0 ? `• Pedir a Vicky débitos de máximo ${cfg.debitos_max_dia} por día (${u?.dias ?? 0} días)` : "",
+      `Por favor contactá al usuario hoy y contame cómo queda.`,
+    ].filter(Boolean).join("\n");
+  };
+  const enviar = async (a: AlertaCalc) => {
+    const encargado = asig.get(a.ds.ds_id) || SIN;
+    const tel = telDe(encargado);
+    if (!tel) { alert(`Falta el teléfono de ${encargado === SIN ? "un encargado (el usuario no tiene comercial asignado)" : encargado}. Cargalo en Configuración.`); return; }
+    window.open(`https://wa.me/${tel.replace(/[^\d]/g, "")}?text=${encodeURIComponent(mensaje(a, encargado))}`, "_blank", "noopener");
+    try { await post({ accion: "alerta", ds_id: a.ds.ds_id, tipo: a.tipo, detalle: a.titulo, encargado }); await cargar(); } catch { /* el aviso igual salió */ }
+  };
+
+  if (loading && !data) return <div className="glass-card p-6 t-muted text-sm">Cargando Cierre del año 2026… (junta octubre a diciembre por usuario)</div>;
+  if (err) return <div className="glass-card p-6 text-sm text-red-400">No se pudo cargar el sector: {err}</div>;
+  if (!data) return null;
+
+  const t = data.totales;
+  const pGuias = usuarios.reduce((a, u) => a + u.d.guias, 0);
+  const lista = usuarios.filter((u) => filtroCom === "todos" || u.com === filtroCom);
+  const elegido = usuarios.find((u) => u.d.ds_id === sel) ?? null;
+
+  return (
+    <div className="space-y-4">
+      {/* Encabezado */}
+      <div className="rounded-xl p-5 border-2 border-orange-500/40" style={{ background: "linear-gradient(135deg, rgba(249,115,22,0.10), rgba(16,185,129,0.06))" }}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold t-primary">🏁 Cierre del año 2026 — {pais}</h2>
+            <p className="text-xs t-muted mt-1">
+              Pareto del Q4 ({data.mesesConDatos.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(", ") || "sin datos"}): {usuarios.length} usuarios de {fmt(data.totalUsuarios)} hacen {pct(pGuias, t.guias)} de las guías.
+              Datos de Operaciones (última carga de cada mes) · wallet {data.walletCarga ? `cargada el ${new Date(data.walletCarga.cargado_el).toLocaleDateString("es-AR")} (${fmt(data.walletCarga.filas)} usuarios)` : "sin cargar"}.
+            </p>
+          </div>
+          <button onClick={cargar} className="text-xs px-3 py-1.5 rounded-full border border-orange-500/40 text-orange-400 hover:bg-orange-500/10">{loading ? "Actualizando…" : "↻ Actualizar"}</button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4">
+          {([["resumen", "📊 Resumen por comercial"], ["usuarios", `👥 Usuarios del Pareto (${usuarios.length})`], ["detalle", "🔎 Detalle del usuario"], ["alertas", `🚨 Alertas (${alertasCalc.length})`], ["config", "⚙️ Configuración y wallet"]] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)} className={`text-xs px-4 py-2 rounded-full border transition-all ${tab === k ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"}`}>{l}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ═══ RESUMEN ═══ */}
+      {tab === "resumen" && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
+            <Kpi label="Guías Q4 (Pareto)" value={fmt(pGuias)} sub={`${pct(pGuias, t.guias)} del país (${fmt(t.guias)})`} />
+            <Kpi label="Entrega (Pareto)" value={pct(usuarios.reduce((a, u) => a + u.d.entregadas, 0), usuarios.reduce((a, u) => a + u.d.movilizadas, 0))} sub="entregadas ÷ movilizadas, en curso" color="#10b981" />
+            <Kpi label="En proceso de devolución" value={fmt(usuarios.reduce((a, u) => a + u.d.en_proc_dev, 0))} sub={money(usuarios.reduce((a, u) => a + u.d.valor_en_proc_dev, 0))} color="#ef4444" />
+            <Kpi label="Novedades sin solucionar" value={fmt(usuarios.reduce((a, u) => a + u.d.novedad, 0))} sub={`${fmt(usuarios.reduce((a, u) => a + u.d.novedad_sol, 0))} solucionadas`} color="#eab308" />
+            <Kpi label="Alertas activas" value={fmt(alertasCalc.length)} sub={`${alertasCalc.filter((a) => a.sev === "critica").length} críticas`} color="#a855f7" />
+            <Kpi label="Sin comercial asignado" value={fmt(usuarios.filter((u) => u.com === SIN).length)} sub="asignalos en Usuarios del Pareto" color="#9ca3af" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+            {comerciales.map((c) => (
+              <div key={c.nombre} className="glass-card p-4" style={{ borderTop: `3px solid ${c.nombre === SIN ? "#9ca3af" : "#f97316"}` }}>
+                <div className="flex items-baseline justify-between">
+                  <h3 className="text-sm font-bold t-primary">{c.nombre}</h3>
+                  <span className="text-[11px] t-muted">{c.n} usuarios</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+                  <div><p className="t-muted text-[10px]">Guías Q4</p><p className="font-mono font-bold t-primary">{fmt(c.guias)} <span className="t-muted font-normal">({pct(c.guias, pGuias)})</span></p></div>
+                  <div><p className="t-muted text-[10px]">Entrega</p><p className="font-mono font-bold" style={{ color: "#10b981" }}>{pct(c.ent, c.mov)}</p></div>
+                  <div><p className="t-muted text-[10px]">En proc. devolución</p><p className="font-mono font-bold" style={{ color: "#ef4444" }}>{fmt(c.pdev)}</p><p className="text-[10px] t-muted">{money(c.vpdev)}</p></div>
+                  <div><p className="t-muted text-[10px]">Novedades</p><p className="font-mono font-bold" style={{ color: "#eab308" }}>{fmt(c.nov)}</p></div>
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <span className="text-[11px]" style={{ color: c.alertas ? "#ef4444" : "#10b981" }}>{c.alertas ? `🚨 ${c.alertas} alertas` : "✓ sin alertas"}</span>
+                  <button onClick={() => { setFiltroCom(c.nombre); setTab("usuarios"); }} className="text-[11px] text-orange-400 hover:underline">Ver usuarios →</button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="glass-card p-5">
+            <h3 className="text-sm font-bold t-primary">📈 Guías por día de cada comercial (usuarios del Pareto)</h3>
+            <p className="text-[11px] t-muted mb-3">Por fecha de orden. Las últimas fechas pueden estar incompletas hasta la próxima carga de Operaciones.</p>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={serieDiaria}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                <XAxis dataKey="dia" fontSize={10} stroke="#888" interval={Math.max(Math.floor(serieDiaria.length / 15), 0)} />
+                <YAxis fontSize={10} stroke="#888" />
+                <Tooltip {...tip} formatter={(v) => fmt(Number(v))} />
+                <Legend wrapperStyle={{ fontSize: 11 }} />
+                {comerciales.map((c, i) => <Line key={c.nombre} dataKey={c.nombre} stroke={c.nombre === SIN ? "#9ca3af" : COLORES[i % COLORES.length]} strokeWidth={2} dot={false} strokeDasharray={c.nombre === SIN ? "4 3" : undefined} />)}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="glass-card p-5">
+            <h3 className="text-sm font-bold t-primary mb-3">📋 Comerciales: cartera y calidad</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead><tr className="border-b border-gray-700"><Th left>Comercial</Th><Th>Usuarios</Th><Th>Guías Q4</Th><Th>% del Pareto</Th><Th>Movilizadas</Th><Th>Entrega</Th><Th>Devolución</Th><Th>En proc. dev.</Th><Th>Valor en proc. dev.</Th><Th>Novedades</Th><Th>Alertas</Th></tr></thead>
+                <tbody>
+                  {comerciales.map((c) => (
+                    <tr key={c.nombre} className="border-b border-gray-800/50">
+                      <Td left bold>{c.nombre}</Td><Td>{c.n}</Td><Td bold>{fmt(c.guias)}</Td><Td>{pct(c.guias, pGuias)}</Td><Td>{fmt(c.mov)}</Td>
+                      <Td color="#10b981">{pct(c.ent, c.mov)}</Td><Td color="#ef4444">{pct(c.dev, c.mov)}</Td><Td color="#ef4444" bold>{fmt(c.pdev)}</Td><Td>{money(c.vpdev)}</Td><Td color="#eab308">{fmt(c.nov)}</Td>
+                      <Td color={c.alertas ? "#ef4444" : undefined} bold>{c.alertas}</Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ USUARIOS DEL PARETO ═══ */}
+      {tab === "usuarios" && (
+        <div className="glass-card p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h3 className="text-sm font-bold t-primary">👥 Usuarios del Pareto del Q4</h3>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="t-muted">Comercial:</span>
+              <select value={filtroCom} onChange={(e) => setFiltroCom(e.target.value)} className="px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
+                <option value="todos">Todos</option>
+                {comerciales.map((c) => <option key={c.nombre} value={c.nombre}>{c.nombre} ({c.n})</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1100px]">
+              <thead><tr className="border-b border-gray-700"><Th left>#</Th><Th left>Usuario</Th><Th left>Comercial</Th><Th>Guías Q4</Th><Th>% país</Th><Th>Entrega</Th><Th>En proc. dev.</Th><Th>Valor en proc. dev.</Th><Th>Novedades</Th><Th>Saldo wallet</Th><Th>Días de débito</Th><Th left>Alertas</Th></tr></thead>
+              <tbody>
+                {lista.map((u, i) => {
+                  const als = alertasCalc.filter((a) => a.ds.ds_id === u.d.ds_id);
+                  return (
+                    <tr key={u.d.ds_id} className="border-b border-gray-800/50 hover:bg-orange-500/5">
+                      <Td left>{i + 1}</Td>
+                      <td className="py-1.5 px-2 text-xs">
+                        <button onClick={() => { setSel(u.d.ds_id); setTab("detalle"); }} className="text-left t-primary hover:text-orange-400 font-medium">{u.d.ds_nombre}</button>
+                        <div className="text-[10px] t-muted">ID {u.d.ds_id} · {u.d.ds_email}</div>
+                      </td>
+                      <td className="py-1.5 px-2">
+                        <select value={u.com} onChange={async (e) => { try { await post({ accion: "asignar", ds_id: u.d.ds_id, ds_nombre: u.d.ds_nombre, comercial: e.target.value === SIN ? null : e.target.value }); await cargar(); } catch (er) { alert(er instanceof Error ? er.message : "No se pudo guardar"); } }}
+                          className="text-xs px-2 py-1 rounded-lg border bg-transparent t-primary" style={{ borderColor: u.com === SIN ? "#9ca3af80" : "#f9731680" }}>
+                          <option value={SIN}>{SIN}</option>
+                          {encargados.map((e) => <option key={e.nombre} value={e.nombre}>{e.nombre}</option>)}
+                        </select>
+                      </td>
+                      <Td bold>{fmt(u.d.guias)}</Td><Td>{pct(u.d.guias, t.guias)}</Td><Td color="#10b981">{pct(u.d.entregadas, u.d.movilizadas)}</Td>
+                      <Td bold color={u.d.en_proc_dev >= cfg.umbral_pdev ? "#ef4444" : undefined}>{fmt(u.d.en_proc_dev)}</Td><Td>{money(u.d.valor_en_proc_dev)}</Td>
+                      <Td color={u.d.novedad >= cfg.umbral_novedad ? "#eab308" : undefined}>{fmt(u.d.novedad)}</Td>
+                      <Td color={u.debito !== null && u.w?.saldo_disponible !== null && u.w?.saldo_disponible !== undefined && u.w.saldo_disponible < u.debito ? "#ef4444" : undefined}>{u.w ? money(u.w.saldo_disponible) : "—"}</Td>
+                      <Td>{u.d.en_proc_dev ? u.dias : "—"}</Td>
+                      <td className="py-1.5 px-2 text-[11px]">{als.length ? als.map((a) => <span key={a.tipo} className="inline-block mr-1 px-1.5 py-0.5 rounded" style={{ background: `${SEV_COLOR[a.sev]}25`, color: SEV_COLOR[a.sev] }}>{a.tipo}</span>) : <span className="t-muted">—</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="text-[11px] t-muted mt-3">Días de débito = guías en proceso de devolución ÷ {cfg.debitos_max_dia} débitos por día. El comercial elegido se guarda al instante. Usuarios asignados que salen del Pareto siguen apareciendo.</p>
+        </div>
+      )}
+
+      {/* ═══ DETALLE ═══ */}
+      {tab === "detalle" && (
+        <Detalle u={elegido} usuarios={usuarios} setSel={setSel} country={country} money={money} cfg={cfg}
+          alertas={alertasCalc.filter((a) => a.ds.ds_id === sel)} enviar={enviar} ultimaAlerta={ultimaAlerta} canDownload={canDownload} />
+      )}
+
+      {/* ═══ ALERTAS ═══ */}
+      {tab === "alertas" && (
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary">🚨 Alertas para los encargados</h3>
+          <p className="text-[11px] t-muted mb-3">
+            Reglas: en proceso de devolución ≥ {cfg.umbral_pdev} · novedades sin solucionar ≥ {cfg.umbral_novedad} · saldo de wallet menor a los débitos que vienen{cfg.costo_devolucion ? ` (${money(cfg.costo_devolucion)} por devolución)` : " (cargá el costo por devolución en Configuración)"}.
+            El botón abre WhatsApp con el mensaje armado al comercial asignado y queda registrado.
+          </p>
+          <div className="space-y-2">
+            {alertasCalc.length === 0 && <p className="text-xs t-muted">Sin alertas con los umbrales actuales.</p>}
+            {alertasCalc.map((a, i) => {
+              const enc = asig.get(a.ds.ds_id) || SIN;
+              const ult = ultimaAlerta.get(`${a.ds.ds_id}|${a.tipo}`);
+              return (
+                <div key={`${a.ds.ds_id}-${a.tipo}-${i}`} className="rounded-xl p-3 border flex flex-wrap items-center gap-3 justify-between" style={{ borderColor: `${SEV_COLOR[a.sev]}50`, background: `${SEV_COLOR[a.sev]}0d` }}>
+                  <div className="min-w-[260px] flex-1">
+                    <p className="text-xs font-bold" style={{ color: SEV_COLOR[a.sev] }}>{a.sev.toUpperCase()} · {a.titulo}</p>
+                    <p className="text-xs t-primary mt-0.5"><button className="hover:text-orange-400" onClick={() => { setSel(a.ds.ds_id); setTab("detalle"); }}>{a.ds.ds_nombre}</button> <span className="t-muted">(ID {a.ds.ds_id})</span> · {a.texto}</p>
+                    {ult && <p className="text-[10px] t-muted mt-0.5">Último aviso: {new Date(ult.enviado_el).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} a {ult.encargado ?? "—"} por {ult.enviado_por}</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] t-muted">{enc}</span>
+                    <button onClick={() => enviar(a)} className="text-xs px-3 py-1.5 rounded-full text-white" style={{ background: telDe(enc) ? "#16a34a" : "#6b7280" }} title={telDe(enc) ? "Abrir WhatsApp con el mensaje" : "Falta el teléfono del encargado"}>WhatsApp a {enc === SIN ? "…" : enc}</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ CONFIGURACIÓN ═══ */}
+      {tab === "config" && <Configuracion country={country} data={data} post={post} recargar={cargar} money={money} />}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Detalle operativo de un usuario
+// ═══════════════════════════════════════════════════════════════════
+function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ultimaAlerta, canDownload }: {
+  u: { d: Ds; com: string; w: Wallet | null; debito: number | null; dias: number } | null;
+  usuarios: { d: Ds; com: string }[]; setSel: (id: string) => void; country: Pais; money: (n: number | null | undefined) => string; cfg: Config;
+  alertas: AlertaCalc[]; enviar: (a: AlertaCalc) => void; ultimaAlerta: Map<string, Alerta>; canDownload: boolean;
+}) {
+  const [guias, setGuias] = useState<Guia[] | null>(null);
+  const [cargando, setCargando] = useState(false);
+  const [grupo, setGrupo] = useState<"novedad" | "pdev" | "transito" | "pendiente">("pdev");
+
+  useEffect(() => {
+    if (!u) return;
+    let vivo = true;
+    setGuias(null); setCargando(true);
+    fetch(`/api/data/cierre/guias?country=${country}&ds_id=${encodeURIComponent(u.d.ds_id)}`, { cache: "no-store" })
+      .then((r) => r.json()).then((j) => { if (vivo) setGuias(Array.isArray(j.guias) ? j.guias : []); })
+      .catch(() => { if (vivo) setGuias([]); }).finally(() => { if (vivo) setCargando(false); });
+    return () => { vivo = false; };
+  }, [u?.d.ds_id, country]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const grupoDe = (g: Guia) => (g.estatus === "NOVEDAD" ? "novedad" : PDEV.has(g.estatus) ? "pdev" : PEND.has(g.estatus) ? "pendiente" : "transito");
+  const filtradas = useMemo(() => (guias ?? []).filter((g) => grupoDe(g) === grupo).sort((a, b) => b.dias_sin_cambio - a.dias_sin_cambio), [guias, grupo]); // eslint-disable-line react-hooks/exhaustive-deps
+  const cuenta = (k: string) => (guias ?? []).filter((g) => grupoDe(g) === k).length;
+
+  const descargar = () => {
+    const cols: (keyof Guia)[] = ["guia", "fecha_orden", "estatus", "transportadora", "novedad", "dias_sin_cambio", "valor", "cliente", "telefono", "ciudad", "producto"];
+    const csv = [cols.join(";"), ...filtradas.map((g) => cols.map((c) => `"${String(g[c] ?? "").replace(/"/g, '""')}"`).join(";"))].join("\n");
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
+    a.download = `${u?.d.ds_nombre ?? "usuario"}-${grupo}.csv`;
+    a.click();
+  };
+
+  if (!u) {
+    return (
+      <div className="glass-card p-5">
+        <h3 className="text-sm font-bold t-primary mb-2">🔎 Elegí un usuario del Pareto</h3>
+        <div className="flex flex-wrap gap-2">
+          {usuarios.slice(0, 60).map((x) => <button key={x.d.ds_id} onClick={() => setSel(x.d.ds_id)} className="text-xs px-3 py-1.5 rounded-full border border-gray-700 t-secondary hover:border-orange-500/50">{x.d.ds_nombre}</button>)}
+        </div>
+      </div>
+    );
+  }
+  const { d, w } = u;
+  const estados = Object.entries(d.por_estado).map(([estado, n]) => ({ estado, n })).sort((a, b) => b.n - a.n).slice(0, 14);
+  const motivos = Object.entries(d.por_novedad).map(([motivo, n]) => ({ motivo, n })).sort((a, b) => b.n - a.n).slice(0, 10);
+  const transp = Object.entries(d.por_transp).map(([nombre, x]) => ({ nombre, ...x })).sort((a, b) => b.mov - a.mov);
+
+  return (
+    <div className="space-y-4">
+      <div className="glass-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <select value={d.ds_id} onChange={(e) => setSel(e.target.value)} className="text-sm font-bold px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
+              {usuarios.map((x) => <option key={x.d.ds_id} value={x.d.ds_id}>{x.d.ds_nombre}</option>)}
+            </select>
+            <p className="text-[11px] t-muted mt-1">ID {d.ds_id} · {d.ds_email} · cel {d.ds_cel || "—"} · comercial: <b className="t-secondary">{u.com}</b></p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {alertas.map((a) => {
+              const ult = ultimaAlerta.get(`${d.ds_id}|${a.tipo}`);
+              return <button key={a.tipo} onClick={() => enviar(a)} className="text-xs px-3 py-1.5 rounded-full text-white" style={{ background: SEV_COLOR[a.sev] }} title={ult ? `Último aviso ${new Date(ult.enviado_el).toLocaleString("es-AR")}` : "Sin avisos previos"}>WhatsApp · {a.tipo}</button>;
+            })}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-2 mt-4">
+          <Kpi label="Guías Q4" value={fmt(d.guias)} sub={MESES.filter((m) => d.por_mes[m]).map((m) => `${m.slice(0, 3)} ${fmt(d.por_mes[m].guias)}`).join(" · ")} />
+          <Kpi label="Movilizadas" value={fmt(d.movilizadas)} sub={pct(d.movilizadas, d.guias) + " de las guías"} color="#3b82f6" />
+          <Kpi label="Entregadas" value={fmt(d.entregadas)} sub={pct(d.entregadas, d.movilizadas) + " de movilizadas"} color="#10b981" />
+          <Kpi label="Devueltas" value={fmt(d.devueltas)} sub={pct(d.devueltas, d.movilizadas)} color="#ef4444" />
+          <Kpi label="En proc. de devolución" value={fmt(d.en_proc_dev)} sub={money(d.valor_en_proc_dev)} color="#ef4444" />
+          <Kpi label="Novedades sin solucionar" value={fmt(d.novedad)} sub={`${fmt(d.novedad_sol)} solucionadas (${pct(d.novedad_sol, d.novedad + d.novedad_sol)})`} color="#eab308" />
+          <Kpi label="Pendientes" value={fmt(d.pendientes)} sub="sin despachar" color="#9ca3af" />
+          <Kpi label="Canceladas" value={fmt(d.canceladas)} sub={pct(d.canceladas, d.guias)} color="#9ca3af" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        {/* Wallet y débitos */}
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary mb-3">💳 Wallet y plan de débitos</h3>
+          {w ? (
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between"><span className="t-muted">Saldo disponible</span><b className="font-mono t-primary">{money(w.saldo_disponible)}</b></div>
+              {w.saldo_retenido !== null && <div className="flex justify-between"><span className="t-muted">Saldo retenido</span><b className="font-mono">{money(w.saldo_retenido)}</b></div>}
+              {w.fecha_retiro && <div className="flex justify-between"><span className="t-muted">Próximo retiro</span><b className="font-mono">{w.fecha_retiro}{w.monto_retiro !== null ? ` · ${money(w.monto_retiro)}` : ""}</b></div>}
+              <details className="mt-2"><summary className="text-[11px] t-muted cursor-pointer">Ver todos los datos del archivo</summary>
+                <div className="mt-1 space-y-0.5">{Object.entries(w.raw ?? {}).map(([k, v]) => <div key={k} className="flex justify-between gap-2 text-[11px]"><span className="t-muted">{k}</span><span className="font-mono t-secondary text-right">{String(v ?? "")}</span></div>)}</div>
+              </details>
+            </div>
+          ) : <p className="text-xs t-muted">Sin datos de wallet para este usuario. Cargá el archivo en Configuración y wallet.</p>}
+          <div className="mt-4 rounded-lg p-3" style={{ background: "rgba(239,68,68,0.08)" }}>
+            <p className="text-xs t-primary"><b>{fmt(d.en_proc_dev)}</b> guías en proceso de devolución → con un tope de <b>{cfg.debitos_max_dia} débitos por día</b>, son <b>{u.dias} días</b> de débitos.</p>
+            {u.debito !== null && <p className="text-xs t-primary mt-1">Débito estimado: <b>{money(u.debito)}</b>{w?.saldo_disponible !== null && w?.saldo_disponible !== undefined ? <> · {w.saldo_disponible >= u.debito ? <span style={{ color: "#10b981" }}>el saldo lo cubre</span> : <span style={{ color: "#ef4444" }}>faltan {money(u.debito - w.saldo_disponible)}</span>}</> : null}</p>}
+            {u.debito === null && <p className="text-[11px] t-muted mt-1">Cargá el costo por devolución en Configuración para estimar el monto.</p>}
+          </div>
+        </div>
+
+        {/* Estados */}
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary mb-3">📦 Guías por estado (Q4)</h3>
+          <ResponsiveContainer width="100%" height={Math.max(estados.length * 22, 160)}>
+            <BarChart data={estados} layout="vertical" margin={{ left: 10 }}>
+              <XAxis type="number" fontSize={10} stroke="#888" />
+              <YAxis type="category" dataKey="estado" width={170} fontSize={9} stroke="#888" />
+              <Tooltip {...tip} formatter={(v) => fmt(Number(v))} />
+              <Bar dataKey="n" name="Guías" fill="#f97316" radius={[0, 3, 3, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Novedades */}
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary mb-1">⚠️ Gestión de novedades</h3>
+          <p className="text-[11px] t-muted mb-3">{fmt(d.novedad)} sin solucionar · {fmt(d.novedad_sol)} solucionadas · {pct(d.novedad_sol, d.novedad + d.novedad_sol)} gestionado</p>
+          <div className="space-y-1.5">
+            {motivos.map((m) => (
+              <div key={m.motivo} className="flex items-center gap-2">
+                <div className="text-[10px] w-44 shrink-0 t-secondary truncate" title={m.motivo}>{m.motivo}</div>
+                <div className="flex-1 h-2 rounded overflow-hidden" style={{ background: "rgba(148,163,184,0.15)" }}><div className="h-full rounded" style={{ width: `${ratio(m.n, motivos[0]?.n ?? 1) * 100}%`, background: "#eab308" }} /></div>
+                <div className="text-[10px] font-mono w-8 text-right t-primary">{m.n}</div>
+              </div>
+            ))}
+            {motivos.length === 0 && <p className="text-xs t-muted">Sin novedades en el Q4.</p>}
+          </div>
+        </div>
+      </div>
+
+      {transp.length > 0 && (
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary mb-3">🚚 Por transportadora</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full"><thead><tr className="border-b border-gray-700"><Th left>Transportadora</Th><Th>Movilizadas</Th><Th>Entrega</Th><Th>Devueltas</Th><Th>En proc. dev.</Th></tr></thead>
+              <tbody>{transp.map((x) => <tr key={x.nombre} className="border-b border-gray-800/50"><Td left bold>{x.nombre}</Td><Td>{fmt(x.mov)}</Td><Td color="#10b981">{pct(x.ent, x.mov)}</Td><Td>{fmt(x.dev)}</Td><Td color="#ef4444" bold>{fmt(x.pdev)}</Td></tr>)}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Guías abiertas */}
+      <div className="glass-card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h3 className="text-sm font-bold t-primary">📄 Guías abiertas del usuario</h3>
+          <div className="flex flex-wrap gap-2">
+            {([["pdev", "En proceso de devolución"], ["novedad", "Novedad"], ["transito", "En tránsito"], ["pendiente", "Pendientes"]] as const).map(([k, l]) => (
+              <button key={k} onClick={() => setGrupo(k)} className={`text-[11px] px-3 py-1 rounded-full border ${grupo === k ? "bg-orange-500 text-white border-orange-500" : "border-gray-700 t-secondary"}`}>{l} ({guias ? cuenta(k) : "…"})</button>
+            ))}
+            {canDownload && filtradas.length > 0 && <button onClick={descargar} className="text-[11px] px-3 py-1 rounded-full border border-gray-700 t-secondary hover:border-orange-500/50">⬇ CSV</button>}
+          </div>
+        </div>
+        {cargando && <p className="text-xs t-muted">Buscando las guías del usuario…</p>}
+        {!cargando && (
+          <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+            <table className="w-full min-w-[1000px]">
+              <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}><tr className="border-b border-gray-700"><Th left>Guía</Th><Th left>Fecha orden</Th><Th left>Estado</Th><Th left>Transportadora</Th><Th left>Novedad</Th><Th>Días sin cambio</Th><Th>Valor</Th><Th left>Cliente</Th><Th left>Teléfono</Th><Th left>Ciudad</Th></tr></thead>
+              <tbody>
+                {filtradas.slice(0, 500).map((g) => (
+                  <tr key={`${g.mes}-${g.guia}`} className="border-b border-gray-800/50">
+                    <Td left>{g.guia}</Td><Td left>{g.fecha_orden}</Td><Td left>{g.estatus}</Td><Td left>{g.transportadora}</Td>
+                    <td className="py-1.5 px-2 text-[11px] t-secondary max-w-[220px] truncate" title={g.novedad ?? ""}>{g.novedad ?? "—"}</td>
+                    <Td bold color={g.dias_sin_cambio >= 5 ? "#ef4444" : g.dias_sin_cambio >= 3 ? "#eab308" : undefined}>{g.dias_sin_cambio}</Td>
+                    <Td>{money(g.valor)}</Td><Td left>{g.cliente}</Td><Td left>{g.telefono}</Td><Td left>{g.ciudad}</Td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {filtradas.length > 500 && <p className="text-[11px] t-muted mt-2">Mostrando 500 de {fmt(filtradas.length)} (las de más días sin cambio). Descargá el CSV para verlas todas.</p>}
+            {guias && filtradas.length === 0 && <p className="text-xs t-muted mt-2">No hay guías en este grupo.</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Configuración: encargados, umbrales y carga del Excel de wallet
+// ═══════════════════════════════════════════════════════════════════
+const CAMPOS_WALLET = [
+  { k: "ds_id", l: "ID de usuario (Dropi)", pistas: ["id usuario", "user id", "id dropshipper", "id"] },
+  { k: "ds_email", l: "Email", pistas: ["email", "correo", "mail"] },
+  { k: "ds_nombre", l: "Nombre", pistas: ["nombre", "name", "usuario", "dropshipper"] },
+  { k: "saldo_disponible", l: "Saldo disponible", pistas: ["disponible", "saldo", "balance", "wallet"] },
+  { k: "saldo_retenido", l: "Saldo retenido / en tránsito", pistas: ["retenido", "bloqueado", "pendiente", "transito"] },
+  { k: "fecha_retiro", l: "Fecha de retiro", pistas: ["fecha retiro", "fecha de retiro", "retiro", "fecha"] },
+  { k: "monto_retiro", l: "Monto de retiro", pistas: ["monto retiro", "monto", "importe"] },
+] as const;
+type CampoWallet = (typeof CAMPOS_WALLET)[number]["k"];
+const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+
+function Configuracion({ country, data, post, recargar, money }: { country: Pais; data: Data; post: (b: Record<string, unknown>) => Promise<unknown>; recargar: () => Promise<void>; money: (n: number | null | undefined) => string }) {
+  const [encs, setEncs] = useState(data.encargados.map((e) => ({ ...e, telefono: e.telefono ?? "" })));
+  const [nuevo, setNuevo] = useState({ nombre: "", telefono: "" });
+  const [cfg, setCfg] = useState({ costo_devolucion: data.config.costo_devolucion ?? "", debitos_max_dia: data.config.debitos_max_dia, umbral_pdev: data.config.umbral_pdev, umbral_novedad: data.config.umbral_novedad });
+  const [msg, setMsg] = useState("");
+  // Wallet
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [filas, setFilas] = useState<Record<string, unknown>[]>([]);
+  const [mapeo, setMapeo] = useState<Partial<Record<CampoWallet, string>>>({});
+  const [subiendo, setSubiendo] = useState(false);
+
+  const guardarEnc = async (e: { nombre: string; telefono: string; activo: boolean }) => {
+    try { await post({ accion: "encargado", ...e }); setMsg(`✓ ${e.nombre} guardado`); await recargar(); } catch (er) { setMsg(`✗ ${er instanceof Error ? er.message : "error"}`); }
+  };
+  const guardarCfg = async () => {
+    try { await post({ accion: "config", ...cfg }); setMsg("✓ Configuración guardada"); await recargar(); } catch (er) { setMsg(`✗ ${er instanceof Error ? er.message : "error"}`); }
+  };
+
+  const leerExcel = async (f: File) => {
+    setArchivo(f); setMsg("");
+    const XLSX = await import("xlsx");
+    const wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null, raw: false });
+    const hs = rows.length ? Object.keys(rows[0]) : [];
+    setHeaders(hs); setFilas(rows);
+    // Mapeo automático por nombre de columna
+    const auto: Partial<Record<CampoWallet, string>> = {};
+    const usados = new Set<string>();
+    for (const c of CAMPOS_WALLET) {
+      const h = hs.find((x) => !usados.has(x) && c.pistas.some((p) => norm(x) === p)) ?? hs.find((x) => !usados.has(x) && c.pistas.some((p) => norm(x).includes(p)));
+      if (h) { auto[c.k] = h; usados.add(h); }
+    }
+    setMapeo(auto);
+  };
+
+  const subirWallet = async () => {
+    if (!archivo || !filas.length) return;
+    if (!mapeo.ds_id && !mapeo.ds_email) { setMsg("✗ Elegí al menos la columna de ID o de email para cruzar con los usuarios."); return; }
+    setSubiendo(true); setMsg("");
+    try {
+      const { carga_id } = (await post({ accion: "wallet-carga", archivo: archivo.name, mapeo })) as { carga_id: number };
+      const mapeadas = filas.map((r) => {
+        const out: Record<string, unknown> = { raw: r };
+        for (const c of CAMPOS_WALLET) if (mapeo[c.k]) out[c.k] = r[mapeo[c.k]!];
+        return out;
+      });
+      for (let i = 0; i < mapeadas.length; i += 400) await post({ accion: "wallet-filas", carga_id, filas: mapeadas.slice(i, i + 400) });
+      await post({ accion: "wallet-cerrar", carga_id, filas: mapeadas.length });
+      setMsg(`✓ Wallet cargada: ${fmt(mapeadas.length)} filas`);
+      setArchivo(null); setHeaders([]); setFilas([]);
+      await recargar();
+    } catch (er) { setMsg(`✗ ${er instanceof Error ? er.message : "error al subir"}`); }
+    finally { setSubiendo(false); }
+  };
+
+  return (
+    <div className="space-y-4">
+      {msg && <div className="text-xs px-3 py-2 rounded-lg" style={{ background: msg.startsWith("✓") ? "rgba(16,185,129,0.1)" : "rgba(239,68,68,0.1)", color: msg.startsWith("✓") ? "#10b981" : "#ef4444" }}>{msg}</div>}
+
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary">👤 Encargados de {country === "ar" ? "Argentina" : "Paraguay"}</h3>
+          <p className="text-[11px] t-muted mb-3">Son los comerciales que se asignan a los usuarios y reciben las alertas por WhatsApp. Teléfono con código de país (ej. {country === "ar" ? "5491123456789" : "595981123456"}).</p>
+          <div className="space-y-2">
+            {encs.map((e, i) => (
+              <div key={e.nombre} className="flex flex-wrap items-center gap-2">
+                <span className="text-xs t-primary w-28 font-medium">{e.nombre}</span>
+                <input value={e.telefono} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, telefono: ev.target.value } : x)))} placeholder="Teléfono WhatsApp" className="text-xs px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary w-44" />
+                <label className="text-[11px] t-muted flex items-center gap-1"><input type="checkbox" checked={e.activo} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, activo: ev.target.checked } : x)))} /> activo</label>
+                <button onClick={() => guardarEnc(e)} className="text-[11px] px-3 py-1 rounded-full bg-orange-500 text-white">Guardar</button>
+              </div>
+            ))}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-800/50">
+              <input value={nuevo.nombre} onChange={(ev) => setNuevo({ ...nuevo, nombre: ev.target.value })} placeholder="Nuevo encargado" className="text-xs px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary w-28" />
+              <input value={nuevo.telefono} onChange={(ev) => setNuevo({ ...nuevo, telefono: ev.target.value })} placeholder="Teléfono WhatsApp" className="text-xs px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary w-44" />
+              <button disabled={!nuevo.nombre.trim()} onClick={async () => { await guardarEnc({ ...nuevo, activo: true }); setEncs([...encs, { ...nuevo, activo: true }]); setNuevo({ nombre: "", telefono: "" }); }} className="text-[11px] px-3 py-1 rounded-full border border-orange-500 text-orange-400 disabled:opacity-40">+ Agregar</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="glass-card p-5">
+          <h3 className="text-sm font-bold t-primary">🎚️ Reglas de alertas y débitos</h3>
+          <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
+            {([["costo_devolucion", `Débito por devolución (${country === "ar" ? "$" : "Gs"})`, "vacío = no estimar monto"], ["debitos_max_dia", "Débitos máximos por día", "acordado con Vicky"], ["umbral_pdev", "Alerta desde (en proc. de devolución)", "guías"], ["umbral_novedad", "Alerta desde (novedades sin solucionar)", "guías"]] as const).map(([k, l, h]) => (
+              <label key={k} className="flex flex-col gap-1">
+                <span className="t-muted text-[11px]">{l}</span>
+                <input type="number" value={cfg[k] as number | string} onChange={(ev) => setCfg({ ...cfg, [k]: ev.target.value })} className="px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary" />
+                <span className="text-[10px] t-muted">{h}</span>
+              </label>
+            ))}
+          </div>
+          <button onClick={guardarCfg} className="mt-3 text-[11px] px-4 py-1.5 rounded-full bg-orange-500 text-white">Guardar reglas</button>
+        </div>
+      </div>
+
+      <div className="glass-card p-5">
+        <h3 className="text-sm font-bold t-primary">💳 Cargar archivo de wallet</h3>
+        <p className="text-[11px] t-muted mb-3">
+          Excel o CSV con una fila por usuario. Se cruza con los usuarios del Pareto por ID de Dropi o email. Cada carga reemplaza a la anterior en el sector (las cargas viejas quedan guardadas).
+          {data.walletCarga && <> Última: <b className="t-secondary">{data.walletCarga.archivo}</b> · {fmt(data.walletCarga.filas)} filas · {new Date(data.walletCarga.cargado_el).toLocaleString("es-AR")} por {data.walletCarga.cargado_por}.</>}
+        </p>
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => e.target.files?.[0] && leerExcel(e.target.files[0])} className="text-xs t-secondary" />
+        {headers.length > 0 && (
+          <div className="mt-4 space-y-3">
+            <p className="text-xs t-primary">{fmt(filas.length)} filas leídas de <b>{archivo?.name}</b>. Revisá qué columna corresponde a cada dato:</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
+              {CAMPOS_WALLET.map((c) => (
+                <label key={c.k} className="flex flex-col gap-1 text-xs">
+                  <span className="t-muted text-[11px]">{c.l}</span>
+                  <select value={mapeo[c.k] ?? ""} onChange={(e) => setMapeo({ ...mapeo, [c.k]: e.target.value || undefined })} className="px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
+                    <option value="">— no viene —</option>
+                    {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full"><thead><tr className="border-b border-gray-700">{CAMPOS_WALLET.filter((c) => mapeo[c.k]).map((c) => <Th key={c.k} left>{c.l}</Th>)}</tr></thead>
+                <tbody>{filas.slice(0, 5).map((r, i) => <tr key={i} className="border-b border-gray-800/50">{CAMPOS_WALLET.filter((c) => mapeo[c.k]).map((c) => <Td key={c.k} left>{String(r[mapeo[c.k]!] ?? "")}</Td>)}</tr>)}</tbody>
+              </table>
+            </div>
+            <button onClick={subirWallet} disabled={subiendo} className="text-xs px-4 py-2 rounded-full bg-orange-500 text-white disabled:opacity-50">{subiendo ? "Subiendo…" : `Cargar ${fmt(filas.length)} filas`}</button>
+          </div>
+        )}
+      </div>
+      {data.config.costo_devolucion ? <p className="text-[11px] t-muted">Débito por devolución vigente: {money(data.config.costo_devolucion)}.</p> : null}
+    </div>
+  );
+}
