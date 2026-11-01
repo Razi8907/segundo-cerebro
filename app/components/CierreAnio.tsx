@@ -11,6 +11,7 @@ import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { useUser } from "../lib/useUser";
+import { ExtractoWallet, SubirExtracto, fechaLinda } from "./WalletExtracto";
 
 type Pais = "ar" | "py";
 interface Transp { mov: number; ent: number; dev: number; pdev: number }
@@ -23,7 +24,11 @@ interface Ds {
   por_transp: Record<string, Transp>;
   flete_pdev: number | null; flete_prom: number | null; // débito estimado = flete de cada guía en proceso de devolución
 }
-interface Wallet { ds_id: string | null; ds_email: string | null; ds_nombre: string | null; saldo_disponible: number | null; saldo_retenido: number | null; fecha_retiro: string | null; monto_retiro: number | null; raw: Record<string, unknown> }
+interface Retiro { clave: string; fecha: string; monto: number; previo: number | null; desc: string }
+interface Wallet {
+  ds_id: string | null; ds_email: string | null; ds_nombre: string | null; saldo_disponible: number | null; carga_id: number;
+  informe_fecha: string | null; cargado_el: string | null; n_mov: string | null; saldo_anterior: number | null; informe_anterior: string | null; retiros: Retiro[] | null;
+}
 interface Config { costo_devolucion: number | null; debitos_max_dia: number; umbral_pdev: number; umbral_novedad: number }
 interface Encargado { nombre: string; telefono: string | null; activo: boolean }
 interface Alerta { ds_id: string; tipo: string; detalle: string; encargado: string | null; enviado_por: string; enviado_el: string }
@@ -31,7 +36,7 @@ interface Data {
   mesesConDatos: string[]; totalUsuarios: number; totales: Record<string, number>; pareto: Ds[];
   asignaciones: { ds_id: string; comercial: string | null; updated_by: string; updated_at: string }[];
   encargados: Encargado[]; config: Config; walletCarga: { id: number; archivo: string; filas: number; cargado_por: string; cargado_el: string } | null;
-  wallet: Wallet[]; alertas: Alerta[]; fleteInfo: { meses: string[]; ordenes: number } | null;
+  wallet: Wallet[]; alertas: Alerta[]; retiroChecks: Alerta[]; fleteInfo: { meses: string[]; ordenes: number } | null;
 }
 interface Guia { mes: string; guia: string; fecha_orden: string; estatus: string; transportadora: string; novedad: string | null; concepto: string | null; dias_sin_cambio: number; fecha_ultimo_mov: string; valor: number; cliente: string; telefono: string; ciudad: string; producto: string; flete_est: number | null; flete_nivel: string | null }
 
@@ -48,7 +53,7 @@ const ratio = (a: number, b: number) => (b > 0 ? a / b : 0);
 const tip = { contentStyle: { background: "#1a1a1a", border: "1px solid #f97316", fontSize: 12 }, itemStyle: { color: "#fff" }, labelStyle: { color: "#fff" } };
 
 type Sev = "critica" | "alta" | "media";
-interface AlertaCalc { ds: Ds; tipo: "devoluciones" | "saldo" | "novedades"; sev: Sev; titulo: string; texto: string }
+interface AlertaCalc { ds: Ds; tipo: "devoluciones" | "saldo" | "novedades" | "retiro"; sev: Sev; titulo: string; texto: string }
 
 // ─── UI chicos ───
 function Kpi({ label, value, sub, color = "#f97316" }: { label: string; value: string; sub?: string; color?: string }) {
@@ -73,7 +78,9 @@ export default function CierreAnio({ country }: { country: Pais }) {
   const [data, setData] = useState<Data | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [tab, setTab] = useState<"resumen" | "usuarios" | "detalle" | "alertas" | "config">("resumen");
+  const [tab, setTab] = useState<"resumen" | "usuarios" | "detalle" | "retiros" | "alertas" | "config">("resumen");
+  const [walletVer, setWalletVer] = useState(0);
+  const [filtroRet, setFiltroRet] = useState<"pendientes" | "confirmados" | "todos">("pendientes");
   const [sel, setSel] = useState<string | null>(null);
   const [filtroCom, setFiltroCom] = useState<string>("todos");
   const moneda = country === "ar" ? "$" : "Gs";
@@ -118,13 +125,23 @@ export default function CierreAnio({ country }: { country: Pais }) {
     return { d, com: comDe(d), w, debito, porDia, dias: Math.ceil(d.en_proc_dev / Math.max(cfg.debitos_max_dia, 1)) };
   }), [data, walletDe, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Retiros detectados en los extractos + check del equipo (el último evento de cada retiro manda)
+  const retiros = useMemo(() => {
+    const est = new Map<string, Alerta>();
+    for (const c of data?.retiroChecks ?? []) { const k = `${c.ds_id}|${c.detalle}`; if (!est.has(k)) est.set(k, c); }
+    return usuarios.flatMap((u) => (u.w?.retiros ?? []).map((r) => {
+      const ev = est.get(`${u.d.ds_id}|${r.clave}`);
+      return { u, r, ok: ev?.tipo === "retiro_ok", ev: ev ?? null };
+    })).sort((a, b) => b.r.fecha.localeCompare(a.r.fecha));
+  }, [usuarios, data]);
+
   const alertasCalc: AlertaCalc[] = useMemo(() => {
     const out: AlertaCalc[] = [];
     for (const u of usuarios) {
       const { d, w, debito, dias } = u;
       if (debito !== null && w?.saldo_disponible !== null && w?.saldo_disponible !== undefined && w.saldo_disponible < debito) {
         out.push({ ds: d, tipo: "saldo", sev: "critica", titulo: "Saldo de wallet menor a los débitos que vienen",
-          texto: `${d.en_proc_dev} guías en proceso de devolución ≈ ${money(debito)} de débitos (flete de cada guía); saldo disponible ${money(w.saldo_disponible)}.` });
+          texto: `${d.en_proc_dev} guías en proceso de devolución ≈ ${money(debito)} de débitos (flete de cada guía); saldo ${money(w.saldo_disponible)} al ${fechaLinda(w.informe_fecha)}.` });
       }
       if (d.en_proc_dev >= cfg.umbral_pdev) {
         out.push({ ds: d, tipo: "devoluciones", sev: d.en_proc_dev >= cfg.umbral_pdev * 5 ? "alta" : "media", titulo: `${d.en_proc_dev} guías en proceso de devolución`,
@@ -135,9 +152,13 @@ export default function CierreAnio({ country }: { country: Pais }) {
           texto: `Solucionadas ${d.novedad_sol} (${pct(d.novedad_sol, d.novedad + d.novedad_sol)}). Valor en novedad ${money(d.valor_novedad)}.` });
       }
     }
+    for (const x of retiros) if (!x.ok) {
+      out.push({ ds: x.u.d, tipo: "retiro", sev: "alta", titulo: `Retiro de ${money(Math.abs(x.r.monto))} pedido el ${fechaLinda(x.r.fecha)}`,
+        texto: `Confirmar con el usuario que recibió el dinero y darle el check en Retiros. ${x.r.desc}` });
+    }
     const peso: Record<Sev, number> = { critica: 0, alta: 1, media: 2 };
     return out.sort((a, b) => peso[a.sev] - peso[b.sev] || b.ds.en_proc_dev - a.ds.en_proc_dev);
-  }, [usuarios, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [usuarios, cfg, retiros]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const ultimaAlerta = useMemo(() => {
     const m = new Map<string, Alerta>();
@@ -183,10 +204,15 @@ export default function CierreAnio({ country }: { country: Pais }) {
       `• ${a.titulo}`,
       `• En proceso de devolución: ${a.ds.en_proc_dev} guías · débito estimado ${money(u?.debito)} (flete de cada guía)`,
       `• Novedades sin solucionar: ${a.ds.novedad}`,
-      w ? `• Wallet: disponible ${money(w.saldo_disponible)}${w.fecha_retiro ? ` · retiro ${w.fecha_retiro}` : ""}` : "",
+      w ? `• Wallet: saldo ${money(w.saldo_disponible)} al ${fechaLinda(w.informe_fecha)} (según informe)` : "",
+      a.tipo === "retiro" ? `• ${a.texto}` : "",
       a.ds.en_proc_dev > 0 ? `• Pedir a Vicky débitos de máximo ${cfg.debitos_max_dia} por día (${u?.dias ?? 0} días, ≈ ${money(u?.porDia)} por día)` : "",
       `Por favor contactá al usuario hoy y contame cómo queda.`,
     ].filter(Boolean).join("\n");
+  };
+  const marcarRetiro = async (dsId: string, clave: string, ok: boolean) => {
+    try { await post({ accion: "retiro", ds_id: dsId, clave, estado: ok ? "ok" : "pendiente" }); await cargar(); }
+    catch (er) { alert(er instanceof Error ? er.message : "No se pudo guardar"); }
   };
   const enviar = async (a: AlertaCalc) => {
     const encargado = asig.get(a.ds.ds_id) || SIN;
@@ -214,13 +240,13 @@ export default function CierreAnio({ country }: { country: Pais }) {
             <h2 className="text-lg font-bold t-primary">🏁 Cierre del año 2026 — {pais}</h2>
             <p className="text-xs t-muted mt-1">
               Pareto del Q4 ({data.mesesConDatos.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(", ") || "sin datos"}): {usuarios.length} usuarios de {fmt(data.totalUsuarios)} hacen {pct(pGuias, t.guias)} de las guías.
-              Datos de Operaciones (última carga de cada mes) · fletes {data.fleteInfo ? `del archivo comercial (${fmt(data.fleteInfo.ordenes)} órdenes)` : "sin archivo comercial del Q4"} · wallet {data.walletCarga ? `cargada el ${new Date(data.walletCarga.cargado_el).toLocaleDateString("es-AR")} (${fmt(data.walletCarga.filas)} usuarios)` : "sin cargar"}.
+              Datos de Operaciones (última carga de cada mes) · fletes {data.fleteInfo ? `del archivo comercial (${fmt(data.fleteInfo.ordenes)} órdenes)` : "sin archivo comercial del Q4"} · wallet: {fmt(data.wallet.length)} de {usuarios.length} usuarios con extracto cargado.
             </p>
           </div>
           <button onClick={cargar} className="text-xs px-3 py-1.5 rounded-full border border-orange-500/40 text-orange-400 hover:bg-orange-500/10">{loading ? "Actualizando…" : "↻ Actualizar"}</button>
         </div>
         <div className="flex flex-wrap gap-2 mt-4">
-          {([["resumen", "📊 Resumen por comercial"], ["usuarios", `👥 Usuarios del Pareto (${usuarios.length})`], ["detalle", "🔎 Detalle del usuario"], ["alertas", `🚨 Alertas (${alertasCalc.length})`], ["config", "⚙️ Configuración y wallet"]] as const).map(([k, l]) => (
+          {([["resumen", "📊 Resumen por comercial"], ["usuarios", `👥 Usuarios del Pareto (${usuarios.length})`], ["detalle", "🔎 Detalle del usuario"], ["retiros", `💸 Retiros (${retiros.filter((x) => !x.ok).length} pendientes)`], ["alertas", `🚨 Alertas (${alertasCalc.length})`], ["config", "⚙️ Configuración y wallet"]] as const).map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} className={`text-xs px-4 py-2 rounded-full border transition-all ${tab === k ? "bg-orange-500 text-white border-orange-500 shadow-lg shadow-orange-500/20" : "bg-transparent t-secondary border-gray-700 hover:border-orange-500/40 hover:text-orange-300"}`}>{l}</button>
           ))}
         </div>
@@ -330,7 +356,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
                       <Td bold>{fmt(u.d.guias)}</Td><Td>{pct(u.d.guias, t.guias)}</Td><Td color="#10b981">{pct(u.d.entregadas, u.d.movilizadas)}</Td>
                       <Td bold color={u.d.en_proc_dev >= cfg.umbral_pdev ? "#ef4444" : undefined}>{fmt(u.d.en_proc_dev)}</Td><Td>{money(u.debito)}</Td>
                       <Td color={u.d.novedad >= cfg.umbral_novedad ? "#eab308" : undefined}>{fmt(u.d.novedad)}</Td>
-                      <Td color={u.debito !== null && u.w?.saldo_disponible !== null && u.w?.saldo_disponible !== undefined && u.w.saldo_disponible < u.debito ? "#ef4444" : undefined}>{u.w ? money(u.w.saldo_disponible) : "—"}</Td>
+                      <Td color={u.debito !== null && u.w?.saldo_disponible !== null && u.w?.saldo_disponible !== undefined && u.w.saldo_disponible < u.debito ? "#ef4444" : undefined}>{u.w ? <>{money(u.w.saldo_disponible)}<div className="text-[9px] t-muted font-normal">al {fechaLinda(u.w.informe_fecha)}</div></> : "—"}</Td>
                       <Td>{u.d.en_proc_dev ? u.dias : "—"}</Td>
                       <td className="py-1.5 px-2 text-[11px]">{als.length ? als.map((a) => <span key={a.tipo} className="inline-block mr-1 px-1.5 py-0.5 rounded" style={{ background: `${SEV_COLOR[a.sev]}25`, color: SEV_COLOR[a.sev] }}>{a.tipo}</span>) : <span className="t-muted">—</span>}</td>
                     </tr>
@@ -346,7 +372,52 @@ export default function CierreAnio({ country }: { country: Pais }) {
       {/* ═══ DETALLE ═══ */}
       {tab === "detalle" && (
         <Detalle u={elegido} usuarios={usuarios} setSel={setSel} country={country} money={money} cfg={cfg}
-          alertas={alertasCalc.filter((a) => a.ds.ds_id === sel)} enviar={enviar} ultimaAlerta={ultimaAlerta} canDownload={canDownload} />
+          alertas={alertasCalc.filter((a) => a.ds.ds_id === sel)} enviar={enviar} ultimaAlerta={ultimaAlerta} canDownload={canDownload}
+          post={post} walletVer={walletVer} onWallet={() => { setWalletVer((v) => v + 1); cargar(); }}
+          retiros={retiros.filter((x) => x.u.d.ds_id === sel)} marcarRetiro={marcarRetiro} />
+      )}
+
+      {/* ═══ RETIROS ═══ */}
+      {tab === "retiros" && (
+        <div className="glass-card p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 className="text-sm font-bold t-primary">💸 Retiros pedidos por los usuarios</h3>
+              <p className="text-[11px] t-muted">Salen de los extractos de wallet cargados (movimientos con "retiro" en la descripción). El equipo da el check cuando el usuario confirma que recibió el dinero; queda registrado quién y cuándo.</p>
+            </div>
+            <div className="flex gap-2">
+              {(["pendientes", "confirmados", "todos"] as const).map((k) => (
+                <button key={k} onClick={() => setFiltroRet(k)} className={`text-[11px] px-3 py-1 rounded-full border ${filtroRet === k ? "bg-orange-500 text-white border-orange-500" : "border-gray-700 t-secondary"}`}>
+                  {k === "pendientes" ? `Pendientes (${retiros.filter((x) => !x.ok).length})` : k === "confirmados" ? `Confirmados (${retiros.filter((x) => x.ok).length})` : `Todos (${retiros.length})`}
+                </button>
+              ))}
+            </div>
+          </div>
+          {retiros.length === 0 ? <p className="text-xs t-muted">Todavía no hay retiros: cargá el extracto de wallet de cada usuario en su Detalle.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[900px]">
+                <thead><tr className="border-b border-gray-700"><Th left>Fecha y hora</Th><Th left>Usuario</Th><Th left>Comercial</Th><Th>Monto</Th><Th>Saldo previo</Th><Th left>Descripción</Th><Th left>Estado</Th><Th left> </Th></tr></thead>
+                <tbody>
+                  {retiros.filter((x) => filtroRet === "todos" || (filtroRet === "pendientes" ? !x.ok : x.ok)).map((x) => (
+                    <tr key={`${x.u.d.ds_id}|${x.r.clave}`} className="border-b border-gray-800/50">
+                      <Td left>{fechaLinda(x.r.fecha)}</Td>
+                      <td className="py-1.5 px-2 text-xs"><button onClick={() => { setSel(x.u.d.ds_id); setTab("detalle"); }} className="t-primary hover:text-orange-400">{x.u.d.ds_nombre}</button></td>
+                      <Td left>{x.u.com}</Td>
+                      <Td bold>{money(Math.abs(x.r.monto))}</Td>
+                      <Td>{money(x.r.previo)}</Td>
+                      <td className="py-1.5 px-2 text-[11px] t-secondary max-w-[260px] truncate" title={x.r.desc}>{x.r.desc}</td>
+                      <td className="py-1.5 px-2 text-[11px]">{x.ok ? <span style={{ color: "#10b981" }}>✓ Recibido{x.ev ? ` · ${x.ev.enviado_por} ${new Date(x.ev.enviado_el).toLocaleDateString("es-AR")}` : ""}</span> : <span style={{ color: "#f97316" }}>Pendiente de confirmar</span>}</td>
+                      <td className="py-1.5 px-2 whitespace-nowrap">
+                        <button onClick={() => marcarRetiro(x.u.d.ds_id, x.r.clave, !x.ok)} className={`text-[11px] px-3 py-0.5 rounded-full ${x.ok ? "border border-gray-700 t-muted" : "bg-green-600 text-white"}`}>{x.ok ? "Desmarcar" : "✓ Recibió el dinero"}</button>
+                        {!x.ok && <button onClick={() => { const a = alertasCalc.find((al) => al.tipo === "retiro" && al.ds.ds_id === x.u.d.ds_id); if (a) enviar(a); }} className="ml-2 text-[11px] px-3 py-0.5 rounded-full border border-green-600 text-green-500">WhatsApp</button>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ═══ ALERTAS ═══ */}
@@ -381,7 +452,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
       )}
 
       {/* ═══ CONFIGURACIÓN ═══ */}
-      {tab === "config" && <Configuracion country={country} data={data} post={post} recargar={cargar} money={money} />}
+      {tab === "config" && <Configuracion country={country} data={data} post={post} recargar={cargar} money={money} usuarios={usuarios} irA={(id) => { setSel(id); setTab("detalle"); }} />}
     </div>
   );
 }
@@ -389,10 +460,12 @@ export default function CierreAnio({ country }: { country: Pais }) {
 // ═══════════════════════════════════════════════════════════════════
 // Detalle operativo de un usuario
 // ═══════════════════════════════════════════════════════════════════
-function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ultimaAlerta, canDownload }: {
+function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ultimaAlerta, canDownload, post, walletVer, onWallet, retiros, marcarRetiro }: {
   u: { d: Ds; com: string; w: Wallet | null; debito: number | null; porDia: number | null; dias: number } | null;
   usuarios: { d: Ds; com: string }[]; setSel: (id: string) => void; country: Pais; money: (n: number | null | undefined) => string; cfg: Config;
   alertas: AlertaCalc[]; enviar: (a: AlertaCalc) => void; ultimaAlerta: Map<string, Alerta>; canDownload: boolean;
+  post: (b: Record<string, unknown>) => Promise<unknown>; walletVer: number; onWallet: () => void;
+  retiros: { r: Retiro; ok: boolean; ev: Alerta | null }[]; marcarRetiro: (dsId: string, clave: string, ok: boolean) => void;
 }) {
   const [guias, setGuias] = useState<Guia[] | null>(null);
   const [cargando, setCargando] = useState(false);
@@ -471,14 +544,12 @@ function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ul
           <h3 className="text-sm font-bold t-primary mb-3">💳 Wallet y plan de débitos</h3>
           {w ? (
             <div className="space-y-1.5 text-xs">
-              <div className="flex justify-between"><span className="t-muted">Saldo disponible</span><b className="font-mono t-primary">{money(w.saldo_disponible)}</b></div>
-              {w.saldo_retenido !== null && <div className="flex justify-between"><span className="t-muted">Saldo retenido</span><b className="font-mono">{money(w.saldo_retenido)}</b></div>}
-              {w.fecha_retiro && <div className="flex justify-between"><span className="t-muted">Próximo retiro</span><b className="font-mono">{w.fecha_retiro}{w.monto_retiro !== null ? ` · ${money(w.monto_retiro)}` : ""}</b></div>}
-              <details className="mt-2"><summary className="text-[11px] t-muted cursor-pointer">Ver todos los datos del archivo</summary>
-                <div className="mt-1 space-y-0.5">{Object.entries(w.raw ?? {}).map(([k, v]) => <div key={k} className="flex justify-between gap-2 text-[11px]"><span className="t-muted">{k}</span><span className="font-mono t-secondary text-right">{String(v ?? "")}</span></div>)}</div>
-              </details>
+              <div className="flex justify-between"><span className="t-muted">Saldo actualizado</span><b className="font-mono t-primary">{money(w.saldo_disponible)}</b></div>
+              <div className="flex justify-between"><span className="t-muted">Al (según informe)</span><b className="font-mono">{fechaLinda(w.informe_fecha)}</b></div>
+              {w.saldo_anterior !== null && <div className="flex justify-between"><span className="t-muted">Informe anterior</span><span className="font-mono">{money(w.saldo_anterior)} al {fechaLinda(w.informe_anterior)}</span></div>}
+              {retiros.filter((x) => !x.ok).length > 0 && <p className="text-[11px]" style={{ color: "#f97316" }}>💸 {retiros.filter((x) => !x.ok).length} retiro(s) sin confirmar</p>}
             </div>
-          ) : <p className="text-xs t-muted">Sin datos de wallet para este usuario. Cargá el archivo en Configuración y wallet.</p>}
+          ) : <p className="text-xs t-muted">Todavía no se cargó el extracto de wallet de este usuario (abajo).</p>}
           <div className="mt-4 rounded-lg p-3" style={{ background: "rgba(239,68,68,0.08)" }}>
             <p className="text-xs t-primary"><b>{fmt(d.en_proc_dev)}</b> guías en proceso de devolución → con un tope de <b>{cfg.debitos_max_dia} débitos por día</b>, son <b>{u.dias} días</b> de débitos.</p>
             {u.debito !== null && <p className="text-xs t-primary mt-1">Débito estimado (flete de cada guía): <b>{money(u.debito)}</b>{d.flete_prom ? <span className="t-muted"> · flete promedio {money(d.flete_prom)}</span> : null}{w?.saldo_disponible !== null && w?.saldo_disponible !== undefined ? <> · {w.saldo_disponible >= u.debito ? <span style={{ color: "#10b981" }}>el saldo lo cubre</span> : <span style={{ color: "#ef4444" }}>faltan {money(u.debito - w.saldo_disponible)}</span>}</> : null}</p>}
@@ -515,6 +586,29 @@ function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ul
             {motivos.length === 0 && <p className="text-xs t-muted">Sin novedades en el Q4.</p>}
           </div>
         </div>
+      </div>
+
+      {/* Extracto de wallet */}
+      <div className="glass-card p-5 space-y-4">
+        <h3 className="text-sm font-bold t-primary">💳 Extracto de wallet</h3>
+        {retiros.length > 0 && (
+          <div>
+            <p className="text-[11px] t-muted mb-1">Retiros pedidos por el usuario — dale el check cuando confirme que recibió el dinero:</p>
+            <div className="space-y-1">
+              {retiros.map((x) => (
+                <div key={x.r.clave} className="flex flex-wrap items-center gap-3 text-xs rounded-lg px-3 py-1.5" style={{ background: x.ok ? "rgba(16,185,129,0.08)" : "rgba(249,115,22,0.08)" }}>
+                  <span className="font-mono t-secondary">{fechaLinda(x.r.fecha)}</span>
+                  <b className="font-mono">{money(Math.abs(x.r.monto))}</b>
+                  <span className="t-muted flex-1 truncate">{x.r.desc}</span>
+                  {x.ok && x.ev && <span className="text-[10px] t-muted">✓ {x.ev.enviado_por} · {new Date(x.ev.enviado_el).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>}
+                  <button onClick={() => marcarRetiro(d.ds_id, x.r.clave, !x.ok)} className={`text-[11px] px-3 py-0.5 rounded-full ${x.ok ? "border border-gray-700 t-muted" : "bg-green-600 text-white"}`}>{x.ok ? "Desmarcar" : "✓ Recibió el dinero"}</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <ExtractoWallet country={country} dsId={d.ds_id} moneda={country === "ar" ? "$" : "Gs"} version={walletVer} />
+        <SubirExtracto ds={d} post={post} onListo={onWallet} moneda={country === "ar" ? "$" : "Gs"} />
       </div>
 
       {transp.length > 0 && (
@@ -566,75 +660,20 @@ function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ul
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// Configuración: encargados, umbrales y carga del Excel de wallet
+// Configuración: encargados, umbrales y extractos de wallet por usuario
 // ═══════════════════════════════════════════════════════════════════
-const CAMPOS_WALLET = [
-  { k: "ds_id", l: "ID de usuario (Dropi)", pistas: ["id usuario", "user id", "id dropshipper", "id"] },
-  { k: "ds_email", l: "Email", pistas: ["email", "correo", "mail"] },
-  { k: "ds_nombre", l: "Nombre", pistas: ["nombre", "name", "usuario", "dropshipper"] },
-  { k: "saldo_disponible", l: "Saldo disponible", pistas: ["disponible", "saldo", "balance", "wallet"] },
-  { k: "saldo_retenido", l: "Saldo retenido / en tránsito", pistas: ["retenido", "bloqueado", "pendiente", "transito"] },
-  { k: "fecha_retiro", l: "Fecha de retiro", pistas: ["fecha retiro", "fecha de retiro", "retiro", "fecha"] },
-  { k: "monto_retiro", l: "Monto de retiro", pistas: ["monto retiro", "monto", "importe"] },
-] as const;
-type CampoWallet = (typeof CAMPOS_WALLET)[number]["k"];
-const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
-
-function Configuracion({ country, data, post, recargar, money }: { country: Pais; data: Data; post: (b: Record<string, unknown>) => Promise<unknown>; recargar: () => Promise<void>; money: (n: number | null | undefined) => string }) {
+function Configuracion({ country, data, post, recargar, money, usuarios, irA }: { country: Pais; data: Data; post: (b: Record<string, unknown>) => Promise<unknown>; recargar: () => Promise<void>; money: (n: number | null | undefined) => string; usuarios: { d: Ds; w: Wallet | null }[]; irA: (dsId: string) => void }) {
   const [encs, setEncs] = useState(data.encargados.map((e) => ({ ...e, telefono: e.telefono ?? "" })));
   const [nuevo, setNuevo] = useState({ nombre: "", telefono: "" });
   const [cfg, setCfg] = useState({ costo_devolucion: data.config.costo_devolucion ?? "", debitos_max_dia: data.config.debitos_max_dia, umbral_pdev: data.config.umbral_pdev, umbral_novedad: data.config.umbral_novedad });
   const [msg, setMsg] = useState("");
-  // Wallet
-  const [archivo, setArchivo] = useState<File | null>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [filas, setFilas] = useState<Record<string, unknown>[]>([]);
-  const [mapeo, setMapeo] = useState<Partial<Record<CampoWallet, string>>>({});
-  const [subiendo, setSubiendo] = useState(false);
+  const [walletDs, setWalletDs] = useState<string>("");
 
   const guardarEnc = async (e: { nombre: string; telefono: string; activo: boolean }) => {
     try { await post({ accion: "encargado", ...e }); setMsg(`✓ ${e.nombre} guardado`); await recargar(); } catch (er) { setMsg(`✗ ${er instanceof Error ? er.message : "error"}`); }
   };
   const guardarCfg = async () => {
     try { await post({ accion: "config", ...cfg }); setMsg("✓ Configuración guardada"); await recargar(); } catch (er) { setMsg(`✗ ${er instanceof Error ? er.message : "error"}`); }
-  };
-
-  const leerExcel = async (f: File) => {
-    setArchivo(f); setMsg("");
-    const XLSX = await import("xlsx");
-    const wb = XLSX.read(await f.arrayBuffer(), { type: "array", cellDates: true });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: null, raw: false });
-    const hs = rows.length ? Object.keys(rows[0]) : [];
-    setHeaders(hs); setFilas(rows);
-    // Mapeo automático por nombre de columna
-    const auto: Partial<Record<CampoWallet, string>> = {};
-    const usados = new Set<string>();
-    for (const c of CAMPOS_WALLET) {
-      const h = hs.find((x) => !usados.has(x) && c.pistas.some((p) => norm(x) === p)) ?? hs.find((x) => !usados.has(x) && c.pistas.some((p) => norm(x).includes(p)));
-      if (h) { auto[c.k] = h; usados.add(h); }
-    }
-    setMapeo(auto);
-  };
-
-  const subirWallet = async () => {
-    if (!archivo || !filas.length) return;
-    if (!mapeo.ds_id && !mapeo.ds_email) { setMsg("✗ Elegí al menos la columna de ID o de email para cruzar con los usuarios."); return; }
-    setSubiendo(true); setMsg("");
-    try {
-      const { carga_id } = (await post({ accion: "wallet-carga", archivo: archivo.name, mapeo })) as { carga_id: number };
-      const mapeadas = filas.map((r) => {
-        const out: Record<string, unknown> = { raw: r };
-        for (const c of CAMPOS_WALLET) if (mapeo[c.k]) out[c.k] = r[mapeo[c.k]!];
-        return out;
-      });
-      for (let i = 0; i < mapeadas.length; i += 400) await post({ accion: "wallet-filas", carga_id, filas: mapeadas.slice(i, i + 400) });
-      await post({ accion: "wallet-cerrar", carga_id, filas: mapeadas.length });
-      setMsg(`✓ Wallet cargada: ${fmt(mapeadas.length)} filas`);
-      setArchivo(null); setHeaders([]); setFilas([]);
-      await recargar();
-    } catch (er) { setMsg(`✗ ${er instanceof Error ? er.message : "error al subir"}`); }
-    finally { setSubiendo(false); }
   };
 
   return (
@@ -678,34 +717,32 @@ function Configuracion({ country, data, post, recargar, money }: { country: Pais
       </div>
 
       <div className="glass-card p-5">
-        <h3 className="text-sm font-bold t-primary">💳 Cargar archivo de wallet</h3>
-        <p className="text-[11px] t-muted mb-3">
-          Excel o CSV con una fila por usuario. Se cruza con los usuarios del Pareto por ID de Dropi o email. Cada carga reemplaza a la anterior en el sector (las cargas viejas quedan guardadas).
-          {data.walletCarga && <> Última: <b className="t-secondary">{data.walletCarga.archivo}</b> · {fmt(data.walletCarga.filas)} filas · {new Date(data.walletCarga.cargado_el).toLocaleString("es-AR")} por {data.walletCarga.cargado_por}.</>}
-        </p>
-        <input type="file" accept=".xlsx,.xls,.csv" onChange={(e) => e.target.files?.[0] && leerExcel(e.target.files[0])} className="text-xs t-secondary" />
-        {headers.length > 0 && (
-          <div className="mt-4 space-y-3">
-            <p className="text-xs t-primary">{fmt(filas.length)} filas leídas de <b>{archivo?.name}</b>. Revisá qué columna corresponde a cada dato:</p>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-2">
-              {CAMPOS_WALLET.map((c) => (
-                <label key={c.k} className="flex flex-col gap-1 text-xs">
-                  <span className="t-muted text-[11px]">{c.l}</span>
-                  <select value={mapeo[c.k] ?? ""} onChange={(e) => setMapeo({ ...mapeo, [c.k]: e.target.value || undefined })} className="px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
-                    <option value="">— no viene —</option>
-                    {headers.map((h) => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </label>
+        <h3 className="text-sm font-bold t-primary">💳 Extractos de wallet por usuario</h3>
+        <p className="text-[11px] t-muted mb-3">El informe de wallet de Dropi se baja por usuario. Saldo = MONTO PREVIO del último movimiento, a la fecha y hora de ese movimiento en el informe. Cada carga nueva actualiza el saldo y las anteriores quedan como historial.</p>
+        <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+          <span className="t-muted">Usuario:</span>
+          <select value={walletDs} onChange={(e) => setWalletDs(e.target.value)} className="px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
+            <option value="">Elegí un usuario…</option>
+            {usuarios.map((x) => <option key={x.d.ds_id} value={x.d.ds_id}>{x.d.ds_nombre}{x.w ? " ✓" : ""}</option>)}
+          </select>
+        </div>
+        {walletDs && (() => { const x = usuarios.find((y) => y.d.ds_id === walletDs); return x ? <SubirExtracto ds={x.d} post={post} onListo={recargar} moneda={country === "ar" ? "$" : "Gs"} /> : null; })()}
+        <div className="overflow-x-auto mt-4">
+          <table className="w-full">
+            <thead><tr className="border-b border-gray-700"><Th left>Usuario</Th><Th>Saldo</Th><Th left>Al (según informe)</Th><Th>Movimientos</Th><Th left>Subido</Th></tr></thead>
+            <tbody>
+              {usuarios.map((x) => (
+                <tr key={x.d.ds_id} className="border-b border-gray-800/50">
+                  <td className="py-1.5 px-2 text-xs"><button onClick={() => irA(x.d.ds_id)} className="t-primary hover:text-orange-400">{x.d.ds_nombre}</button></td>
+                  <Td bold>{x.w ? money(x.w.saldo_disponible) : "—"}</Td>
+                  <Td left>{x.w ? fechaLinda(x.w.informe_fecha) : <span className="t-muted">sin extracto</span>}</Td>
+                  <Td>{x.w?.n_mov ?? "—"}</Td>
+                  <Td left>{x.w?.cargado_el ? new Date(x.w.cargado_el).toLocaleString("es-AR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}</Td>
+                </tr>
               ))}
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full"><thead><tr className="border-b border-gray-700">{CAMPOS_WALLET.filter((c) => mapeo[c.k]).map((c) => <Th key={c.k} left>{c.l}</Th>)}</tr></thead>
-                <tbody>{filas.slice(0, 5).map((r, i) => <tr key={i} className="border-b border-gray-800/50">{CAMPOS_WALLET.filter((c) => mapeo[c.k]).map((c) => <Td key={c.k} left>{String(r[mapeo[c.k]!] ?? "")}</Td>)}</tr>)}</tbody>
-              </table>
-            </div>
-            <button onClick={subirWallet} disabled={subiendo} className="text-xs px-4 py-2 rounded-full bg-orange-500 text-white disabled:opacity-50">{subiendo ? "Subiendo…" : `Cargar ${fmt(filas.length)} filas`}</button>
-          </div>
-        )}
+            </tbody>
+          </table>
+        </div>
       </div>
       {data.config.costo_devolucion ? <p className="text-[11px] t-muted">Débito por devolución vigente: {money(data.config.costo_devolucion)}.</p> : null}
     </div>

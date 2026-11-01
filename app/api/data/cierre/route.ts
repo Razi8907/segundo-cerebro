@@ -47,13 +47,15 @@ export async function GET(req: NextRequest) {
   if (!["ar", "py"].includes(country)) return NextResponse.json({ error: "country inválido" }, { status: 400 });
   const sb = getSupabase();
 
-  const [meses, asig, enc, cfg, cargaRes, alertas] = await Promise.all([
+  const [meses, asig, enc, cfg, cargaRes, alertas, checks] = await Promise.all([
     Promise.all(Q4.map((m) => sb.rpc("get_ops_mes_cached", { p_country: country, p_mes: m, p_kind: "ds" }))),
     sb.from("cierre_asignaciones").select("ds_id, ds_nombre, comercial, updated_by, updated_at").eq("country", country),
     sb.from("cierre_encargados").select("nombre, telefono, activo").eq("country", country).order("nombre"),
     sb.from("cierre_config").select("*").eq("country", country).maybeSingle(),
     sb.from("wallet_cargas").select("id, archivo, filas, cargado_por, cargado_el, mapeo").eq("country", country).order("cargado_el", { ascending: false }).limit(1),
     sb.from("cierre_alertas").select("ds_id, tipo, detalle, encargado, enviado_por, enviado_el").eq("country", country).order("enviado_el", { ascending: false }).limit(500),
+    // seguimiento de retiros: el último evento de cada retiro manda (confirmado / pendiente)
+    sb.from("cierre_alertas").select("ds_id, tipo, detalle, encargado, enviado_por, enviado_el").eq("country", country).in("tipo", ["retiro_ok", "retiro_pendiente"]).order("enviado_el", { ascending: false }).limit(5000),
   ]);
 
   // ── Juntar los 3 meses por dropshipper ──
@@ -117,18 +119,22 @@ export async function GET(req: NextRequest) {
 
   const totales: Record<NumKey, number> = Object.fromEntries(NUM_KEYS.map((k) => [k, todos.reduce((s, d) => s + d[k], 0)])) as Record<NumKey, number>;
 
-  // ── Wallet (última carga) solo para los usuarios del Pareto ──
+  // ── Wallet: último extracto cargado de cada usuario del Pareto ──
   const carga = cargaRes.data?.[0] ?? null;
-  let wallet: Record<string, unknown>[] = [];
-  if (carga) {
-    const ids = pareto.map((d) => d.ds_id);
-    const emails = pareto.map((d) => (d.ds_email || "").toLowerCase()).filter(Boolean);
-    const [porId, porEmail] = await Promise.all([
-      sb.from("wallet_saldos").select("ds_id, ds_email, ds_nombre, saldo_disponible, saldo_retenido, fecha_retiro, monto_retiro, raw").eq("carga_id", carga.id).in("ds_id", ids),
-      emails.length ? sb.from("wallet_saldos").select("ds_id, ds_email, ds_nombre, saldo_disponible, saldo_retenido, fecha_retiro, monto_retiro, raw").eq("carga_id", carga.id).in("ds_email", emails) : Promise.resolve({ data: [] as Record<string, unknown>[] }),
-    ]);
-    wallet = [...(porId.data ?? []), ...(porEmail.data ?? [])];
+  const ids = pareto.map((d) => d.ds_id);
+  const ws = ids.length
+    ? await sb.from("wallet_saldos")
+        .select("ds_id, ds_email, ds_nombre, saldo_disponible, carga_id, informe_fecha:raw->>informe_fecha, cargado_el:raw->>cargado_el, n_mov:raw->>n_mov, retiros:raw->retiros")
+        .eq("country", country).in("ds_id", ids).order("carga_id", { ascending: false })
+    : { data: [] as Record<string, unknown>[] };
+  const visto = new Map<string, Record<string, unknown>>();
+  for (const w of (ws.data ?? []) as Record<string, unknown>[]) {
+    const k = String(w.ds_id);
+    const prev = visto.get(k);
+    if (!prev) visto.set(k, { ...w, saldo_anterior: null, informe_anterior: null });
+    else if (prev.saldo_anterior === null) { prev.saldo_anterior = w.saldo_disponible; prev.informe_anterior = w.informe_fecha; }
   }
+  const wallet = [...visto.values()];
 
   return NextResponse.json({
     country,
@@ -142,7 +148,8 @@ export async function GET(req: NextRequest) {
     config: cfg.data ?? { country, costo_devolucion: null, debitos_max_dia: 10, umbral_pdev: 10, umbral_novedad: 20 },
     walletCarga: carga ? { id: carga.id, archivo: carga.archivo, filas: carga.filas, cargado_por: carga.cargado_por, cargado_el: carga.cargado_el } : null,
     wallet,
-    alertas: alertas.data ?? [],
+    alertas: (alertas.data ?? []).filter((a) => !String(a.tipo).startsWith("retiro_")),
+    retiroChecks: checks.data ?? [],
   }, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -151,6 +158,8 @@ export async function GET(req: NextRequest) {
 //   { accion: "encargado", country, nombre, telefono, activo? }
 //   { accion: "config", country, costo_devolucion?, debitos_max_dia?, umbral_pdev?, umbral_novedad? }
 //   { accion: "alerta", country, ds_id, tipo, detalle, encargado }
+//   { accion: "wallet-extracto", country, ds_id, ds_nombre, ds_email, archivo, informe_fecha, saldo, movimientos[] }
+//   { accion: "retiro", country, ds_id, clave, estado: "ok" | "pendiente", nota? }
 //   { accion: "wallet-carga", country, archivo, mapeo }            → { carga_id }
 //   { accion: "wallet-filas", country, carga_id, filas: [...] }     (en tandas)
 //   { accion: "wallet-cerrar", country, carga_id, filas }
@@ -193,6 +202,40 @@ export async function POST(req: NextRequest) {
       const r = await sb.from("cierre_alertas").insert({
         country, ds_id: String(body.ds_id), tipo: String(body.tipo || ""), detalle: String(body.detalle || ""),
         encargado: body.encargado ? String(body.encargado) : null, enviado_por: quien,
+      });
+      return r.error ? NextResponse.json({ error: r.error.message }, { status: 500 }) : NextResponse.json({ ok: true });
+    }
+    case "wallet-extracto": {
+      // Extracto de wallet de UN usuario: saldo = monto previo del último movimiento del informe
+      const dsId = String(body.ds_id || "").trim();
+      const movs = Array.isArray(body.movimientos) ? body.movimientos : [];
+      if (!dsId || movs.length === 0) return NextResponse.json({ error: "ds_id y movimientos requeridos" }, { status: 400 });
+      const n = (v: unknown) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+      const sinAcento = (x: unknown) => String(x ?? "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      const retiros = (movs as { fecha: string; monto: number; previo: number | null; desc: string; tipo: string }[])
+        .filter((m) => /retiro/.test(sinAcento(m.desc)) || /retiro/.test(sinAcento(m.tipo)))
+        .map((m) => ({ clave: `${m.fecha}|${m.monto}`, fecha: m.fecha, monto: m.monto, previo: m.previo, desc: m.desc }));
+      const c = await sb.from("wallet_cargas").insert({
+        country, archivo: String(body.archivo || ""), mapeo: { tipo: "extracto", ds_id: dsId, columnas: body.columnas ?? {} }, filas: movs.length, cargado_por: quien,
+      }).select("id, cargado_el").single();
+      if (c.error) return NextResponse.json({ error: c.error.message }, { status: 500 });
+      const r = await sb.from("wallet_saldos").insert({
+        country, carga_id: c.data.id, ds_id: dsId,
+        ds_email: body.ds_email ? String(body.ds_email).trim().toLowerCase() : null, ds_nombre: body.ds_nombre ? String(body.ds_nombre) : null,
+        saldo_disponible: n(body.saldo), saldo_retenido: null, fecha_retiro: null, monto_retiro: null,
+        raw: {
+          tipo: "extracto", informe_fecha: body.informe_fecha ?? null, desde: body.desde ?? null, ingresos: n(body.ingresos) ?? 0, egresos: n(body.egresos) ?? 0,
+          n_mov: movs.length, retiros, archivo: String(body.archivo || ""), cargado_el: c.data.cargado_el, cargado_por: quien, movimientos: movs,
+        },
+      });
+      return r.error ? NextResponse.json({ error: r.error.message }, { status: 500 }) : NextResponse.json({ ok: true, carga_id: c.data.id });
+    }
+    case "retiro": {
+      // check del equipo: el usuario confirmó que recibió el retiro (o se vuelve a pendiente)
+      const estado = body.estado === "pendiente" ? "retiro_pendiente" : "retiro_ok";
+      if (!body.ds_id || !body.clave) return NextResponse.json({ error: "ds_id y clave requeridos" }, { status: 400 });
+      const r = await sb.from("cierre_alertas").insert({
+        country, ds_id: String(body.ds_id), tipo: estado, detalle: String(body.clave), encargado: body.nota ? String(body.nota) : null, enviado_por: quien,
       });
       return r.error ? NextResponse.json({ error: r.error.message }, { status: 500 }) : NextResponse.json({ ok: true });
     }
