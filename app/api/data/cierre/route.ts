@@ -155,7 +155,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/data/cierre — acciones del sector (todas requieren sesión)
 //   { accion: "asignar", country, ds_id, ds_nombre, comercial }
-//   { accion: "encargado", country, nombre, telefono, activo?, rol?: "comercial" | "head" }
+//   { accion: "encargado", country, nombre, telefono, activo?, rol?: "comercial" | "head" | "asistente" }
 //   { accion: "config", country, costo_devolucion?, debitos_max_dia?, umbral_pdev?, umbral_novedad? }
 //   { accion: "alerta", country, ds_id, tipo, detalle, encargado }
 //   { accion: "wallet-extracto", country, ds_id, ds_nombre, ds_email, archivo, informe_fecha, saldo, movimientos[] }
@@ -187,7 +187,7 @@ export async function POST(req: NextRequest) {
       const r = await sb.from("cierre_encargados").upsert({
         country, nombre, telefono: body.telefono ? String(body.telefono).replace(/[^\d+]/g, "") : null,
         activo: body.activo === undefined ? true : Boolean(body.activo), updated_at: new Date().toISOString(),
-        ...(body.rol === "head" || body.rol === "comercial" ? { rol: body.rol } : {}),
+        ...(["head", "comercial", "asistente"].includes(String(body.rol)) ? { rol: body.rol } : {}),
       }, { onConflict: "country,nombre" });
       return r.error ? NextResponse.json({ error: r.error.message }, { status: 500 }) : NextResponse.json({ ok: true });
     }

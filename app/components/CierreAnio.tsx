@@ -30,7 +30,7 @@ interface Wallet {
   informe_fecha: string | null; cargado_el: string | null; n_mov: string | null; saldo_anterior: number | null; informe_anterior: string | null; retiros: Retiro[] | null;
 }
 interface Config { costo_devolucion: number | null; debitos_max_dia: number; umbral_pdev: number; umbral_novedad: number }
-interface Encargado { nombre: string; telefono: string | null; activo: boolean; rol: "comercial" | "head" }
+interface Encargado { nombre: string; telefono: string | null; activo: boolean; rol: "comercial" | "head" | "asistente" }
 interface Alerta { ds_id: string; tipo: string; detalle: string; encargado: string | null; enviado_por: string; enviado_el: string }
 interface Data {
   mesesConDatos: string[]; totalUsuarios: number; totales: Record<string, number>; pareto: Ds[];
@@ -114,7 +114,8 @@ export default function CierreAnio({ country }: { country: Pais }) {
     return (d: Ds) => porId.get(d.ds_id) ?? porEmail.get((d.ds_email || "").toLowerCase()) ?? null;
   }, [data]);
   const activos = data?.encargados.filter((e) => e.activo) ?? [];
-  const encargados = activos.filter((e) => e.rol !== "head"); // comerciales: se asignan a los usuarios
+  const encargados = activos.filter((e) => e.rol === "comercial"); // comerciales: se asignan a los usuarios
+  const asistente = activos.find((e) => e.rol === "asistente") ?? null; // manda el parte del día a los comerciales
   const head = activos.find((e) => e.rol === "head") ?? null; // recibe los escalamientos
   const telDe = (nombre: string) => activos.find((e) => e.nombre === nombre)?.telefono || null;
   const cfg = data?.config ?? { costo_devolucion: null, debitos_max_dia: 10, umbral_pdev: 10, umbral_novedad: 20 };
@@ -213,6 +214,29 @@ export default function CierreAnio({ country }: { country: Pais }) {
       `Por favor contactá al usuario hoy y contame cómo queda.`,
     ].filter(Boolean).join("\n");
   };
+  // ─── Parte del día: un mensaje por comercial con lo que tiene que gestionar hoy ───
+  const parteDe = (nombre: string) => {
+    const us = usuarios.filter((u) => u.com === nombre);
+    const als = alertasCalc.filter((a) => (asig.get(a.ds.ds_id) || SIN) === nombre);
+    const hoy = new Date().toLocaleDateString("es-AR", { weekday: "long", day: "2-digit", month: "2-digit" });
+    const lineas = [
+      `Hola ${nombre}! Parte del día · ${hoy} · Cierre 2026 ${pais}`,
+      `Tus ${us.length} usuarios del Pareto: ${fmt(us.reduce((a, u) => a + u.d.guias, 0))} guías en el Q4, entrega ${pct(us.reduce((a, u) => a + u.d.entregadas, 0), us.reduce((a, u) => a + u.d.movilizadas, 0))}.`,
+    ];
+    const bloque = (titulo: string, items: string[]) => { if (items.length) lineas.push("", titulo, ...items.slice(0, 10), ...(items.length > 10 ? [`…y ${items.length - 10} más`] : [])); };
+    bloque("🔴 Saldo de wallet que no cubre las devoluciones:", als.filter((a) => a.tipo === "saldo").map((a) => `• ${a.ds.ds_nombre}: ${a.texto}`));
+    bloque("💸 Retiros para confirmar que los recibió:", als.filter((a) => a.tipo === "retiro").map((a) => `• ${a.ds.ds_nombre}: ${a.titulo}`));
+    bloque(`📦 En proceso de devolución (débitos de máx. ${cfg.debitos_max_dia} por día con Vicky):`, us.filter((u) => u.d.en_proc_dev >= cfg.umbral_pdev).sort((a, b) => b.d.en_proc_dev - a.d.en_proc_dev).map((u) => `• ${u.d.ds_nombre}: ${u.d.en_proc_dev} guías · ≈ ${money(u.debito)} · ${u.dias} días`));
+    bloque("⚠️ Novedades sin solucionar:", us.filter((u) => u.d.novedad >= cfg.umbral_novedad).sort((a, b) => b.d.novedad - a.d.novedad).map((u) => `• ${u.d.ds_nombre}: ${u.d.novedad} novedades`));
+    if (lineas.length === 2) lineas.push("", "✅ Sin pendientes hoy.");
+    lineas.push("", "Contame cómo avanzás con cada uno 🙌");
+    return { texto: lineas.join("\n"), pendientes: als.length };
+  };
+  const [copiado, setCopiado] = useState<string | null>(null);
+  const copiar = async (nombre: string, texto: string) => {
+    try { await navigator.clipboard.writeText(texto); setCopiado(nombre); setTimeout(() => setCopiado(null), 2000); } catch { /* sin portapapeles */ }
+  };
+
   const marcarRetiro = async (dsId: string, clave: string, ok: boolean) => {
     try { await post({ accion: "retiro", ds_id: dsId, clave, estado: ok ? "ok" : "pendiente" }); await cargar(); }
     catch (er) { alert(er instanceof Error ? er.message : "No se pudo guardar"); }
@@ -427,6 +451,29 @@ export default function CierreAnio({ country }: { country: Pais }) {
       {/* ═══ ALERTAS ═══ */}
       {tab === "alertas" && (
         <div className="glass-card p-5">
+          <div className="rounded-xl p-4 mb-5 border border-green-600/30" style={{ background: "rgba(22,163,74,0.06)" }}>
+            <h3 className="text-sm font-bold t-primary">📝 Parte del día{asistente ? ` (lo envía ${asistente.nombre})` : ""}</h3>
+            <p className="text-[11px] t-muted mb-3">Un mensaje por comercial con sus pendientes de hoy: saldo que no cubre devoluciones, retiros para confirmar, devoluciones en proceso y novedades. Se abre en el WhatsApp de quien lo envía.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+              {encargados.map((c) => {
+                const p = parteDe(c.nombre);
+                return (
+                  <div key={c.nombre} className="rounded-lg border border-gray-700 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <b className="text-xs t-primary">{c.nombre}</b>
+                      <span className="text-[10px]" style={{ color: p.pendientes ? "#f97316" : "#10b981" }}>{p.pendientes ? `${p.pendientes} pendientes` : "sin pendientes"}</span>
+                    </div>
+                    <pre className="text-[10px] t-secondary whitespace-pre-wrap max-h-40 overflow-y-auto font-sans">{p.texto}</pre>
+                    <div className="flex gap-2 mt-2">
+                      <button onClick={() => { const tel = telDe(c.nombre); if (!tel) { alert(`Falta el teléfono de ${c.nombre}. Cargalo en Configuración.`); return; } window.open(`https://wa.me/${tel.replace(/[^\d]/g, "")}?text=${encodeURIComponent(p.texto)}`, "_blank", "noopener"); }}
+                        className="text-[11px] px-3 py-1 rounded-full text-white" style={{ background: telDe(c.nombre) ? "#16a34a" : "#6b7280" }}>WhatsApp a {c.nombre}</button>
+                      <button onClick={() => copiar(c.nombre, p.texto)} className="text-[11px] px-3 py-1 rounded-full border border-gray-700 t-secondary">{copiado === c.nombre ? "✓ Copiado" : "Copiar"}</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
           <h3 className="text-sm font-bold t-primary">🚨 Alertas para los encargados</h3>
           <p className="text-[11px] t-muted mb-3">
             Reglas: en proceso de devolución ≥ {cfg.umbral_pdev} · novedades sin solucionar ≥ {cfg.umbral_novedad} · saldo de wallet menor a los débitos que vienen ({cfg.costo_devolucion ? `débito fijo de ${money(cfg.costo_devolucion)} por devolución` : "débito = flete de cada guía"}).
@@ -688,13 +735,13 @@ function Configuracion({ country, data, post, recargar, money, usuarios, irA }: 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div className="glass-card p-5">
           <h3 className="text-sm font-bold t-primary">👤 Encargados de {country === "ar" ? "Argentina" : "Paraguay"}</h3>
-          <p className="text-[11px] t-muted mb-3">Los comerciales se asignan a los usuarios y reciben las alertas por WhatsApp; el Head recibe los escalamientos y las alertas de usuarios sin comercial. Teléfono con código de país (ej. {country === "ar" ? "5491123456789" : "595981123456"}).</p>
+          <p className="text-[11px] t-muted mb-3">Los comerciales se asignan a los usuarios y reciben las alertas por WhatsApp; el Head recibe los escalamientos y las alertas de usuarios sin comercial; la asistente envía el parte del día (no se asigna a usuarios). Teléfono con código de país (ej. {country === "ar" ? "5491123456789" : "595981123456"}).</p>
           <div className="space-y-2">
             {encs.map((e, i) => (
               <div key={e.nombre} className="flex flex-wrap items-center gap-2">
                 <span className="text-xs t-primary w-28 font-medium">{e.nombre}</span>
-                <select value={e.rol} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, rol: ev.target.value as "comercial" | "head" } : x)))} className="text-[11px] px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
-                  <option value="comercial">Comercial</option><option value="head">Head</option>
+                <select value={e.rol} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, rol: ev.target.value as Encargado["rol"] } : x)))} className="text-[11px] px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary">
+                  <option value="comercial">Comercial</option><option value="head">Head</option><option value="asistente">Asistente</option>
                 </select>
                 <input value={e.telefono} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, telefono: ev.target.value } : x)))} placeholder="Teléfono WhatsApp" className="text-xs px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary w-44" />
                 <label className="text-[11px] t-muted flex items-center gap-1"><input type="checkbox" checked={e.activo} onChange={(ev) => setEncs(encs.map((x, j) => (j === i ? { ...x, activo: ev.target.checked } : x)))} /> activo</label>
