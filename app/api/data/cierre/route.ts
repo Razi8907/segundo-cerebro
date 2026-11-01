@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabase } from "../../../lib/supabase";
 import { verifyToken, COOKIE_NAME } from "../../../lib/auth";
+import { cargarFletes } from "../../../lib/flete-cierre";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -98,6 +99,22 @@ export async function GET(req: NextRequest) {
   const asignados = new Set((asig.data ?? []).filter((a) => a.comercial).map((a) => a.ds_id));
   for (const d of todos) if (asignados.has(d.ds_id) && !pareto.includes(d)) pareto.push(d);
 
+  // ── Débito estimado de las devoluciones en proceso = su flete (archivo comercial) ──
+  const fletes = await cargarFletes(sb, country).catch(() => null);
+  const conFlete = pareto.map((d) => {
+    if (!fletes || !d.en_proc_dev) return { ...d, flete_pdev: fletes ? 0 : null, flete_prom: null as number | null };
+    let total = 0, n = 0;
+    for (const t in d.por_transp) {
+      const k = d.por_transp[t].pdev;
+      const e = k ? fletes.estimar(d.ds_id, t) : null;
+      if (e) { total += k * e.flete; n += k; }
+    }
+    // guías en proceso de devolución sin transportadora identificada → promedio del país
+    const resto = d.en_proc_dev - n;
+    if (resto > 0) { const e = fletes.estimar(d.ds_id, ""); if (e) total += resto * e.flete; }
+    return { ...d, flete_pdev: Math.round(total), flete_prom: Math.round(total / d.en_proc_dev) };
+  });
+
   const totales: Record<NumKey, number> = Object.fromEntries(NUM_KEYS.map((k) => [k, todos.reduce((s, d) => s + d[k], 0)])) as Record<NumKey, number>;
 
   // ── Wallet (última carga) solo para los usuarios del Pareto ──
@@ -118,7 +135,8 @@ export async function GET(req: NextRequest) {
     mesesConDatos,
     totalUsuarios: todos.length,
     totales,
-    pareto,
+    pareto: conFlete,
+    fleteInfo: fletes ? { meses: fletes.meses, ordenes: fletes.ordenes } : null,
     asignaciones: asig.data ?? [],
     encargados: enc.data ?? [],
     config: cfg.data ?? { country, costo_devolucion: null, debitos_max_dia: 10, umbral_pdev: 10, umbral_novedad: 20 },

@@ -21,6 +21,7 @@ interface Ds {
   por_estado: Record<string, number>; por_novedad: Record<string, number>; por_dia: Record<string, number>;
   por_mes: Record<string, { guias: number; movilizadas: number; entregadas: number; en_proc_dev: number }>;
   por_transp: Record<string, Transp>;
+  flete_pdev: number | null; flete_prom: number | null; // débito estimado = flete de cada guía en proceso de devolución
 }
 interface Wallet { ds_id: string | null; ds_email: string | null; ds_nombre: string | null; saldo_disponible: number | null; saldo_retenido: number | null; fecha_retiro: string | null; monto_retiro: number | null; raw: Record<string, unknown> }
 interface Config { costo_devolucion: number | null; debitos_max_dia: number; umbral_pdev: number; umbral_novedad: number }
@@ -30,9 +31,9 @@ interface Data {
   mesesConDatos: string[]; totalUsuarios: number; totales: Record<string, number>; pareto: Ds[];
   asignaciones: { ds_id: string; comercial: string | null; updated_by: string; updated_at: string }[];
   encargados: Encargado[]; config: Config; walletCarga: { id: number; archivo: string; filas: number; cargado_por: string; cargado_el: string } | null;
-  wallet: Wallet[]; alertas: Alerta[];
+  wallet: Wallet[]; alertas: Alerta[]; fleteInfo: { meses: string[]; ordenes: number } | null;
 }
-interface Guia { mes: string; guia: string; fecha_orden: string; estatus: string; transportadora: string; novedad: string | null; concepto: string | null; dias_sin_cambio: number; fecha_ultimo_mov: string; valor: number; cliente: string; telefono: string; ciudad: string; producto: string }
+interface Guia { mes: string; guia: string; fecha_orden: string; estatus: string; transportadora: string; novedad: string | null; concepto: string | null; dias_sin_cambio: number; fecha_ultimo_mov: string; valor: number; cliente: string; telefono: string; ciudad: string; producto: string; flete_est: number | null; flete_nivel: string | null }
 
 const SIN = "Sin asignar";
 const MESES = ["octubre", "noviembre", "diciembre"];
@@ -112,8 +113,9 @@ export default function CierreAnio({ country }: { country: Pais }) {
 
   const usuarios = useMemo(() => (data?.pareto ?? []).map((d) => {
     const w = walletDe(d);
-    const debito = cfg.costo_devolucion ? d.en_proc_dev * cfg.costo_devolucion : null;
-    return { d, com: comDe(d), w, debito, dias: Math.ceil(d.en_proc_dev / Math.max(cfg.debitos_max_dia, 1)) };
+    const debito = cfg.costo_devolucion ? d.en_proc_dev * cfg.costo_devolucion : d.flete_pdev;
+    const porDia = debito !== null && d.en_proc_dev ? (debito / d.en_proc_dev) * Math.min(cfg.debitos_max_dia, d.en_proc_dev) : null;
+    return { d, com: comDe(d), w, debito, porDia, dias: Math.ceil(d.en_proc_dev / Math.max(cfg.debitos_max_dia, 1)) };
   }), [data, walletDe, cfg]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const alertasCalc: AlertaCalc[] = useMemo(() => {
@@ -122,11 +124,11 @@ export default function CierreAnio({ country }: { country: Pais }) {
       const { d, w, debito, dias } = u;
       if (debito !== null && w?.saldo_disponible !== null && w?.saldo_disponible !== undefined && w.saldo_disponible < debito) {
         out.push({ ds: d, tipo: "saldo", sev: "critica", titulo: "Saldo de wallet menor a los débitos que vienen",
-          texto: `${d.en_proc_dev} guías en proceso de devolución ≈ ${money(debito)} de débitos; saldo disponible ${money(w.saldo_disponible)}.` });
+          texto: `${d.en_proc_dev} guías en proceso de devolución ≈ ${money(debito)} de débitos (flete de cada guía); saldo disponible ${money(w.saldo_disponible)}.` });
       }
       if (d.en_proc_dev >= cfg.umbral_pdev) {
         out.push({ ds: d, tipo: "devoluciones", sev: d.en_proc_dev >= cfg.umbral_pdev * 5 ? "alta" : "media", titulo: `${d.en_proc_dev} guías en proceso de devolución`,
-          texto: `Valor ${money(d.valor_en_proc_dev)}. Limitar débitos a ${cfg.debitos_max_dia} por día con Vicky: ${dias} días de débitos.` });
+          texto: `Débito estimado ${money(debito)} (fletes). Limitar a ${cfg.debitos_max_dia} débitos por día con Vicky: ${dias} días, ≈ ${money(u.porDia)} por día.` });
       }
       if (d.novedad >= cfg.umbral_novedad) {
         out.push({ ds: d, tipo: "novedades", sev: d.novedad >= cfg.umbral_novedad * 5 ? "alta" : "media", titulo: `${d.novedad} novedades sin solucionar`,
@@ -148,7 +150,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
     return nombres.map((nombre) => {
       const us = usuarios.filter((u) => u.com === nombre);
       const s = (k: keyof Ds) => us.reduce((a, u) => a + Number(u.d[k] || 0), 0);
-      return { nombre, n: us.length, guias: s("guias"), mov: s("movilizadas"), ent: s("entregadas"), dev: s("devueltas"), pdev: s("en_proc_dev"), vpdev: s("valor_en_proc_dev"), nov: s("novedad"),
+      return { nombre, n: us.length, guias: s("guias"), mov: s("movilizadas"), ent: s("entregadas"), dev: s("devueltas"), pdev: s("en_proc_dev"), vpdev: us.reduce((a, u) => a + (u.debito ?? 0), 0), nov: s("novedad"),
         alertas: alertasCalc.filter((a) => (asig.get(a.ds.ds_id) || SIN) === nombre).length };
     }).filter((c) => c.n > 0 || c.nombre !== SIN).sort((a, b) => b.guias - a.guias);
   }, [usuarios, encargados, alertasCalc, asig]);
@@ -179,10 +181,10 @@ export default function CierreAnio({ country }: { country: Pais }) {
       `Hola ${encargado}, alerta Cierre 2026 · ${pais}`,
       `Usuario: ${a.ds.ds_nombre} (ID ${a.ds.ds_id})`,
       `• ${a.titulo}`,
-      `• En proceso de devolución: ${a.ds.en_proc_dev} guías (${money(a.ds.valor_en_proc_dev)})`,
+      `• En proceso de devolución: ${a.ds.en_proc_dev} guías · débito estimado ${money(u?.debito)} (flete de cada guía)`,
       `• Novedades sin solucionar: ${a.ds.novedad}`,
       w ? `• Wallet: disponible ${money(w.saldo_disponible)}${w.fecha_retiro ? ` · retiro ${w.fecha_retiro}` : ""}` : "",
-      a.ds.en_proc_dev > 0 ? `• Pedir a Vicky débitos de máximo ${cfg.debitos_max_dia} por día (${u?.dias ?? 0} días)` : "",
+      a.ds.en_proc_dev > 0 ? `• Pedir a Vicky débitos de máximo ${cfg.debitos_max_dia} por día (${u?.dias ?? 0} días, ≈ ${money(u?.porDia)} por día)` : "",
       `Por favor contactá al usuario hoy y contame cómo queda.`,
     ].filter(Boolean).join("\n");
   };
@@ -212,7 +214,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
             <h2 className="text-lg font-bold t-primary">🏁 Cierre del año 2026 — {pais}</h2>
             <p className="text-xs t-muted mt-1">
               Pareto del Q4 ({data.mesesConDatos.map((m) => m.charAt(0).toUpperCase() + m.slice(1)).join(", ") || "sin datos"}): {usuarios.length} usuarios de {fmt(data.totalUsuarios)} hacen {pct(pGuias, t.guias)} de las guías.
-              Datos de Operaciones (última carga de cada mes) · wallet {data.walletCarga ? `cargada el ${new Date(data.walletCarga.cargado_el).toLocaleDateString("es-AR")} (${fmt(data.walletCarga.filas)} usuarios)` : "sin cargar"}.
+              Datos de Operaciones (última carga de cada mes) · fletes {data.fleteInfo ? `del archivo comercial (${fmt(data.fleteInfo.ordenes)} órdenes)` : "sin archivo comercial del Q4"} · wallet {data.walletCarga ? `cargada el ${new Date(data.walletCarga.cargado_el).toLocaleDateString("es-AR")} (${fmt(data.walletCarga.filas)} usuarios)` : "sin cargar"}.
             </p>
           </div>
           <button onClick={cargar} className="text-xs px-3 py-1.5 rounded-full border border-orange-500/40 text-orange-400 hover:bg-orange-500/10">{loading ? "Actualizando…" : "↻ Actualizar"}</button>
@@ -230,7 +232,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
           <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-2">
             <Kpi label="Guías Q4 (Pareto)" value={fmt(pGuias)} sub={`${pct(pGuias, t.guias)} del país (${fmt(t.guias)})`} />
             <Kpi label="Entrega (Pareto)" value={pct(usuarios.reduce((a, u) => a + u.d.entregadas, 0), usuarios.reduce((a, u) => a + u.d.movilizadas, 0))} sub="entregadas ÷ movilizadas, en curso" color="#10b981" />
-            <Kpi label="En proceso de devolución" value={fmt(usuarios.reduce((a, u) => a + u.d.en_proc_dev, 0))} sub={money(usuarios.reduce((a, u) => a + u.d.valor_en_proc_dev, 0))} color="#ef4444" />
+            <Kpi label="En proceso de devolución" value={fmt(usuarios.reduce((a, u) => a + u.d.en_proc_dev, 0))} sub={`débitos ≈ ${money(usuarios.reduce((a, u) => a + (u.debito ?? 0), 0))}`} color="#ef4444" />
             <Kpi label="Novedades sin solucionar" value={fmt(usuarios.reduce((a, u) => a + u.d.novedad, 0))} sub={`${fmt(usuarios.reduce((a, u) => a + u.d.novedad_sol, 0))} solucionadas`} color="#eab308" />
             <Kpi label="Alertas activas" value={fmt(alertasCalc.length)} sub={`${alertasCalc.filter((a) => a.sev === "critica").length} críticas`} color="#a855f7" />
             <Kpi label="Sin comercial asignado" value={fmt(usuarios.filter((u) => u.com === SIN).length)} sub="asignalos en Usuarios del Pareto" color="#9ca3af" />
@@ -246,7 +248,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
                 <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
                   <div><p className="t-muted text-[10px]">Guías Q4</p><p className="font-mono font-bold t-primary">{fmt(c.guias)} <span className="t-muted font-normal">({pct(c.guias, pGuias)})</span></p></div>
                   <div><p className="t-muted text-[10px]">Entrega</p><p className="font-mono font-bold" style={{ color: "#10b981" }}>{pct(c.ent, c.mov)}</p></div>
-                  <div><p className="t-muted text-[10px]">En proc. devolución</p><p className="font-mono font-bold" style={{ color: "#ef4444" }}>{fmt(c.pdev)}</p><p className="text-[10px] t-muted">{money(c.vpdev)}</p></div>
+                  <div><p className="t-muted text-[10px]">En proc. devolución</p><p className="font-mono font-bold" style={{ color: "#ef4444" }}>{fmt(c.pdev)}</p><p className="text-[10px] t-muted">débito ≈ {money(c.vpdev)}</p></div>
                   <div><p className="t-muted text-[10px]">Novedades</p><p className="font-mono font-bold" style={{ color: "#eab308" }}>{fmt(c.nov)}</p></div>
                 </div>
                 <div className="flex items-center justify-between mt-3">
@@ -276,7 +278,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
             <h3 className="text-sm font-bold t-primary mb-3">📋 Comerciales: cartera y calidad</h3>
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead><tr className="border-b border-gray-700"><Th left>Comercial</Th><Th>Usuarios</Th><Th>Guías Q4</Th><Th>% del Pareto</Th><Th>Movilizadas</Th><Th>Entrega</Th><Th>Devolución</Th><Th>En proc. dev.</Th><Th>Valor en proc. dev.</Th><Th>Novedades</Th><Th>Alertas</Th></tr></thead>
+                <thead><tr className="border-b border-gray-700"><Th left>Comercial</Th><Th>Usuarios</Th><Th>Guías Q4</Th><Th>% del Pareto</Th><Th>Movilizadas</Th><Th>Entrega</Th><Th>Devolución</Th><Th>En proc. dev.</Th><Th>Débito estimado</Th><Th>Novedades</Th><Th>Alertas</Th></tr></thead>
                 <tbody>
                   {comerciales.map((c) => (
                     <tr key={c.nombre} className="border-b border-gray-800/50">
@@ -307,7 +309,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1100px]">
-              <thead><tr className="border-b border-gray-700"><Th left>#</Th><Th left>Usuario</Th><Th left>Comercial</Th><Th>Guías Q4</Th><Th>% país</Th><Th>Entrega</Th><Th>En proc. dev.</Th><Th>Valor en proc. dev.</Th><Th>Novedades</Th><Th>Saldo wallet</Th><Th>Días de débito</Th><Th left>Alertas</Th></tr></thead>
+              <thead><tr className="border-b border-gray-700"><Th left>#</Th><Th left>Usuario</Th><Th left>Comercial</Th><Th>Guías Q4</Th><Th>% país</Th><Th>Entrega</Th><Th>En proc. dev.</Th><Th>Débito estimado</Th><Th>Novedades</Th><Th>Saldo wallet</Th><Th>Días de débito</Th><Th left>Alertas</Th></tr></thead>
               <tbody>
                 {lista.map((u, i) => {
                   const als = alertasCalc.filter((a) => a.ds.ds_id === u.d.ds_id);
@@ -326,7 +328,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
                         </select>
                       </td>
                       <Td bold>{fmt(u.d.guias)}</Td><Td>{pct(u.d.guias, t.guias)}</Td><Td color="#10b981">{pct(u.d.entregadas, u.d.movilizadas)}</Td>
-                      <Td bold color={u.d.en_proc_dev >= cfg.umbral_pdev ? "#ef4444" : undefined}>{fmt(u.d.en_proc_dev)}</Td><Td>{money(u.d.valor_en_proc_dev)}</Td>
+                      <Td bold color={u.d.en_proc_dev >= cfg.umbral_pdev ? "#ef4444" : undefined}>{fmt(u.d.en_proc_dev)}</Td><Td>{money(u.debito)}</Td>
                       <Td color={u.d.novedad >= cfg.umbral_novedad ? "#eab308" : undefined}>{fmt(u.d.novedad)}</Td>
                       <Td color={u.debito !== null && u.w?.saldo_disponible !== null && u.w?.saldo_disponible !== undefined && u.w.saldo_disponible < u.debito ? "#ef4444" : undefined}>{u.w ? money(u.w.saldo_disponible) : "—"}</Td>
                       <Td>{u.d.en_proc_dev ? u.dias : "—"}</Td>
@@ -337,7 +339,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
               </tbody>
             </table>
           </div>
-          <p className="text-[11px] t-muted mt-3">Días de débito = guías en proceso de devolución ÷ {cfg.debitos_max_dia} débitos por día. El comercial elegido se guarda al instante. Usuarios asignados que salen del Pareto siguen apareciendo.</p>
+          <p className="text-[11px] t-muted mt-3">Débito estimado = suma del flete de cada guía en proceso de devolución (promedio de flete del usuario por transportadora, del archivo comercial). Días de débito = guías en proceso de devolución ÷ {cfg.debitos_max_dia} débitos por día. El comercial elegido se guarda al instante. Usuarios asignados que salen del Pareto siguen apareciendo.</p>
         </div>
       )}
 
@@ -352,7 +354,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
         <div className="glass-card p-5">
           <h3 className="text-sm font-bold t-primary">🚨 Alertas para los encargados</h3>
           <p className="text-[11px] t-muted mb-3">
-            Reglas: en proceso de devolución ≥ {cfg.umbral_pdev} · novedades sin solucionar ≥ {cfg.umbral_novedad} · saldo de wallet menor a los débitos que vienen{cfg.costo_devolucion ? ` (${money(cfg.costo_devolucion)} por devolución)` : " (cargá el costo por devolución en Configuración)"}.
+            Reglas: en proceso de devolución ≥ {cfg.umbral_pdev} · novedades sin solucionar ≥ {cfg.umbral_novedad} · saldo de wallet menor a los débitos que vienen ({cfg.costo_devolucion ? `débito fijo de ${money(cfg.costo_devolucion)} por devolución` : "débito = flete de cada guía"}).
             El botón abre WhatsApp con el mensaje armado al comercial asignado y queda registrado.
           </p>
           <div className="space-y-2">
@@ -388,7 +390,7 @@ export default function CierreAnio({ country }: { country: Pais }) {
 // Detalle operativo de un usuario
 // ═══════════════════════════════════════════════════════════════════
 function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ultimaAlerta, canDownload }: {
-  u: { d: Ds; com: string; w: Wallet | null; debito: number | null; dias: number } | null;
+  u: { d: Ds; com: string; w: Wallet | null; debito: number | null; porDia: number | null; dias: number } | null;
   usuarios: { d: Ds; com: string }[]; setSel: (id: string) => void; country: Pais; money: (n: number | null | undefined) => string; cfg: Config;
   alertas: AlertaCalc[]; enviar: (a: AlertaCalc) => void; ultimaAlerta: Map<string, Alerta>; canDownload: boolean;
 }) {
@@ -411,7 +413,7 @@ function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ul
   const cuenta = (k: string) => (guias ?? []).filter((g) => grupoDe(g) === k).length;
 
   const descargar = () => {
-    const cols: (keyof Guia)[] = ["guia", "fecha_orden", "estatus", "transportadora", "novedad", "dias_sin_cambio", "valor", "cliente", "telefono", "ciudad", "producto"];
+    const cols: (keyof Guia)[] = ["guia", "fecha_orden", "estatus", "transportadora", "novedad", "dias_sin_cambio", "valor", "flete_est", "cliente", "telefono", "ciudad", "producto"];
     const csv = [cols.join(";"), ...filtradas.map((g) => cols.map((c) => `"${String(g[c] ?? "").replace(/"/g, '""')}"`).join(";"))].join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
@@ -479,8 +481,9 @@ function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ul
           ) : <p className="text-xs t-muted">Sin datos de wallet para este usuario. Cargá el archivo en Configuración y wallet.</p>}
           <div className="mt-4 rounded-lg p-3" style={{ background: "rgba(239,68,68,0.08)" }}>
             <p className="text-xs t-primary"><b>{fmt(d.en_proc_dev)}</b> guías en proceso de devolución → con un tope de <b>{cfg.debitos_max_dia} débitos por día</b>, son <b>{u.dias} días</b> de débitos.</p>
-            {u.debito !== null && <p className="text-xs t-primary mt-1">Débito estimado: <b>{money(u.debito)}</b>{w?.saldo_disponible !== null && w?.saldo_disponible !== undefined ? <> · {w.saldo_disponible >= u.debito ? <span style={{ color: "#10b981" }}>el saldo lo cubre</span> : <span style={{ color: "#ef4444" }}>faltan {money(u.debito - w.saldo_disponible)}</span>}</> : null}</p>}
-            {u.debito === null && <p className="text-[11px] t-muted mt-1">Cargá el costo por devolución en Configuración para estimar el monto.</p>}
+            {u.debito !== null && <p className="text-xs t-primary mt-1">Débito estimado (flete de cada guía): <b>{money(u.debito)}</b>{d.flete_prom ? <span className="t-muted"> · flete promedio {money(d.flete_prom)}</span> : null}{w?.saldo_disponible !== null && w?.saldo_disponible !== undefined ? <> · {w.saldo_disponible >= u.debito ? <span style={{ color: "#10b981" }}>el saldo lo cubre</span> : <span style={{ color: "#ef4444" }}>faltan {money(u.debito - w.saldo_disponible)}</span>}</> : null}</p>}
+            {u.porDia !== null && <p className="text-xs t-primary mt-1">Con el tope: ≈ <b>{money(u.porDia)} por día</b> durante {u.dias} días.</p>}
+            {u.debito === null && <p className="text-[11px] t-muted mt-1">Sin fletes del Q4: subí el archivo comercial del mes para estimar el monto.</p>}
           </div>
         </div>
 
@@ -537,17 +540,18 @@ function Detalle({ u, usuarios, setSel, country, money, cfg, alertas, enviar, ul
           </div>
         </div>
         {cargando && <p className="text-xs t-muted">Buscando las guías del usuario…</p>}
+        {!cargando && filtradas.length > 0 && <p className="text-[11px] t-muted mb-2">{fmt(filtradas.length)} guías · flete estimado total {money(filtradas.reduce((a, g) => a + (g.flete_est ?? 0), 0))}{grupo === "pdev" ? " (lo que se va a debitar)" : ""}. Flete estimado con el promedio del usuario en esa transportadora y ciudad (el archivo comercial no trae número de guía).</p>}
         {!cargando && (
           <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
             <table className="w-full min-w-[1000px]">
-              <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}><tr className="border-b border-gray-700"><Th left>Guía</Th><Th left>Fecha orden</Th><Th left>Estado</Th><Th left>Transportadora</Th><Th left>Novedad</Th><Th>Días sin cambio</Th><Th>Valor</Th><Th left>Cliente</Th><Th left>Teléfono</Th><Th left>Ciudad</Th></tr></thead>
+              <thead className="sticky top-0" style={{ background: "var(--bg-card)" }}><tr className="border-b border-gray-700"><Th left>Guía</Th><Th left>Fecha orden</Th><Th left>Estado</Th><Th left>Transportadora</Th><Th left>Novedad</Th><Th>Días sin cambio</Th><Th>Valor</Th><Th>Flete est.</Th><Th left>Cliente</Th><Th left>Teléfono</Th><Th left>Ciudad</Th></tr></thead>
               <tbody>
                 {filtradas.slice(0, 500).map((g) => (
                   <tr key={`${g.mes}-${g.guia}`} className="border-b border-gray-800/50">
                     <Td left>{g.guia}</Td><Td left>{g.fecha_orden}</Td><Td left>{g.estatus}</Td><Td left>{g.transportadora}</Td>
                     <td className="py-1.5 px-2 text-[11px] t-secondary max-w-[220px] truncate" title={g.novedad ?? ""}>{g.novedad ?? "—"}</td>
                     <Td bold color={g.dias_sin_cambio >= 5 ? "#ef4444" : g.dias_sin_cambio >= 3 ? "#eab308" : undefined}>{g.dias_sin_cambio}</Td>
-                    <Td>{money(g.valor)}</Td><Td left>{g.cliente}</Td><Td left>{g.telefono}</Td><Td left>{g.ciudad}</Td>
+                    <Td>{money(g.valor)}</Td><Td>{money(g.flete_est)}</Td><Td left>{g.cliente}</Td><Td left>{g.telefono}</Td><Td left>{g.ciudad}</Td>
                   </tr>
                 ))}
               </tbody>
@@ -661,7 +665,7 @@ function Configuracion({ country, data, post, recargar, money }: { country: Pais
         <div className="glass-card p-5">
           <h3 className="text-sm font-bold t-primary">🎚️ Reglas de alertas y débitos</h3>
           <div className="grid grid-cols-2 gap-3 mt-3 text-xs">
-            {([["costo_devolucion", `Débito por devolución (${country === "ar" ? "$" : "Gs"})`, "vacío = no estimar monto"], ["debitos_max_dia", "Débitos máximos por día", "acordado con Vicky"], ["umbral_pdev", "Alerta desde (en proc. de devolución)", "guías"], ["umbral_novedad", "Alerta desde (novedades sin solucionar)", "guías"]] as const).map(([k, l, h]) => (
+            {([["costo_devolucion", `Débito fijo por devolución (${country === "ar" ? "$" : "Gs"}, opcional)`, "vacío = se usa el flete de cada guía"], ["debitos_max_dia", "Débitos máximos por día", "acordado con Vicky"], ["umbral_pdev", "Alerta desde (en proc. de devolución)", "guías"], ["umbral_novedad", "Alerta desde (novedades sin solucionar)", "guías"]] as const).map(([k, l, h]) => (
               <label key={k} className="flex flex-col gap-1">
                 <span className="t-muted text-[11px]">{l}</span>
                 <input type="number" value={cfg[k] as number | string} onChange={(ev) => setCfg({ ...cfg, [k]: ev.target.value })} className="px-2 py-1 rounded-lg border border-gray-700 bg-transparent t-primary" />
