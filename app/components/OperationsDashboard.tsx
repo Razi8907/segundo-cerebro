@@ -746,6 +746,17 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
     country: r.country || country,
   }), [country]);
 
+  // La API manda { cols, data } (compacto) con la fecha de carga aparte; también acepta el formato viejo { rows }.
+  const filasDe = (d: any): any[] => {
+    if (Array.isArray(d)) return d;
+    if (Array.isArray(d?.cols) && Array.isArray(d?.data)) {
+      const cols: string[] = d.cols;
+      const fc = String(d.latestFechaCarga || "");
+      return d.data.map((v: unknown[]) => { const o: any = { fecha_carga: fc }; cols.forEach((c, i) => { o[c] = v[i]; }); return o; });
+    }
+    return d?.rows || [];
+  };
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     setRows([]);
@@ -777,13 +788,13 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
       if (resDailyPrev.ok) { const d = await resDailyPrev.json(); setDailyPrev(Array.isArray(d?.days) ? d.days : []); }
       if (resPrev.ok) {
         const dataPrev = await resPrev.json();
-        const rawPrev = Array.isArray(dataPrev) ? dataPrev : dataPrev.rows || [];
+        const rawPrev = filasDe(dataPrev);
         setPrevRows(rawPrev.map(mapRow));
         setPrevFechaCarga(String(dataPrev?.latestFechaCarga || ""));
       }
       if (resCur.ok) {
         const data = await resCur.json();
-        const rawRows = Array.isArray(data) ? data : data.rows || [];
+        const rawRows = filasDe(data);
         const hist = Array.isArray(data?.uploadHistory) ? data.uploadHistory : [];
         setServerUploadHistory(
           hist.map((h: any) => ({ name: String(h.fecha_carga || ""), count: Number(h.cnt) || 0 }))

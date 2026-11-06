@@ -17,6 +17,13 @@ const isColumnMissing = (err: any) => {
 // índice (country, mes, fecha_carga): en días con muchas cargas, el índice de fecha_carga
 // sola recorría cientos de miles de filas de otros meses y la consulta se cortaba (julio).
 // El historial de cargas viene de ops_upload_history_fast (sin contar todo el mes).
+const COLS = [
+  "guia", "fecha_reporte", "dropshipper", "dropshipper_id", "dropshipper_email", "dropshipper_celular", "tienda", "proveedor",
+  "transportadora", "estatus", "fecha_procesamiento", "fecha_ultimo_movimiento", "hora_ultimo_movimiento", "ciudad_destino",
+  "departamento_destino", "cliente", "telefono", "novedad", "concepto_ultimo_mov", "comercial", "valor_orden",
+  "ganancia_si_entregado", "producto",
+] as const;
+
 export async function GET(req: NextRequest) {
   const country = req.nextUrl.searchParams.get("country") || "py";
   const mes = req.nextUrl.searchParams.get("mes") || "abril";
@@ -42,29 +49,56 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ rows: [], uploadHistory: [], latestFechaCarga: "" });
   }
 
-  const PAGE_SIZE = 1000;
-  const allRows: any[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await supabase.rpc("get_ops_page", {
-      p_country: country, p_mes: mes, p_fecha_carga: latestFechaCarga, p_offset: from, p_limit: PAGE_SIZE,
-    });
-    if (error) return NextResponse.json({ error: `página ${from / PAGE_SIZE + 1}: ${error.message}` }, { status: 500 });
-    const page = (data as any[]) || [];
-    allRows.push(...page);
-    if (page.length < PAGE_SIZE) break;
-    if (from > 300000) break;
-  }
-
+  // Historial primero: trae el total de filas de la última carga, así las páginas se piden
+  // en paralelo (de a 4) en vez de una por una — octubre PY son ~60 páginas y en serie
+  // se pasaba del minuto que permite Vercel.
   let uploadHistory: { fecha_carga: string; cnt: number }[] = [];
   const rpc = await supabase.rpc("ops_upload_history_fast", { p_country: country, p_mes: mes });
   if (!rpc.error && Array.isArray(rpc.data)) {
     uploadHistory = rpc.data.map((r: any) => ({ fecha_carga: r.fecha_carga, cnt: Number(r.cnt) || 0 }));
-  } else {
-    uploadHistory = [{ fecha_carga: latestFechaCarga, cnt: allRows.length }];
   }
 
+  const PAGE_SIZE = 1000;
+  const CONCURRENCY = 4;
+  const getPage = async (from: number) => {
+    for (let intento = 1; ; intento++) {
+      const { data, error } = await supabase.rpc("get_ops_page", {
+        p_country: country, p_mes: mes, p_fecha_carga: latestFechaCarga, p_offset: from, p_limit: PAGE_SIZE,
+      });
+      if (!error) return (data as any[]) || [];
+      if (intento >= 2) throw new Error(`página ${from / PAGE_SIZE + 1}: ${error.message}`);
+    }
+  };
+  const allRows: any[] = [];
+  try {
+    const total = uploadHistory.find((h) => h.fecha_carga === latestFechaCarga)?.cnt || 0;
+    if (total > 0) {
+      const offsets = Array.from({ length: Math.ceil(total / PAGE_SIZE) + 1 }, (_, i) => i * PAGE_SIZE);
+      const paginas: any[][] = new Array(offsets.length);
+      let next = 0;
+      await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
+        while (next < offsets.length) { const i = next++; paginas[i] = await getPage(offsets[i]); }
+      }));
+      for (const p of paginas) allRows.push(...p);
+    } else {
+      for (let from = 0; ; from += PAGE_SIZE) {
+        const page = await getPage(from);
+        allRows.push(...page);
+        if (page.length < PAGE_SIZE || from > 300000) break;
+      }
+    }
+  } catch (e) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : "error leyendo la carga" }, { status: 500 });
+  }
+  if (!uploadHistory.length) uploadHistory = [{ fecha_carga: latestFechaCarga, cnt: allRows.length }];
+
+  // Formato compacto: nombres de columna una sola vez + una lista de valores por guía, solo
+  // con los campos que usa la página (octubre PY pasaba de 50 MB a ~la mitad). La fecha de
+  // carga es la misma para todas las filas y va aparte.
+  const data = allRows.map((r) => COLS.map((c) => (c === "fecha_reporte" ? r.fecha_reporte || r.fecha_orden || "" : r[c] ?? "")));
   return NextResponse.json({
-    rows: allRows,
+    cols: COLS,
+    data,
     uploadHistory,
     latestFechaCarga,
     count: allRows.length,
