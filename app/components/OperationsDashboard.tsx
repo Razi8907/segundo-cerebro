@@ -786,6 +786,14 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
       }
       return res ?? new Response(JSON.stringify({ error: "error de red" }), { status: 599 });
     };
+    // Si la API devuelve { url }, los datos ya armados se bajan directo de Storage
+    const abrirOps = async (res: Response) => {
+      const j = await res.json();
+      if (!j?.url) return j;
+      const r2 = await fetch(j.url);
+      if (!r2.ok) throw new Error(`No se pudo bajar la carga (HTTP ${r2.status})`);
+      return { ...(await r2.json()), uploadHistory: j.uploadHistory, latestFechaCarga: j.latestFechaCarga };
+    };
     try {
       const [resCur, resPrev, resOpCur, resOpPrev, resDailyCur, resDailyPrev] = await Promise.all([
         leerOps(`/api/data/operations?country=${country}&mes=${mes}`),
@@ -800,7 +808,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
       if (resDailyCur.ok) { const d = await resDailyCur.json(); setDailyCurr(Array.isArray(d?.days) ? d.days : []); }
       if (resDailyPrev.ok) { const d = await resDailyPrev.json(); setDailyPrev(Array.isArray(d?.days) ? d.days : []); }
       if (resPrev.ok) {
-        const dataPrev = await resPrev.json();
+        const dataPrev = await abrirOps(resPrev);
         const rawPrev = filasDe(dataPrev);
         setPrevRows(rawPrev.map(mapRow));
         setPrevFechaCarga(String(dataPrev?.latestFechaCarga || ""));
@@ -810,7 +818,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
         setLecturaError(String(j?.error || `HTTP ${resCur.status}`));
       }
       if (resCur.ok) {
-        const data = await resCur.json();
+        const data = await abrirOps(resCur);
         const rawRows = filasDe(data);
         const hist = Array.isArray(data?.uploadHistory) ? data.uploadHistory : [];
         setServerUploadHistory(
@@ -821,6 +829,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
       }
     } catch (e) {
       console.error("Error fetching operations:", e);
+      setLecturaError(e instanceof Error ? e.message : "error al leer los datos");
     } finally {
       setLoading(false);
     }

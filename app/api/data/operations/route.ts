@@ -60,51 +60,60 @@ export async function GET(req: NextRequest) {
     uploadHistory = rpc.data.map((r: any) => ({ fecha_carga: r.fecha_carga, cnt: Number(r.cnt) || 0 }));
   }
 
-  const PAGE_SIZE = 1000;
-  const CONCURRENCY = 4;
-  const getPage = async (from: number) => {
+  // ── Datos de la carga ──
+  // Se arman UNA vez por carga y se guardan listos en Storage (ops-cache/<pais>/<mes>/<fecha>_<filas>.json);
+  // las siguientes aperturas bajan ese archivo directo desde Supabase, sin consultar la base
+  // ni pasar los datos por Vercel (octubre PY = 60k guías: armarlo en cada apertura pasaba del minuto).
+  const total = uploadHistory.find((h) => h.fecha_carga === latestFechaCarga)?.cnt || 0;
+  const cachePath = `ops-cache/${country}/${mes}/${latestFechaCarga}${total ? `_${total}` : ""}.json`;
+  const bucket = supabase.storage.from("uploads");
+  const firmada = await bucket.createSignedUrl(cachePath, 600);
+  if (!firmada.error && firmada.data?.signedUrl) {
+    return NextResponse.json({ url: firmada.data.signedUrl, uploadHistory, latestFechaCarga });
+  }
+
+  const PAGE_SIZE = 5000;
+  const CONCURRENCY = 3;
+  const getPage = async (from: number): Promise<unknown[][]> => {
     for (let intento = 1; ; intento++) {
-      const { data, error } = await supabase.rpc("get_ops_page", {
+      const { data, error } = await supabase.rpc("get_ops_compact", {
         p_country: country, p_mes: mes, p_fecha_carga: latestFechaCarga, p_offset: from, p_limit: PAGE_SIZE,
       });
-      if (!error) return (data as any[]) || [];
-      if (intento >= 3) throw new Error(`página ${from / PAGE_SIZE + 1}: ${error.message}`);
+      if (!error) return Array.isArray(data) ? (data as unknown[][]) : [];
+      if (intento >= 3) throw new Error(`bloque ${from / PAGE_SIZE + 1}: ${error.message}`);
     }
   };
-  const allRows: any[] = [];
+  const data: unknown[][] = [];
   try {
-    const total = uploadHistory.find((h) => h.fecha_carga === latestFechaCarga)?.cnt || 0;
     if (total > 0) {
       const offsets = Array.from({ length: Math.ceil(total / PAGE_SIZE) + 1 }, (_, i) => i * PAGE_SIZE);
-      const paginas: any[][] = new Array(offsets.length);
+      const paginas: unknown[][][] = new Array(offsets.length);
       let next = 0;
       await Promise.all(Array.from({ length: CONCURRENCY }, async () => {
         while (next < offsets.length) { const i = next++; paginas[i] = await getPage(offsets[i]); }
       }));
-      for (const p of paginas) allRows.push(...p);
+      for (const p of paginas) data.push(...p);
     } else {
       for (let from = 0; ; from += PAGE_SIZE) {
         const page = await getPage(from);
-        allRows.push(...page);
+        data.push(...page);
         if (page.length < PAGE_SIZE || from > 300000) break;
       }
     }
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : "error leyendo la carga" }, { status: 500 });
   }
-  if (!uploadHistory.length) uploadHistory = [{ fecha_carga: latestFechaCarga, cnt: allRows.length }];
+  if (!uploadHistory.length) uploadHistory = [{ fecha_carga: latestFechaCarga, cnt: data.length }];
 
-  // Formato compacto: nombres de columna una sola vez + una lista de valores por guía, solo
-  // con los campos que usa la página (octubre PY pasaba de 50 MB a ~la mitad). La fecha de
-  // carga es la misma para todas las filas y va aparte.
-  const data = allRows.map((r) => COLS.map((c) => (c === "fecha_reporte" ? r.fecha_reporte || r.fecha_orden || "" : r[c] ?? "")));
-  return NextResponse.json({
-    cols: COLS,
-    data,
-    uploadHistory,
-    latestFechaCarga,
-    count: allRows.length,
-  });
+  const payload = { cols: COLS, data, latestFechaCarga, count: data.length };
+  const cuerpo = JSON.stringify(payload);
+  // Guardar el armado para las próximas aperturas y devolver el link (no los datos) si es grande
+  const subida = await bucket.upload(cachePath, new Blob([cuerpo], { type: "application/json" }), { upsert: true, contentType: "application/json" });
+  if (!subida.error && cuerpo.length > 3_000_000) {
+    const f2 = await bucket.createSignedUrl(cachePath, 600);
+    if (!f2.error && f2.data?.signedUrl) return NextResponse.json({ url: f2.data.signedUrl, uploadHistory, latestFechaCarga });
+  }
+  return NextResponse.json({ ...payload, uploadHistory });
 }
 
 // POST /api/data/operations — upload daily data (accumulative)
@@ -205,6 +214,12 @@ export async function POST(req: NextRequest) {
       }
       inserted += batch.length;
     }
+
+    // La carga cambió: borrar los armados guardados de esa fecha para que se rearmen
+    const carpeta = `ops-cache/${country}/${mes}`;
+    const ls = await supabase.storage.from("uploads").list(carpeta, { search: String(fecha_carga) });
+    const viejos = (ls.data ?? []).filter((f) => f.name.startsWith(String(fecha_carga))).map((f) => `${carpeta}/${f.name}`);
+    if (viejos.length) await supabase.storage.from("uploads").remove(viejos);
 
     return NextResponse.json({ success: true, inserted });
   } catch (err) {
