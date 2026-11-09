@@ -696,6 +696,7 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
   const [uploading, setUploading] = useState(false);
   const [tab, setTab] = useState<TabKey>("resumen");
   const [error, setError] = useState("");
+  const [lecturaError, setLecturaError] = useState(""); // la lectura falló (no es que falten datos)
   const [fComercial, setFComercial] = useState("");
   const [fTransportadora, setFTransportadora] = useState("");
   const [fDropshipper, setFDropshipper] = useState("");
@@ -773,10 +774,22 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
     const enCursoFetch = hoy.getFullYear() === 2026 && hoy.getMonth() + 1 === MES_MONTH_NUM[mes];
     const alPrev = enCursoFetch ? `&al=${shiftDateToMes(hoyIso, prevMes)}` : "";
     setPrevFechaCarga("");
+    setLecturaError("");
+    // Si la base está ocupada (por ejemplo mientras se sube un archivo) la lectura puede dar
+    // timeout: se reintenta hasta 3 veces antes de rendirse.
+    const leerOps = async (url: string) => {
+      let res: Response | null = null;
+      for (let intento = 1; intento <= 3; intento++) {
+        try { res = await fetch(url); } catch { res = null; }
+        if (res && (res.ok || res.status === 401 || res.status === 403)) return res;
+        if (intento < 3) await new Promise((r) => setTimeout(r, 2500 * intento));
+      }
+      return res ?? new Response(JSON.stringify({ error: "error de red" }), { status: 599 });
+    };
     try {
       const [resCur, resPrev, resOpCur, resOpPrev, resDailyCur, resDailyPrev] = await Promise.all([
-        fetch(`/api/data/operations?country=${country}&mes=${mes}`),
-        fetch(`/api/data/operations?country=${country}&mes=${prevMes}${alPrev}`),
+        leerOps(`/api/data/operations?country=${country}&mes=${mes}`),
+        leerOps(`/api/data/operations?country=${country}&mes=${prevMes}${alPrev}`),
         fetch(`/api/data/operational?country=${country}&mes=${mes}`),
         fetch(`/api/data/operational?country=${country}&mes=${prevMes}`),
         fetch(`/api/data/daily-tracking?country=${country}&mes=${mes}`),
@@ -791,6 +804,10 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
         const rawPrev = filasDe(dataPrev);
         setPrevRows(rawPrev.map(mapRow));
         setPrevFechaCarga(String(dataPrev?.latestFechaCarga || ""));
+      }
+      if (!resCur.ok) {
+        const j = await resCur.json().catch(() => ({}));
+        setLecturaError(String(j?.error || `HTTP ${resCur.status}`));
       }
       if (resCur.ok) {
         const data = await resCur.json();
@@ -1525,6 +1542,22 @@ export default function OperationsDashboard({ country, mes: mesProp }: { country
     return (
       <div className="glass-card p-6 border-cyan-500/30">
         <p className="t-secondary text-sm animate-pulse">Cargando datos operacionales...</p>
+      </div>
+    );
+  }
+
+  if (rows.length === 0 && lecturaError) {
+    return (
+      <div className="glass-card p-6 border-red-500/40">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <div>
+            <h2 className="text-xl font-bold t-primary mb-1">📋 Dashboard Operacional — {country === "py" ? "Paraguay" : "Argentina"}</h2>
+            <p className="text-sm text-red-400">No se pudieron leer los datos de {MES_LABEL[mes]}: la base no respondió a tiempo. Los datos cargados siguen guardados; no hace falta volver a subir el archivo.</p>
+            <p className="text-[11px] t-muted mt-1">Detalle: {lecturaError}</p>
+          </div>
+          <MesSwitcher mes={mes} setMes={setMes} />
+        </div>
+        <button onClick={() => fetchData()} className="px-4 py-2.5 rounded-lg dropi-gradient text-white text-sm font-medium hover:opacity-90">↻ Reintentar</button>
       </div>
     );
   }

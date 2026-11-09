@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
     latestFechaCarga = (r.data?.[0]?.fecha_carga as string) || "";
   }
   if (!latestFechaCarga) {
-    const fcRes = await supabase.rpc("ops_mes_fecha_carga", { p_country: country, p_mes: mes });
+    let fcRes = await supabase.rpc("ops_mes_fecha_carga", { p_country: country, p_mes: mes });
+    if (fcRes.error) fcRes = await supabase.rpc("ops_mes_fecha_carga", { p_country: country, p_mes: mes }); // reintento si la base estaba ocupada
     if (fcRes.error) return NextResponse.json({ error: fcRes.error.message }, { status: 500 });
     latestFechaCarga = (fcRes.data as string | null) || "";
   }
@@ -53,7 +54,8 @@ export async function GET(req: NextRequest) {
   // en paralelo (de a 4) en vez de una por una — octubre PY son ~60 páginas y en serie
   // se pasaba del minuto que permite Vercel.
   let uploadHistory: { fecha_carga: string; cnt: number }[] = [];
-  const rpc = await supabase.rpc("ops_upload_history_fast", { p_country: country, p_mes: mes });
+  let rpc = await supabase.rpc("ops_upload_history_fast", { p_country: country, p_mes: mes });
+  if (rpc.error) rpc = await supabase.rpc("ops_upload_history_fast", { p_country: country, p_mes: mes });
   if (!rpc.error && Array.isArray(rpc.data)) {
     uploadHistory = rpc.data.map((r: any) => ({ fecha_carga: r.fecha_carga, cnt: Number(r.cnt) || 0 }));
   }
@@ -66,7 +68,7 @@ export async function GET(req: NextRequest) {
         p_country: country, p_mes: mes, p_fecha_carga: latestFechaCarga, p_offset: from, p_limit: PAGE_SIZE,
       });
       if (!error) return (data as any[]) || [];
-      if (intento >= 2) throw new Error(`página ${from / PAGE_SIZE + 1}: ${error.message}`);
+      if (intento >= 3) throw new Error(`página ${from / PAGE_SIZE + 1}: ${error.message}`);
     }
   };
   const allRows: any[] = [];
