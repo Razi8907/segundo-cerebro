@@ -12,6 +12,7 @@ import UsuariosRegistrados from "../components/UsuariosRegistrados";
 import Q2Resumen from "../components/Q2Resumen";
 import TrimestreResumen from "../components/TrimestreResumen";
 import CierreAnio from "../components/CierreAnio";
+import AnioResumen from "../components/AnioResumen";
 import TrendChart from "../components/TrendChart";
 import ProveedoresTable from "../components/ProveedoresTable";
 import SellersTable from "../components/SellersTable";
@@ -190,7 +191,7 @@ function getResumenByMes(mes: MesFilter, allData: any) {
   return norm(r[mes]);
 }
 
-type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr" | "cierre";
+type Sector = "comercial" | "estrategia" | "operaciones" | "finanzas" | "seguimiento" | "kpis_okr" | "cierre" | "anio";
 type ComercialSub = "general" | "acciones_urgentes" | "analisis" | "minimo" | "minimo_sem" | "minimo_mes" | "dropshippers" | "proveedores" | "crm";
 type EstrategiaSub = "segmentos" | "registrados";
 
@@ -290,6 +291,7 @@ export default function ParaguayDashboard() {
       <div className="border-b" style={{ borderColor: "var(--bg-card-border)", background: "var(--bg-card)" }}>
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 flex gap-0">
           {([
+            { key: "anio" as Sector, label: "📅 Año 2026", allowed: canComercial || canOperaciones },
             { key: "comercial" as Sector, label: "📊 Comercial", allowed: canComercial },
             { key: "estrategia" as Sector, label: "🎯 Estrategia Usuarios", allowed: canComercial },
             { key: "operaciones" as Sector, label: "🏭 Operaciones", allowed: canOperaciones },
@@ -315,8 +317,9 @@ export default function ParaguayDashboard() {
 
       <main className="max-w-[1600px] mx-auto px-4 sm:px-6 py-8 space-y-8">
         {sector === "cierre" && <CierreAnio country="py" />}
+        {sector === "anio" && <AnioResumen country="py" />}
 
-        {isQ2 && sector !== "estrategia" && sector !== "cierre" && (
+        {isQ2 && sector !== "estrategia" && sector !== "cierre" && sector !== "anio" && (
           <Q2Resumen country="py" proveedores={proveedores} />
         )}
 
