@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  Bar, BarChart, CartesianGrid, ComposedChart, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, ComposedChart, LabelList, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 
 type Pais = "ar" | "py";
@@ -42,6 +42,23 @@ const pct = (a: number, b: number) => { const v = pctN(a, b); return v === null 
 const pctV = (v: number | null | undefined) => (v === null || v === undefined || !Number.isFinite(v) ? "—" : `${v.toFixed(1).replace(".", ",")}%`);
 const tip = { contentStyle: { background: "#1a1a1a", border: "1px solid #f97316", fontSize: 12 }, itemStyle: { color: "#fff" }, labelStyle: { color: "#fff" } };
 const trimestre = (m: string) => `Q${Math.floor(MESES.indexOf(m) / 3) + 1}`;
+
+// ─── Números en las puntas ───
+const corto = (v: unknown) => { const n = Number(v); return !Number.isFinite(n) || n === 0 ? "" : fmt(n); };
+const pctCorto = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && v !== null && v !== undefined ? `${n.toFixed(1).replace(".", ",")}%` : ""; };
+// Etiqueta arriba de cada barra / punto (gráficos mensuales)
+const etiqueta = (color: string, formato: (v: unknown) => string = corto, pos: "top" | "insideTop" | "center" = "top") =>
+  <LabelList position={pos} formatter={(v: unknown) => formato(v)} style={{ fontSize: 9, fill: color, fontWeight: 600 }} />;
+// Solo el último punto con dato de la curva (gráficos diarios, muchos puntos)
+const punta = (datos: Record<string, unknown>[], key: string, color: string, formato: (v: unknown) => string = (v) => fmt(Number(v))) => {
+  let ult = -1;
+  datos.forEach((d, i) => { if (d[key] !== undefined && d[key] !== null) ult = i; });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const Etq = (p: any) => (p.index === ult && p.value !== undefined && p.value !== null
+    ? <text x={p.x + 4} y={p.y} dy={4} fontSize={10} fontWeight={700} fill={color}>{formato(p.value)}</text> : null);
+  Etq.displayName = `punta-${key}`;
+  return Etq;
+};
 
 function Kpi({ label, value, sub, color = "#f97316" }: { label: string; value: string; sub?: React.ReactNode; color?: string }) {
   return (
@@ -218,11 +235,11 @@ function Contenido({ data, country, tab, setTab, pais }: { data: Data; country: 
                 <YAxis yAxisId="p" orientation="right" fontSize={10} stroke="#888" domain={[0, 100]} tickFormatter={(v) => `${v}%`} width={40} />
                 <Tooltip {...tip} formatter={(v, name) => (String(name).includes("%") ? pctV(Number(v)) : fmt(Number(v)))} />
                 <Legend wrapperStyle={{ fontSize: 11 }} />
-                <Bar yAxisId="v" dataKey="Ingresadas" fill="#3b82f6" opacity={0.55} radius={[3, 3, 0, 0]} />
-                <Bar yAxisId="v" dataKey="Movilizadas" fill="#f97316" radius={[3, 3, 0, 0]} />
-                <Line yAxisId="v" dataKey="Meta" stroke="#eab308" strokeDasharray="6 4" strokeWidth={2} dot={{ r: 3 }} connectNulls={false} />
-                <Line yAxisId="p" dataKey="Entrega %" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
-                <Line yAxisId="p" dataKey="Efectividad %" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }} />
+                <Bar yAxisId="v" dataKey="Ingresadas" fill="#3b82f6" opacity={0.55} radius={[3, 3, 0, 0]}>{etiqueta("#60a5fa")}</Bar>
+                <Bar yAxisId="v" dataKey="Movilizadas" fill="#f97316" radius={[3, 3, 0, 0]}>{etiqueta("#fb923c")}</Bar>
+                <Line yAxisId="v" dataKey="Meta" stroke="#eab308" strokeDasharray="6 4" strokeWidth={2} dot={{ r: 3 }} connectNulls={false}>{etiqueta("#eab308")}</Line>
+                <Line yAxisId="p" dataKey="Entrega %" stroke="#10b981" strokeWidth={2} dot={{ r: 3 }}>{etiqueta("#10b981", pctCorto)}</Line>
+                <Line yAxisId="p" dataKey="Efectividad %" stroke="#a855f7" strokeWidth={2} dot={{ r: 3 }}>{etiqueta("#a855f7", pctCorto)}</Line>
               </ComposedChart>
             </ResponsiveContainer>
           </Card>
@@ -301,15 +318,15 @@ function Curvas({ data }: { data: Data }) {
       <Card titulo="Movimiento diario del año" sub="Por fecha de orden, desde Abril. El promedio de 7 días suaviza fines de semana y feriados."
         acciones={<Chips opciones={[{ k: "7d", l: "Promedio 7 días" }, { k: "dia", l: "Día a día" }]} valor={suavizar} onChange={setSuavizar} />}>
         <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={diario}>
+          <LineChart data={diario} margin={{ right: 50 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
             <XAxis dataKey="fecha" fontSize={10} stroke="#888" interval={Math.max(Math.floor(diario.length / 18), 0)} />
             <YAxis fontSize={10} stroke="#888" tickFormatter={(v) => fmt(Number(v))} width={55} />
             <Tooltip {...tip} formatter={(v) => fmt(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line dataKey="Ingresadas" stroke="#3b82f6" strokeWidth={2} dot={false} />
-            <Line dataKey="Movilizadas" stroke="#f97316" strokeWidth={2} dot={false} />
-            <Line dataKey="Entregadas" stroke="#10b981" strokeWidth={2} dot={false} />
+            <Line dataKey="Ingresadas" stroke="#3b82f6" strokeWidth={2} dot={false} label={punta(diario, "Ingresadas", "#60a5fa")} />
+            <Line dataKey="Movilizadas" stroke="#f97316" strokeWidth={2} dot={false} label={punta(diario, "Movilizadas", "#fb923c")} />
+            <Line dataKey="Entregadas" stroke="#10b981" strokeWidth={2} dot={false} label={punta(diario, "Entregadas", "#10b981")} />
           </LineChart>
         </ResponsiveContainer>
       </Card>
@@ -317,13 +334,13 @@ function Curvas({ data }: { data: Data }) {
       <Card titulo="Cómo se fue armando cada mes" sub="Acumulado día por día: permite comparar el ritmo de cada mes en el mismo punto."
         acciones={<Chips opciones={[{ k: "movilizadas", l: "Movilizadas" }, { k: "ingresadas", l: "Ingresadas" }, { k: "entregadas", l: "Entregadas" }]} valor={metrica} onChange={setMetrica} />}>
         <ResponsiveContainer width="100%" height={340}>
-          <LineChart data={acumulado}>
+          <LineChart data={acumulado} margin={{ right: 50 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
             <XAxis dataKey="dia" fontSize={10} stroke="#888" />
             <YAxis fontSize={10} stroke="#888" tickFormatter={(v) => fmt(Number(v))} width={60} />
             <Tooltip {...tip} formatter={(v) => fmt(Number(v))} labelFormatter={(l) => `Día ${l}`} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {mesesOps.map((m, i) => <Line key={m} dataKey={LARGO(m)} stroke={COLORES[i % COLORES.length]} strokeWidth={i === mesesOps.length - 1 ? 3 : 1.5} dot={false} />)}
+            {mesesOps.map((m, i) => <Line key={m} dataKey={LARGO(m)} stroke={COLORES[i % COLORES.length]} strokeWidth={i === mesesOps.length - 1 ? 3 : 1.5} dot={false} label={punta(acumulado, LARGO(m), COLORES[i % COLORES.length])} />)}
           </LineChart>
         </ResponsiveContainer>
       </Card>
@@ -336,10 +353,10 @@ function Curvas({ data }: { data: Data }) {
             <YAxis fontSize={10} stroke="#888" domain={[0, 100]} tickFormatter={(v) => `${v}%`} width={40} />
             <Tooltip {...tip} formatter={(v) => pctV(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line dataKey="Movilización %" stroke="#3b82f6" strokeWidth={2} />
-            <Line dataKey="Entrega %" stroke="#10b981" strokeWidth={2} />
-            <Line dataKey="Devolución %" stroke="#ef4444" strokeWidth={2} />
-            <Line dataKey="En proceso %" stroke="#eab308" strokeWidth={2} strokeDasharray="4 3" />
+            <Line dataKey="Movilización %" stroke="#3b82f6" strokeWidth={2}>{etiqueta("#60a5fa", pctCorto)}</Line>
+            <Line dataKey="Entrega %" stroke="#10b981" strokeWidth={2}>{etiqueta("#10b981", pctCorto)}</Line>
+            <Line dataKey="Devolución %" stroke="#ef4444" strokeWidth={2}>{etiqueta("#ef4444", pctCorto)}</Line>
+            <Line dataKey="En proceso %" stroke="#eab308" strokeWidth={2} strokeDasharray="4 3">{etiqueta("#eab308", pctCorto)}</Line>
           </LineChart>
         </ResponsiveContainer>
       </Card>
@@ -367,9 +384,12 @@ function Logistica({ data }: { data: Data }) {
   });
   const volumen = mesesOps.map((m) => {
     const row: Record<string, number | string> = { mes: CORTO(m.mes) + (m.en_curso ? "*" : "") };
-    for (const t of transportadoras) row[t] = data.transp[t]?.[m.mes]?.mov ?? 0;
+    let total = 0;
+    for (const t of transportadoras) { row[t] = data.transp[t]?.[m.mes]?.mov ?? 0; total += Number(row[t]); }
+    row.Total = total;
     return row;
   });
+  const maxMesLog = Math.max(...volumen.map((r) => Number(r.Total) || 0), 1);
   const totMov = transportadoras.reduce((a, t) => a + Object.values(data.transp[t]).reduce((x, v) => x + v.mov, 0), 0);
   const filas = transportadoras.map((t) => {
     const v = Object.values(data.transp[t]).reduce((a, x) => ({ mov: a.mov + x.mov, ent: a.ent + x.ent, dev: a.dev + x.dev, proc: a.proc + x.proc, canc: a.canc + x.canc }), { mov: 0, ent: 0, dev: 0, proc: 0, canc: 0 });
@@ -393,7 +413,7 @@ function Logistica({ data }: { data: Data }) {
             <YAxis fontSize={10} stroke="#888" domain={[0, 100]} tickFormatter={(v) => `${v}%`} width={40} />
             <Tooltip {...tip} formatter={(v) => pctV(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {sel.map((t) => <Line key={t} dataKey={t} stroke={COLORES[transportadoras.indexOf(t) % COLORES.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls />)}
+            {sel.map((t) => <Line key={t} dataKey={t} stroke={COLORES[transportadoras.indexOf(t) % COLORES.length]} strokeWidth={2} dot={{ r: 3 }} connectNulls>{etiqueta(COLORES[transportadoras.indexOf(t) % COLORES.length], pctCorto)}</Line>)}
           </LineChart>
         </ResponsiveContainer>
       </Card>
@@ -406,7 +426,12 @@ function Logistica({ data }: { data: Data }) {
             <YAxis fontSize={10} stroke="#888" tickFormatter={(v) => fmt(Number(v))} width={55} />
             <Tooltip {...tip} formatter={(v) => fmt(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            {transportadoras.map((t, i) => <Bar key={t} dataKey={t} stackId="a" fill={COLORES[i % COLORES.length]} />)}
+            {transportadoras.map((t, i) => (
+              <Bar key={t} dataKey={t} stackId="a" fill={COLORES[i % COLORES.length]}>
+                <LabelList position="center" formatter={(v: unknown) => (Number(v) >= maxMesLog * 0.06 ? corto(v) : "")} style={{ fontSize: 9, fill: "#fff", fontWeight: 600 }} />
+                {i === transportadoras.length - 1 && <LabelList dataKey="Total" position="top" formatter={(v: unknown) => corto(v)} style={{ fontSize: 10, fill: "#e5e7eb", fontWeight: 700 }} />}
+              </Bar>
+            ))}
           </BarChart>
         </ResponsiveContainer>
       </Card>
@@ -471,8 +496,8 @@ function Ciudades({ data, country }: { data: Data; country: Pais }) {
             <YAxis fontSize={10} stroke="#888" domain={[0, 100]} tickFormatter={(v) => `${v}%`} width={40} />
             <Tooltip {...tip} formatter={(v) => pctV(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="Efectividad" fill="#10b981" radius={[3, 3, 0, 0]} />
-            <Bar dataKey="Devolución %" fill="#ef4444" radius={[3, 3, 0, 0]} />
+            <Bar dataKey="Efectividad" fill="#10b981" radius={[3, 3, 0, 0]}>{etiqueta("#10b981", (v) => { const n = Number(v); return Number.isFinite(n) ? `${Math.round(n)}%` : ""; })}</Bar>
+            <Bar dataKey="Devolución %" fill="#ef4444" radius={[3, 3, 0, 0]}>{etiqueta("#ef4444", (v) => { const n = Number(v); return Number.isFinite(n) ? `${Math.round(n)}%` : ""; })}</Bar>
           </BarChart>
         </ResponsiveContainer>
         <div className="overflow-x-auto mt-3 max-h-[520px] overflow-y-auto">
@@ -553,10 +578,10 @@ function Comercial({ data }: { data: Data }) {
             <YAxis yAxisId="b" orientation="right" fontSize={10} stroke="#888" width={45} />
             <Tooltip {...tip} formatter={(v) => fmt(Number(v))} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar yAxisId="o" dataKey="Órdenes" fill="#3b82f6" opacity={0.6} radius={[3, 3, 0, 0]} />
-            <Line yAxisId="b" dataKey="Usuarios" stroke="#f97316" strokeWidth={2} />
-            <Line yAxisId="b" dataKey="Proveedores" stroke="#a855f7" strokeWidth={2} />
-            <Line yAxisId="b" dataKey="Productos" stroke="#10b981" strokeWidth={2} />
+            <Bar yAxisId="o" dataKey="Órdenes" fill="#3b82f6" opacity={0.6} radius={[3, 3, 0, 0]}>{etiqueta("#60a5fa")}</Bar>
+            <Line yAxisId="b" dataKey="Usuarios" stroke="#f97316" strokeWidth={2}>{etiqueta("#fb923c", (v) => fmt(Number(v)))}</Line>
+            <Line yAxisId="b" dataKey="Proveedores" stroke="#a855f7" strokeWidth={2}>{etiqueta("#a855f7", (v) => fmt(Number(v)))}</Line>
+            <Line yAxisId="b" dataKey="Productos" stroke="#10b981" strokeWidth={2}>{etiqueta("#10b981", (v) => fmt(Number(v)))}</Line>
           </ComposedChart>
         </ResponsiveContainer>
       </Card>
